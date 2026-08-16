@@ -9,7 +9,7 @@
 <style>
 :root{
   --bg-0:#0b0f1e; --bg-1:#131a2e; --bg-2:#1b2440;
-  --ink-0:#f5f7ff; --ink-1:#c7cde3; --ink-2:#8a92b8;
+  --ink-0:#ffffff; --ink-1:#ffffff; --ink-2:#ffffff;
   --glass: rgba(255,255,255,.06); --glass-brd: rgba(255,255,255,.14);
   --ok:#22c55e; --warn:#f59e0b; --bad:#ef4444;
   --ling-a:#a855f7; --ling-b:#ec4899;
@@ -85,17 +85,14 @@ header.topbar{display:flex;align-items:center;justify-content:space-between;gap:
   -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
   -webkit-mask-composite: xor; mask-composite: exclude; pointer-events:none;}
 
-/* Cada etapa do formulário com uma cor de fundo própria, para um layout mais colorido */
-.card-step1{background:linear-gradient(150deg, rgba(99,102,241,.30), rgba(59,130,246,.14));}
-.card-step2{background:linear-gradient(150deg, rgba(20,184,166,.28), rgba(6,182,212,.13));}
-.card-step3{background:linear-gradient(150deg, rgba(245,158,11,.28), rgba(249,115,22,.13));}
-.card-step4{background:linear-gradient(150deg, rgba(236,72,153,.28), rgba(219,39,119,.13));}
-.card-step5{background:linear-gradient(150deg, rgba(168,85,247,.30), rgba(147,51,234,.14));}
-.card-step1 .section-title .num{background:linear-gradient(135deg,#6366f1,#3b82f6);}
-.card-step2 .section-title .num{background:linear-gradient(135deg,#14b8a6,#06b6d4);}
-.card-step3 .section-title .num{background:linear-gradient(135deg,#f59e0b,#f97316);}
-.card-step4 .section-title .num{background:linear-gradient(135deg,#ec4899,#db2777);}
-.card-step5 .section-title .num{background:linear-gradient(135deg,#a855f7,#9333ea);}
+/* Cada etapa do formulário com uma cor de fundo própria, para um layout mais colorido.
+   Cada bloco também redefine --accent-a/--accent-b localmente, então botões, chips
+   selecionados, badges e outros elementos internos herdam automaticamente a cor do bloco. */
+.card-step1{--accent-a:#1e3a8a;--accent-b:#1d4ed8;background:linear-gradient(150deg, #1e3a8a, #172554);border-color:rgba(96,165,250,.55);border-width:2px;}
+.card-step2{--accent-a:#22c55e;--accent-b:#16a34a;background:linear-gradient(150deg, #15803d, #14532d);border-color:rgba(134,239,172,.5);border-width:2px;}
+.card-step3{--accent-a:#f59e0b;--accent-b:#f97316;background:linear-gradient(150deg, #92400e, #7c2d12);border-color:rgba(253,186,116,.5);border-width:2px;}
+.card-step4{--accent-a:#ec4899;--accent-b:#db2777;background:linear-gradient(150deg, #9d174d, #701a3f);border-color:rgba(249,168,212,.5);border-width:2px;}
+.card-step5{--accent-a:#a855f7;--accent-b:#9333ea;background:linear-gradient(150deg, #6b21a8, #4c1d95);border-color:rgba(216,180,254,.5);border-width:2px;}
 
 .section-title{display:flex;align-items:center;gap:10px;margin:0 0 6px;font-size:16px;font-weight:700;color:var(--ink-0);}
 .section-title .num{
@@ -117,16 +114,17 @@ header.topbar{display:flex;align-items:center;justify-content:space-between;gap:
   background:var(--tile-grad);display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:900;}
 .area-tile .ic{font-size:26px;margin-bottom:8px;display:block;}
 .area-tile h3{margin:0 0 4px;font-size:14.5px;}
-.area-tile p{margin:0;font-size:11.5px;color:var(--ink-2);line-height:1.4;}
-.area-tile[data-area="linguagens"]{--tile-grad:linear-gradient(135deg,var(--ling-a),var(--ling-b));--tile-glow:rgba(168,85,247,.55);
-  background:linear-gradient(160deg, rgba(168,85,247,.30), rgba(236,72,153,.15));}
-.area-tile[data-area="humanas"]{--tile-grad:linear-gradient(135deg,var(--hum-a),var(--hum-b));--tile-glow:rgba(249,115,22,.55);
-  background:linear-gradient(160deg, rgba(249,115,22,.30), rgba(239,68,68,.15));}
-.area-tile[data-area="natureza"]{--tile-grad:linear-gradient(135deg,var(--nat-a),var(--nat-b));--tile-glow:rgba(16,185,129,.55);
-  background:linear-gradient(160deg, rgba(16,185,129,.30), rgba(20,184,166,.15));}
-.area-tile[data-area="matematica"]{--tile-grad:linear-gradient(135deg,var(--mat-a),var(--mat-b));--tile-glow:rgba(59,130,246,.55);
-  background:linear-gradient(160deg, rgba(59,130,246,.30), rgba(99,102,241,.15));}
-.area-tile.sel[data-area]{background:linear-gradient(160deg, color-mix(in srgb, var(--tile-glow) 40%, transparent), color-mix(in srgb, var(--tile-glow) 16%, transparent));}
+.area-tile p{margin:0;font-size:11.5px;color:rgba(255,255,255,.88);line-height:1.4;text-shadow:0 1px 3px rgba(0,0,0,.35);}
+.area-tile h3{text-shadow:0 1px 3px rgba(0,0,0,.35);}
+.area-tile[data-area="linguagens"]{--tile-grad:linear-gradient(135deg,#15803d,#14532d);--tile-glow:rgba(21,128,61,.55);
+  background:linear-gradient(160deg, #15803d, #14532d);border-color:rgba(134,239,172,.55);}
+.area-tile[data-area="humanas"]{--tile-grad:linear-gradient(135deg,#92400e,#7c2d12);--tile-glow:rgba(146,64,14,.55);
+  background:linear-gradient(160deg, #92400e, #7c2d12);border-color:rgba(253,186,116,.55);}
+.area-tile[data-area="natureza"]{--tile-grad:linear-gradient(135deg,#9d174d,#701a3f);--tile-glow:rgba(157,23,77,.55);
+  background:linear-gradient(160deg, #9d174d, #701a3f);border-color:rgba(249,168,212,.55);}
+.area-tile[data-area="matematica"]{--tile-grad:linear-gradient(135deg,#6b21a8,#4c1d95);--tile-glow:rgba(107,33,168,.55);
+  background:linear-gradient(160deg, #6b21a8, #4c1d95);border-color:rgba(216,180,254,.55);}
+.area-tile.sel[data-area]{box-shadow:0 20px 44px -14px var(--tile-glow,rgba(99,102,241,.95)), inset 0 0 0 3px rgba(255,255,255,.65);}
 
 .chip-row{display:flex;flex-wrap:wrap;gap:10px;}
 .chip{
@@ -134,7 +132,7 @@ header.topbar{display:flex;align-items:center;justify-content:space-between;gap:
   cursor:pointer;font-size:13px;color:var(--ink-1);transition:all .15s ease;
 }
 .chip:hover{background:rgba(255,255,255,.08);}
-.chip.sel{color:#fff;border-color:transparent;background:linear-gradient(135deg,var(--accent-a),var(--accent-b));box-shadow:0 8px 18px -6px rgba(99,102,241,.5);}
+.chip.sel{color:#fff;border-color:transparent;background:linear-gradient(135deg,var(--accent-a),var(--accent-b));box-shadow:0 8px 18px -6px color-mix(in srgb, var(--accent-a) 70%, transparent);}
 
 label.field-label{display:block;font-size:12.5px;font-weight:600;color:var(--ink-1);margin:0 0 7px;letter-spacing:.2px;}
 input[type=text], input[type=number], input[type=password], textarea, select{
@@ -150,8 +148,10 @@ select option{background:#151b30;color:#fff;}
 select optgroup{background:#fff;color:#111;font-weight:700;}
 
 .qty-stepper{display:flex;align-items:center;gap:14px;}
-.qty-stepper button{width:42px;height:42px;border-radius:12px;border:1.5px solid var(--glass-brd);background:rgba(255,255,255,.04);color:#fff;font-size:19px;cursor:pointer;transition:.15s;}
-.qty-stepper button:hover{background:rgba(255,255,255,.1);}
+.qty-stepper button{width:42px;height:42px;border-radius:12px;border:none;
+  background:linear-gradient(135deg,var(--accent-a),var(--accent-b));color:#fff;font-size:19px;font-weight:800;cursor:pointer;transition:.15s;
+  box-shadow:0 6px 16px -6px rgba(0,0,0,.45);}
+.qty-stepper button:hover{filter:brightness(1.15);transform:translateY(-1px);}
 .qty-stepper .qty-val{font-size:28px;font-weight:800;min-width:52px;text-align:center;background:linear-gradient(90deg,#fff,#c7d2fe);-webkit-background-clip:text;background-clip:text;color:transparent;}
 
 .qblock{
@@ -167,7 +167,7 @@ select optgroup{background:#fff;color:#111;font-weight:700;}
 .resource-row{display:flex;gap:8px;flex-wrap:wrap;}
 .res-opt{flex:1;min-width:90px;text-align:center;padding:9px 6px;border-radius:10px;border:1.5px solid var(--glass-brd);cursor:pointer;font-size:12px;background:rgba(255,255,255,.03);transition:.15s;}
 .res-opt:hover{background:rgba(255,255,255,.08);}
-.res-opt.sel{border-color:transparent;background:linear-gradient(135deg,var(--accent-a),var(--accent-b));color:#fff;font-weight:700;}
+.res-opt.sel{border-color:transparent;background:linear-gradient(135deg,var(--accent-a),var(--accent-b));color:#fff;font-weight:700;box-shadow:0 8px 18px -6px color-mix(in srgb, var(--accent-a) 70%, transparent);}
 .res-opt .ic{display:block;font-size:16px;margin-bottom:3px;}
 
 .diff-row{display:flex;gap:8px;}
@@ -317,7 +317,7 @@ body.mode-professor .qcard{box-shadow:0 25px 60px -25px rgba(0,0,0,.6), 0 0 0 1.
       <p class="section-sub">Você poderá configurar tema, dificuldade, recurso visual, competência e habilidade individualmente para cada questão.</p>
       <div class="qty-stepper">
         <button type="button" id="qtyMinus">–</button>
-        <div class="qty-val" id="qtyVal">5</div>
+        <div class="qty-val" id="qtyVal">1</div>
         <button type="button" id="qtyPlus">+</button>
         <span class="hint">questões (máximo 20)</span>
       </div>
@@ -436,7 +436,7 @@ const QUESTION_BACKEND_URL = "https://gkceyrkdmnhgqimmrsre.supabase.co/functions
 let state = {
   area: null,
   disciplina: null,
-  qty: 5,
+  qty: 1,
   questions: [],
   apiKey: "",
   model: "claude-sonnet-5",
@@ -1968,7 +1968,7 @@ async function exportPdf(){
 function init(){
   renderAreaGrid();
   renderDisciplinaChips();
-  setQty(5);
+  setQty(1);
 
   // Recupera chave/modelo salvos neste navegador, se houver (ver STORAGE_KEYS).
   const savedKey = safeStorageGet(STORAGE_KEYS.apiKey);
