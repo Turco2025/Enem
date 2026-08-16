@@ -1,0 +1,401 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Gerador Inteligente de Simulados ENEM</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.5.0/chart.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/4.2.1/jspdf.umd.min.js"></script>
+<style>
+:root{
+  --bg-0:#0b0f1e; --bg-1:#131a2e; --bg-2:#1b2440;
+  --ink-0:#f5f7ff; --ink-1:#c7cde3; --ink-2:#8a92b8;
+  --glass: rgba(255,255,255,.06); --glass-brd: rgba(255,255,255,.14);
+  --ok:#22c55e; --warn:#f59e0b; --bad:#ef4444;
+  --ling-a:#a855f7; --ling-b:#ec4899;
+  --hum-a:#f97316; --hum-b:#ef4444;
+  --nat-a:#10b981; --nat-b:#14b8a6;
+  --mat-a:#3b82f6; --mat-b:#6366f1;
+  --accent-a: var(--mat-a); --accent-b: var(--mat-b);
+  --radius: 18px;
+}
+*{box-sizing:border-box;}
+html,body{margin:0;padding:0;}
+body{
+  font-family:'Segoe UI',-apple-system,BlinkMacSystemFont,Roboto,Helvetica,Arial,sans-serif;
+  background: radial-gradient(circle at 15% 8%, #1c2650 0%, transparent 45%),
+              radial-gradient(circle at 85% 12%, #2a1b4d 0%, transparent 40%),
+              radial-gradient(circle at 50% 90%, #0f2e3a 0%, transparent 45%),
+              linear-gradient(160deg, var(--bg-0), var(--bg-1) 55%, var(--bg-2));
+  background-attachment: fixed;
+  color: var(--ink-0);
+  min-height:100vh;
+  overflow-x:hidden;
+  position:relative;
+}
+.blob{position:fixed;border-radius:50%;filter:blur(90px);opacity:.35;z-index:0;pointer-events:none;animation:float 18s ease-in-out infinite;}
+.blob.b1{width:420px;height:420px;background:linear-gradient(135deg,var(--ling-a),var(--ling-b));top:-120px;left:-100px;animation-duration:22s;}
+.blob.b2{width:380px;height:380px;background:linear-gradient(135deg,var(--nat-a),var(--nat-b));bottom:-140px;right:-80px;animation-duration:26s;animation-delay:-6s;}
+.blob.b3{width:300px;height:300px;background:linear-gradient(135deg,var(--mat-a),var(--mat-b));top:40%;right:10%;animation-duration:20s;animation-delay:-3s;}
+.blob.b4{width:260px;height:260px;background:linear-gradient(135deg,var(--hum-a),var(--hum-b));bottom:20%;left:6%;animation-duration:24s;animation-delay:-10s;}
+@keyframes float{0%,100%{transform:translate(0,0) scale(1);}33%{transform:translate(30px,-40px) scale(1.08);}66%{transform:translate(-25px,25px) scale(.95);}}
+
+.wrap{position:relative;z-index:1;max-width:1180px;margin:0 auto;padding:28px 20px 90px;}
+
+header.topbar{display:flex;align-items:center;justify-content:space-between;gap:16px;margin-bottom:28px;flex-wrap:wrap;}
+.brand{display:flex;align-items:center;gap:14px;}
+.brand .logo{
+  width:52px;height:52px;border-radius:16px;
+  background:linear-gradient(135deg,var(--mat-a),var(--ling-a));
+  display:flex;align-items:center;justify-content:center;font-size:26px;
+  box-shadow:0 10px 30px -8px rgba(99,102,241,.7), inset 0 1px 0 rgba(255,255,255,.3);
+  transform-style:preserve-3d;
+}
+.brand h1{font-size:22px;margin:0;letter-spacing:.2px;background:linear-gradient(90deg,#fff,#c7d2fe);-webkit-background-clip:text;background-clip:text;color:transparent;}
+.brand p{margin:2px 0 0;font-size:12.5px;color:var(--ink-2);}
+.btn{
+  border:none;cursor:pointer;font-weight:600;font-size:14px;
+  padding:11px 18px;border-radius:12px;color:#fff;
+  background:linear-gradient(135deg,var(--accent-a),var(--accent-b));
+  box-shadow:0 8px 22px -6px rgba(99,102,241,.55), inset 0 1px 0 rgba(255,255,255,.25);
+  transition:transform .15s ease, box-shadow .15s ease, filter .15s ease;
+  display:inline-flex;align-items:center;gap:8px;
+}
+.btn:hover{transform:translateY(-2px);filter:brightness(1.08);}
+.btn:active{transform:translateY(0);}
+.btn.ghost{background:var(--glass);border:1px solid var(--glass-brd);box-shadow:none;color:var(--ink-1);}
+.btn.ghost:hover{background:rgba(255,255,255,.1);color:#fff;}
+.btn.sm{padding:7px 12px;font-size:12.5px;border-radius:9px;}
+.btn:disabled{opacity:.5;cursor:not-allowed;transform:none;}
+
+.card{
+  background:var(--glass);
+  border:1px solid var(--glass-brd);
+  border-radius:var(--radius);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+  box-shadow: 0 20px 50px -20px rgba(0,0,0,.55), inset 0 1px 0 rgba(255,255,255,.06);
+  padding:26px;
+  margin-bottom:22px;
+  position:relative;
+  overflow:hidden;
+}
+.card::before{content:"";position:absolute;inset:0;border-radius:inherit;padding:1px;
+  background:linear-gradient(135deg, rgba(255,255,255,.25), rgba(255,255,255,0) 40%);
+  -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor; mask-composite: exclude; pointer-events:none;}
+
+.section-title{display:flex;align-items:center;gap:10px;margin:0 0 6px;font-size:16px;font-weight:700;color:var(--ink-0);}
+.section-title .num{
+  width:26px;height:26px;border-radius:8px;display:flex;align-items:center;justify-content:center;
+  background:linear-gradient(135deg,var(--accent-a),var(--accent-b));font-size:13px;font-weight:800;
+  box-shadow:0 4px 12px -3px rgba(99,102,241,.6);
+}
+.section-sub{color:var(--ink-2);font-size:13px;margin:0 0 18px;}
+
+.area-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:14px;margin-bottom:6px;}
+.area-tile{
+  cursor:pointer;border-radius:16px;padding:18px 16px;border:1.5px solid var(--glass-brd);
+  background:rgba(255,255,255,.03);transition:all .2s ease;position:relative;overflow:hidden;
+  transform-style:preserve-3d;
+}
+.area-tile:hover{transform:translateY(-4px);}
+.area-tile.sel{border-color:transparent;box-shadow:0 16px 34px -14px var(--tile-glow,rgba(99,102,241,.7));}
+.area-tile.sel::after{content:"✓";position:absolute;top:10px;right:12px;width:22px;height:22px;border-radius:50%;
+  background:var(--tile-grad);display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:900;}
+.area-tile .ic{font-size:26px;margin-bottom:8px;display:block;}
+.area-tile h3{margin:0 0 4px;font-size:14.5px;}
+.area-tile p{margin:0;font-size:11.5px;color:var(--ink-2);line-height:1.4;}
+.area-tile[data-area="linguagens"]{--tile-grad:linear-gradient(135deg,var(--ling-a),var(--ling-b));--tile-glow:rgba(168,85,247,.55);}
+.area-tile[data-area="humanas"]{--tile-grad:linear-gradient(135deg,var(--hum-a),var(--hum-b));--tile-glow:rgba(249,115,22,.55);}
+.area-tile[data-area="natureza"]{--tile-grad:linear-gradient(135deg,var(--nat-a),var(--nat-b));--tile-glow:rgba(16,185,129,.55);}
+.area-tile[data-area="matematica"]{--tile-grad:linear-gradient(135deg,var(--mat-a),var(--mat-b));--tile-glow:rgba(59,130,246,.55);}
+.area-tile.sel[data-area]{background:linear-gradient(160deg, color-mix(in srgb, var(--tile-glow) 22%, transparent), transparent);}
+
+.chip-row{display:flex;flex-wrap:wrap;gap:10px;}
+.chip{
+  padding:9px 15px;border-radius:999px;border:1.5px solid var(--glass-brd);background:rgba(255,255,255,.03);
+  cursor:pointer;font-size:13px;color:var(--ink-1);transition:all .15s ease;
+}
+.chip:hover{background:rgba(255,255,255,.08);}
+.chip.sel{color:#fff;border-color:transparent;background:linear-gradient(135deg,var(--accent-a),var(--accent-b));box-shadow:0 8px 18px -6px rgba(99,102,241,.5);}
+
+label.field-label{display:block;font-size:12.5px;font-weight:600;color:var(--ink-1);margin:0 0 7px;letter-spacing:.2px;}
+input[type=text], input[type=number], input[type=password], textarea, select{
+  width:100%;padding:11px 13px;border-radius:10px;border:1.5px solid var(--glass-brd);
+  background:rgba(255,255,255,.04);color:var(--ink-0);font-size:13.5px;font-family:inherit;
+  transition:border-color .15s ease, background .15s ease;
+}
+input::placeholder, textarea::placeholder{color:var(--ink-2);}
+input:focus, textarea:focus, select:focus{outline:none;border-color:var(--accent-a);background:rgba(255,255,255,.07);}
+textarea{resize:vertical;min-height:64px;}
+select{appearance:none;background-image:url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="%238a92b8"><path d="M5.5 7.5l4.5 5 4.5-5z"/></svg>');background-repeat:no-repeat;background-position:right 12px center;padding-right:34px;}
+select option{background:#151b30;color:#fff;}
+select optgroup{background:#fff;color:#111;font-weight:700;}
+
+.qty-stepper{display:flex;align-items:center;gap:14px;}
+.qty-stepper button{width:42px;height:42px;border-radius:12px;border:1.5px solid var(--glass-brd);background:rgba(255,255,255,.04);color:#fff;font-size:19px;cursor:pointer;transition:.15s;}
+.qty-stepper button:hover{background:rgba(255,255,255,.1);}
+.qty-stepper .qty-val{font-size:28px;font-weight:800;min-width:52px;text-align:center;background:linear-gradient(90deg,#fff,#c7d2fe);-webkit-background-clip:text;background-clip:text;color:transparent;}
+
+.qblock{
+  border-radius:16px;border:1.5px solid var(--glass-brd);background:rgba(255,255,255,.03);
+  padding:18px;margin-bottom:14px;position:relative;
+}
+.qblock .qb-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;}
+.qblock .qb-num{display:flex;align-items:center;gap:10px;font-weight:700;font-size:13.5px;}
+.qblock .qb-num .dot{width:26px;height:26px;border-radius:8px;background:linear-gradient(135deg,var(--accent-a),var(--accent-b));display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:800;}
+.qgrid{display:grid;grid-template-columns:2fr 1fr 1fr;gap:12px;}
+.qgrid2{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:12px;}
+@media (max-width:760px){.qgrid,.qgrid2{grid-template-columns:1fr;}}
+.resource-row{display:flex;gap:8px;flex-wrap:wrap;}
+.res-opt{flex:1;min-width:90px;text-align:center;padding:9px 6px;border-radius:10px;border:1.5px solid var(--glass-brd);cursor:pointer;font-size:12px;background:rgba(255,255,255,.03);transition:.15s;}
+.res-opt:hover{background:rgba(255,255,255,.08);}
+.res-opt.sel{border-color:transparent;background:linear-gradient(135deg,var(--accent-a),var(--accent-b));color:#fff;font-weight:700;}
+.res-opt .ic{display:block;font-size:16px;margin-bottom:3px;}
+
+.diff-row{display:flex;gap:8px;}
+.diff-opt{flex:1;text-align:center;padding:9px 4px;border-radius:10px;border:1.5px solid var(--glass-brd);cursor:pointer;font-size:12px;background:rgba(255,255,255,.03);transition:.15s;font-weight:600;}
+.diff-opt[data-d="Fácil"].sel{background:linear-gradient(135deg,#22c55e,#16a34a);border-color:transparent;}
+.diff-opt[data-d="Médio"].sel{background:linear-gradient(135deg,#f59e0b,#d97706);border-color:transparent;}
+.diff-opt[data-d="Difícil"].sel{background:linear-gradient(135deg,#ef4444,#b91c1c);border-color:transparent;}
+.diff-opt.sel{color:#fff;}
+
+.footer-actions{display:flex;justify-content:space-between;align-items:center;gap:14px;flex-wrap:wrap;margin-top:8px;}
+.hint{font-size:12px;color:var(--ink-2);}
+
+/* results */
+#resultsPanel{display:none;}
+.results-toolbar{display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px;margin-bottom:18px;}
+.view-toggle{display:flex;background:rgba(255,255,255,.05);border:1.5px solid var(--glass-brd);border-radius:12px;padding:4px;}
+.view-toggle button{border:none;background:transparent;color:var(--ink-2);padding:8px 16px;border-radius:9px;cursor:pointer;font-weight:600;font-size:13px;transition:.15s;}
+.view-toggle button.active{background:linear-gradient(135deg,var(--accent-a),var(--accent-b));color:#fff;}
+
+.qcard{
+  border-radius:20px;padding:0;margin-bottom:22px;position:relative;
+  background:linear-gradient(160deg, rgba(255,255,255,.07), rgba(255,255,255,.02));
+  border:1px solid var(--glass-brd);
+  box-shadow:0 25px 60px -25px rgba(0,0,0,.6);
+  transform-style:preserve-3d; transition:transform .12s ease, box-shadow .12s ease;
+  overflow:hidden;
+}
+.qcard .qcard-top{height:6px;background:linear-gradient(90deg,var(--accent-a),var(--accent-b));}
+.qcard-inner{padding:22px 24px 24px;}
+.qcard-head{display:flex;justify-content:space-between;align-items:flex-start;gap:14px;margin-bottom:14px;flex-wrap:wrap;}
+.qcard-head .qtitle{display:flex;align-items:center;gap:10px;}
+.qcard-head .qnum-badge{width:38px;height:38px;border-radius:12px;background:linear-gradient(135deg,var(--accent-a),var(--accent-b));display:flex;align-items:center;justify-content:center;font-weight:800;box-shadow:0 8px 18px -6px rgba(99,102,241,.55);}
+.qcard-head h3{margin:0;font-size:15.5px;}
+.qcard-head .qcard-meta{font-size:12px;color:var(--ink-2);margin-top:2px;}
+.badge{display:inline-flex;align-items:center;gap:5px;padding:5px 11px;border-radius:999px;font-size:11.5px;font-weight:700;border:1px solid var(--glass-brd);background:rgba(255,255,255,.05);}
+.badge.dif-Fácil{background:rgba(34,197,94,.18);color:#4ade80;border-color:rgba(34,197,94,.35);}
+.badge.dif-Médio{background:rgba(245,158,11,.18);color:#fbbf24;border-color:rgba(245,158,11,.35);}
+.badge.dif-Difícil{background:rgba(239,68,68,.18);color:#f87171;border-color:rgba(239,68,68,.35);}
+.qcard-actions{display:flex;gap:6px;flex-wrap:wrap;}
+
+.status-line{display:flex;align-items:center;gap:10px;padding:16px;border-radius:12px;background:rgba(255,255,255,.04);font-size:13px;color:var(--ink-1);}
+.spinner{width:18px;height:18px;border-radius:50%;border:2.5px solid rgba(255,255,255,.2);border-top-color:var(--accent-a);animation:spin .8s linear infinite;flex-shrink:0;}
+@keyframes spin{to{transform:rotate(360deg);}}
+
+.texto-base{background:rgba(255,255,255,.035);border-left:3px solid var(--accent-a);border-radius:0 10px 10px 0;padding:14px 16px;font-size:14px;line-height:1.65;color:var(--ink-1);margin-bottom:16px;white-space:pre-wrap;}
+.comando{font-size:14.5px;font-weight:600;margin:0 0 14px;line-height:1.5;}
+.alt-list{display:flex;flex-direction:column;gap:9px;margin-bottom:6px;}
+.alt-item{display:flex;gap:12px;padding:12px 14px;border-radius:12px;border:1.5px solid var(--glass-brd);background:rgba(255,255,255,.025);font-size:13.5px;line-height:1.55;transition:.15s;}
+.alt-item .alt-letter{flex-shrink:0;width:26px;height:26px;border-radius:8px;background:rgba(255,255,255,.08);display:flex;align-items:center;justify-content:center;font-weight:800;font-size:12.5px;}
+.alt-item.correct{border-color:rgba(34,197,94,.5);background:rgba(34,197,94,.08);}
+.alt-item.correct .alt-letter{background:linear-gradient(135deg,#22c55e,#16a34a);color:#fff;}
+.alt-item .alt-comment{margin-top:6px;font-size:12.5px;color:var(--ink-2);border-top:1px dashed var(--glass-brd);padding-top:6px;}
+
+.visual-box{margin:14px 0;border-radius:14px;overflow:hidden;border:1.5px solid var(--glass-brd);background:rgba(255,255,255,.03);}
+.visual-box .visual-header-row{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 14px;border-bottom:1px solid var(--glass-brd);}
+.visual-box .visual-title{font-size:12px;font-weight:700;color:var(--ink-1);}
+.visual-box .visual-redo-btn{flex-shrink:0;white-space:nowrap;}
+.visual-box .visual-instr-wrap{padding:10px 14px 0;}
+.visual-box .visual-instr-wrap .field-label{font-size:11.5px;color:var(--ink-2);margin-bottom:5px;}
+.visual-box .visual-instr-input{min-height:40px;font-size:12.5px;}
+.visual-box .visual-body{padding:14px;}
+.visual-box img{width:100%;display:block;border-radius:8px;}
+table.enem-table{width:100%;border-collapse:collapse;font-size:12.5px;}
+table.enem-table th, table.enem-table td{border:1px solid var(--glass-brd);padding:8px 10px;text-align:left;}
+table.enem-table th{background:rgba(255,255,255,.06);}
+
+.pedagog{margin-top:18px;border-top:1px dashed var(--glass-brd);padding-top:16px;}
+.pedagog-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px;margin-bottom:14px;}
+.pedagog-item{background:rgba(255,255,255,.03);border:1px solid var(--glass-brd);border-radius:10px;padding:10px 12px;}
+.pedagog-item .lab{font-size:10.5px;text-transform:uppercase;letter-spacing:.5px;color:var(--ink-2);margin-bottom:3px;}
+.pedagog-item .val{font-size:12.5px;font-weight:600;}
+.resolucao{background:rgba(255,255,255,.03);border-radius:10px;padding:12px 14px;font-size:13px;line-height:1.6;color:var(--ink-1);margin-bottom:14px;}
+
+.editrow{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:14px;padding-top:14px;border-top:1px dashed var(--glass-brd);}
+
+.summary-table{width:100%;border-collapse:collapse;font-size:13px;margin-top:6px;}
+.summary-table th,.summary-table td{padding:9px 12px;border-bottom:1px solid var(--glass-brd);text-align:left;}
+
+/* toast */
+#toastBox{position:fixed;bottom:24px;right:24px;z-index:999;display:flex;flex-direction:column;gap:10px;}
+.toast{padding:13px 18px;border-radius:12px;background:rgba(20,25,45,.95);border:1px solid var(--glass-brd);box-shadow:0 15px 40px -12px rgba(0,0,0,.6);font-size:13.5px;max-width:340px;animation:slideIn .25s ease;}
+.toast.err{border-left:4px solid var(--bad);}
+.toast.ok{border-left:4px solid var(--ok);}
+.toast.info{border-left:4px solid var(--accent-a);}
+@keyframes slideIn{from{transform:translateX(30px);opacity:0;}to{transform:translateX(0);opacity:1;}}
+
+/* modal */
+.modal-overlay{position:fixed;inset:0;background:rgba(5,7,16,.7);backdrop-filter:blur(4px);display:none;align-items:center;justify-content:center;z-index:900;padding:20px;}
+.modal-overlay.show{display:flex;}
+.modal-box{width:100%;max-width:480px;background:linear-gradient(160deg,#1b2140,#141a30);border:1px solid var(--glass-brd);border-radius:20px;padding:26px;box-shadow:0 40px 90px -20px rgba(0,0,0,.7);}
+.modal-box h2{margin:0 0 6px;font-size:18px;}
+.modal-box p.desc{color:var(--ink-2);font-size:13px;margin:0 0 18px;line-height:1.5;}
+.modal-close-row{display:flex;justify-content:flex-end;gap:10px;margin-top:20px;}
+
+.progressbar{height:8px;border-radius:99px;background:rgba(255,255,255,.08);overflow:hidden;margin:14px 0;}
+.progressbar .fill{height:100%;background:linear-gradient(90deg,var(--accent-a),var(--accent-b));transition:width .3s ease;border-radius:99px;}
+
+@media print{
+  .no-print, #toastBox{display:none !important;}
+  body{background:#fff !important;color:#111 !important;}
+  .qcard{break-inside:avoid;box-shadow:none;border:1px solid #ccc;background:#fff;}
+  .blob{display:none;}
+  .card, .texto-base, .alt-item, .visual-box, .pedagog-item, .resolucao{background:#fff !important;color:#111 !important;}
+}
+.hidden{display:none !important;}
+body.mode-aluno .professor-only{display:none !important;}
+body.mode-aluno .alt-item.correct{background:rgba(255,255,255,.025);border-color:var(--glass-brd);}
+body.mode-aluno .alt-item.correct .alt-letter{background:rgba(255,255,255,.08);color:inherit;}
+body.mode-professor .qcard{box-shadow:0 25px 60px -25px rgba(0,0,0,.6), 0 0 0 1.5px rgba(99,102,241,.25);}
+</style>
+</head>
+<body>
+<div class="blob b1"></div><div class="blob b2"></div><div class="blob b3"></div><div class="blob b4"></div>
+
+<div class="wrap">
+  <header class="topbar no-print">
+    <div class="brand">
+      <div class="logo">🎓</div>
+      <div>
+        <h1>Gerador Inteligente de Simulados ENEM</h1>
+        <p>Conectado ao Agente Elaborador de Questões · Matriz de Referência oficial embutida</p>
+      </div>
+    </div>
+    <div style="display:flex;gap:10px;">
+      <button class="btn ghost sm" id="btnHelp">Como funciona</button>
+      <button class="btn ghost sm no-print" id="btnSettings" style="display:none;">⚙️ Configurações</button>
+    </div>
+  </header>
+
+  <!-- FORM PANEL -->
+  <div id="formPanel">
+
+    <div class="card">
+      <div class="section-title"><span class="num">1</span> Área do conhecimento</div>
+      <p class="section-sub">Escolha a área. As competências, habilidades e o padrão de construção corretos serão carregados automaticamente da Matriz de Referência do ENEM.</p>
+      <div class="area-grid" id="areaGrid"></div>
+    </div>
+
+    <div class="card">
+      <div class="section-title"><span class="num">2</span> Disciplina</div>
+      <p class="section-sub">Dentro da área escolhida, selecione a disciplina específica.</p>
+      <div class="chip-row" id="disciplinaChips"></div>
+    </div>
+
+    <div class="card">
+      <div class="section-title"><span class="num">3</span> Quantidade de questões</div>
+      <p class="section-sub">Você poderá configurar tema, dificuldade, recurso visual, competência e habilidade individualmente para cada questão.</p>
+      <div class="qty-stepper">
+        <button type="button" id="qtyMinus">–</button>
+        <div class="qty-val" id="qtyVal">5</div>
+        <button type="button" id="qtyPlus">+</button>
+        <span class="hint">questões (máximo 20)</span>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="section-title"><span class="num">4</span> Configuração individual das questões</div>
+      <p class="section-sub">Para cada questão, defina o tema, a dificuldade e o recurso visual. Competência e habilidade são opcionais — se você não escolher, o agente seleciona automaticamente a mais aderente ao tema e informa a classificação usada.</p>
+      <div id="questionBlocks"></div>
+    </div>
+
+    <div class="card">
+      <div class="section-title"><span class="num">5</span> Gerar simulado</div>
+      <div class="footer-actions">
+        <label style="display:flex;align-items:center;gap:8px;font-size:13px;color:var(--ink-1);">
+          <input type="checkbox" id="chkValidacao" checked style="width:auto;">
+          Validação pedagógica em duas etapas (recomendado)
+        </label>
+        <button class="btn" id="btnGenerate">✨ Gerar simulado completo</button>
+      </div>
+      <p class="hint" style="margin-top:10px;">A validação em duas etapas faz o agente revisar cada questão (gabarito único, distratores plausíveis, coerência com a dificuldade e com a habilidade) antes de te entregar — recomendado, porém um pouco mais lento.</p>
+    </div>
+  </div>
+
+  <!-- RESULTS PANEL -->
+  <div id="resultsPanel">
+    <div class="card no-print">
+      <div class="results-toolbar">
+        <div>
+          <div class="section-title" style="margin-bottom:2px;"><span class="num">✓</span> Simulado gerado</div>
+          <p class="section-sub" style="margin:0;" id="resultsSummary"></p>
+        </div>
+        <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;">
+          <div class="view-toggle">
+            <button type="button" id="viewAluno">Versão do aluno</button>
+            <button type="button" id="viewProfessor" class="active">Versão do professor</button>
+          </div>
+          <button class="btn ghost sm" id="btnPrint">🖨️ Imprimir</button>
+          <button class="btn ghost sm" id="btnExportPdf">📄 Exportar PDF</button>
+          <button class="btn ghost sm" id="btnExport">⬇️ Exportar HTML</button>
+          <button class="btn ghost sm" id="btnBackToForm">← Nova configuração</button>
+        </div>
+      </div>
+      <div class="progressbar hidden" id="genProgressWrap"><div class="fill" id="genProgressFill" style="width:0%"></div></div>
+    </div>
+    <div id="questionResults"></div>
+    <div class="card hidden" id="summaryCard">
+      <div class="section-title"><span class="num">📋</span> Gabarito resumido</div>
+      <table class="summary-table"><thead><tr><th>Questão</th><th>Tema</th><th>Habilidade</th><th>Dificuldade</th><th>Gabarito</th></tr></thead><tbody id="summaryBody"></tbody></table>
+    </div>
+  </div>
+</div>
+
+<!-- Settings modal -->
+<div class="modal-overlay no-print" id="settingsModal">
+  <div class="modal-box">
+    <h2>⚙️ Configurações do agente</h2>
+    <p class="desc">Para gerar questões em tempo real, o aplicativo chama a API da Anthropic (o mesmo modelo Claude do agente). Ao salvar, sua chave fica guardada <strong>somente neste navegador</strong> (não é enviada a mim nem a terceiros) — assim você não precisa digitar de novo da próxima vez. Use "Esquecer chave" para removê-la deste navegador quando quiser.</p>
+    <label class="field-label">Chave de API da Anthropic</label>
+    <input type="password" id="apiKeyInput" placeholder="sk-ant-...">
+    <div style="height:14px;"></div>
+    <label class="field-label">Modelo</label>
+    <input type="text" id="modelInput" value="claude-sonnet-5" placeholder="claude-sonnet-5">
+    <p class="hint" style="margin-top:6px;">Se aparecer erro de "modelo não encontrado", troque para o identificador de modelo disponível na sua conta (ex.: claude-opus-5, claude-haiku-4-5).</p>
+    <div class="modal-close-row">
+      <button class="btn ghost sm" id="btnForgetKey" title="Remove a chave salva deste navegador">🗑️ Esquecer chave</button>
+      <button class="btn ghost sm" id="btnCloseSettings">Fechar</button>
+      <button class="btn sm" id="btnSaveSettings">Salvar</button>
+    </div>
+  </div>
+</div>
+
+<!-- Help modal -->
+<div class="modal-overlay no-print" id="helpModal">
+  <div class="modal-box" style="max-width:560px;">
+    <h2>Como este gerador funciona</h2>
+    <p class="desc">
+      1) Você escolhe área, disciplina e configura cada questão (tema, dificuldade, recurso visual e, se quiser, a competência/habilidade específica). <br><br>
+      2) O aplicativo monta, para cada questão, um prompt para o agente contendo o padrão de construção do ENEM (derivado da leitura de 11 provas reais, 2015–2025) e o trecho relevante da Matriz de Referência oficial. Se você não escolher competência/habilidade, o próprio agente decide a mais aderente ao tema e informa qual usou. <br><br>
+      3) Com a validação em duas etapas ativada, uma segunda chamada ao agente revisa a questão contra os critérios pedagógicos (gabarito único, distratores plausíveis, coerência com a dificuldade) e corrige antes de te entregar. <br><br>
+      4) Gráficos e tabelas são gerados com dados reais criados pelo agente e renderizados no navegador; imagens usam um serviço de geração de imagens gratuito, a partir de uma descrição pedagógica feita pelo agente. <br><br>
+      5) Ao final, alterne entre a <strong>versão do aluno</strong> (sem gabarito) e a <strong>versão do professor</strong> (com gabarito, competência/habilidade e comentários) e use "Imprimir/Exportar".
+    </p>
+    <div class="modal-close-row"><button class="btn sm" id="btnCloseHelp">Entendi</button></div>
+  </div>
+</div>
+
+<div id="toastBox"></div>
+
+<script>
+const APP_DATA = __APP_DATA__;
+</script>
+<script>
+__APP_JS__
+</script>
+</body>
+</html>
