@@ -85,6 +85,18 @@ header.topbar{display:flex;align-items:center;justify-content:space-between;gap:
   -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
   -webkit-mask-composite: xor; mask-composite: exclude; pointer-events:none;}
 
+/* Cada etapa do formulário com uma cor de fundo própria, para um layout mais colorido */
+.card-step1{background:linear-gradient(150deg, rgba(99,102,241,.30), rgba(59,130,246,.14));}
+.card-step2{background:linear-gradient(150deg, rgba(20,184,166,.28), rgba(6,182,212,.13));}
+.card-step3{background:linear-gradient(150deg, rgba(245,158,11,.28), rgba(249,115,22,.13));}
+.card-step4{background:linear-gradient(150deg, rgba(236,72,153,.28), rgba(219,39,119,.13));}
+.card-step5{background:linear-gradient(150deg, rgba(168,85,247,.30), rgba(147,51,234,.14));}
+.card-step1 .section-title .num{background:linear-gradient(135deg,#6366f1,#3b82f6);}
+.card-step2 .section-title .num{background:linear-gradient(135deg,#14b8a6,#06b6d4);}
+.card-step3 .section-title .num{background:linear-gradient(135deg,#f59e0b,#f97316);}
+.card-step4 .section-title .num{background:linear-gradient(135deg,#ec4899,#db2777);}
+.card-step5 .section-title .num{background:linear-gradient(135deg,#a855f7,#9333ea);}
+
 .section-title{display:flex;align-items:center;gap:10px;margin:0 0 6px;font-size:16px;font-weight:700;color:var(--ink-0);}
 .section-title .num{
   width:26px;height:26px;border-radius:8px;display:flex;align-items:center;justify-content:center;
@@ -106,11 +118,15 @@ header.topbar{display:flex;align-items:center;justify-content:space-between;gap:
 .area-tile .ic{font-size:26px;margin-bottom:8px;display:block;}
 .area-tile h3{margin:0 0 4px;font-size:14.5px;}
 .area-tile p{margin:0;font-size:11.5px;color:var(--ink-2);line-height:1.4;}
-.area-tile[data-area="linguagens"]{--tile-grad:linear-gradient(135deg,var(--ling-a),var(--ling-b));--tile-glow:rgba(168,85,247,.55);}
-.area-tile[data-area="humanas"]{--tile-grad:linear-gradient(135deg,var(--hum-a),var(--hum-b));--tile-glow:rgba(249,115,22,.55);}
-.area-tile[data-area="natureza"]{--tile-grad:linear-gradient(135deg,var(--nat-a),var(--nat-b));--tile-glow:rgba(16,185,129,.55);}
-.area-tile[data-area="matematica"]{--tile-grad:linear-gradient(135deg,var(--mat-a),var(--mat-b));--tile-glow:rgba(59,130,246,.55);}
-.area-tile.sel[data-area]{background:linear-gradient(160deg, color-mix(in srgb, var(--tile-glow) 22%, transparent), transparent);}
+.area-tile[data-area="linguagens"]{--tile-grad:linear-gradient(135deg,var(--ling-a),var(--ling-b));--tile-glow:rgba(168,85,247,.55);
+  background:linear-gradient(160deg, rgba(168,85,247,.30), rgba(236,72,153,.15));}
+.area-tile[data-area="humanas"]{--tile-grad:linear-gradient(135deg,var(--hum-a),var(--hum-b));--tile-glow:rgba(249,115,22,.55);
+  background:linear-gradient(160deg, rgba(249,115,22,.30), rgba(239,68,68,.15));}
+.area-tile[data-area="natureza"]{--tile-grad:linear-gradient(135deg,var(--nat-a),var(--nat-b));--tile-glow:rgba(16,185,129,.55);
+  background:linear-gradient(160deg, rgba(16,185,129,.30), rgba(20,184,166,.15));}
+.area-tile[data-area="matematica"]{--tile-grad:linear-gradient(135deg,var(--mat-a),var(--mat-b));--tile-glow:rgba(59,130,246,.55);
+  background:linear-gradient(160deg, rgba(59,130,246,.30), rgba(99,102,241,.15));}
+.area-tile.sel[data-area]{background:linear-gradient(160deg, color-mix(in srgb, var(--tile-glow) 40%, transparent), color-mix(in srgb, var(--tile-glow) 16%, transparent));}
 
 .chip-row{display:flex;flex-wrap:wrap;gap:10px;}
 .chip{
@@ -284,19 +300,19 @@ body.mode-professor .qcard{box-shadow:0 25px 60px -25px rgba(0,0,0,.6), 0 0 0 1.
   <!-- FORM PANEL -->
   <div id="formPanel">
 
-    <div class="card">
+    <div class="card card-step1">
       <div class="section-title"><span class="num">1</span> Área do conhecimento</div>
       <p class="section-sub">Escolha a área. As competências, habilidades e o padrão de construção corretos serão carregados automaticamente da Matriz de Referência do ENEM.</p>
       <div class="area-grid" id="areaGrid"></div>
     </div>
 
-    <div class="card">
+    <div class="card card-step2">
       <div class="section-title"><span class="num">2</span> Disciplina</div>
       <p class="section-sub">Dentro da área escolhida, selecione a disciplina específica.</p>
       <div class="chip-row" id="disciplinaChips"></div>
     </div>
 
-    <div class="card">
+    <div class="card card-step3">
       <div class="section-title"><span class="num">3</span> Quantidade de questões</div>
       <p class="section-sub">Você poderá configurar tema, dificuldade, recurso visual, competência e habilidade individualmente para cada questão.</p>
       <div class="qty-stepper">
@@ -307,13 +323,13 @@ body.mode-professor .qcard{box-shadow:0 25px 60px -25px rgba(0,0,0,.6), 0 0 0 1.
       </div>
     </div>
 
-    <div class="card">
+    <div class="card card-step4">
       <div class="section-title"><span class="num">4</span> Configuração individual das questões</div>
       <p class="section-sub">Para cada questão, defina o tema, a dificuldade e o recurso visual. Competência e habilidade são opcionais — se você não escolher, o agente seleciona automaticamente a mais aderente ao tema e informa a classificação usada.</p>
       <div id="questionBlocks"></div>
     </div>
 
-    <div class="card">
+    <div class="card card-step5">
       <div class="section-title"><span class="num">5</span> Gerar simulado</div>
       <div class="footer-actions">
         <label style="display:flex;align-items:center;gap:8px;font-size:13px;color:var(--ink-1);">
