@@ -23,7 +23,7 @@ const QUESTION_BACKEND_URL = "https://gkceyrkdmnhgqimmrsre.supabase.co/functions
 let state = {
   area: null,
   disciplina: null,
-  qty: 5,
+  qty: 1,
   questions: [],
   apiKey: "",
   model: "claude-sonnet-5",
@@ -898,7 +898,7 @@ function renderGeneratedImage(holder, promptText, descricao){
   holder.innerHTML = `
     <div class="visual-image-loading" style="text-align:center;padding:28px 12px;">
       <div class="spinner" style="margin:0 auto;"></div>
-      <div class="hint" style="margin-top:10px;">Gerando imagem com IA (ChatGPT · GPT Image 2)... pode levar alguns segundos.</div>
+      <div class="hint" style="margin-top:10px;">Gerando imagem... pode levar alguns segundos.</div>
     </div>
   `;
   generateImageViaBackend(promptText).then(dataUrl => {
@@ -1555,7 +1555,7 @@ async function exportPdf(){
 function init(){
   renderAreaGrid();
   renderDisciplinaChips();
-  setQty(5);
+  setQty(1);
 
   // Recupera chave/modelo salvos neste navegador, se houver (ver STORAGE_KEYS).
   const savedKey = safeStorageGet(STORAGE_KEYS.apiKey);
