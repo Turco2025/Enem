@@ -4,9 +4,11 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Gerador Inteligente de Simulados ENEM</title>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.5.0/chart.umd.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/4.2.1/jspdf.umd.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/docx@8.5.0/build/index.umd.js"></script>
+<!-- Chart.js é usado ao exibir questões com gráfico; carregado sem bloquear o
+     parsing da página (defer). jsPDF e docx.js só são baixados sob demanda,
+     quando o usuário clica em "Exportar PDF"/"Exportar DOCX" (ver loadScriptOnce
+     em app.js) — evita ~1MB de download/execução bloqueando o carregamento inicial. -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.5.0/chart.umd.min.js" defer></script>
 <style>
 :root{
   --bg-0:#0b0f1e; --bg-1:#131a2e; --bg-2:#1b2440;

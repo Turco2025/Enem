@@ -20,6 +20,27 @@ const IMAGE_BACKEND_URL = "https://gkceyrkdmnhgqimmrsre.supabase.co/functions/v1
 // navegador do professor, e nunca é pedida ao abrir o app.
 const QUESTION_BACKEND_URL = "https://gkceyrkdmnhgqimmrsre.supabase.co/functions/v1/generate-question";
 
+// jsPDF e docx.js são bibliotecas pesadas (~1MB juntas) usadas só nos botões
+// "Exportar PDF"/"Exportar DOCX". Em vez de carregá-las sempre no <head> (o que
+// deixava a página inicial mais lenta para todo mundo, mesmo quem nunca exporta),
+// elas são baixadas sob demanda, uma única vez, na primeira exportação.
+const CDN_URLS = {
+  jspdf: "https://cdnjs.cloudflare.com/ajax/libs/jspdf/4.2.1/jspdf.umd.min.js",
+  docx: "https://cdn.jsdelivr.net/npm/docx@8.5.0/build/index.umd.js",
+};
+const _scriptLoadPromises = {};
+function loadScriptOnce(url){
+  if(_scriptLoadPromises[url]) return _scriptLoadPromises[url];
+  _scriptLoadPromises[url] = new Promise((resolve, reject) => {
+    const s = document.createElement("script");
+    s.src = url;
+    s.onload = () => resolve();
+    s.onerror = () => { delete _scriptLoadPromises[url]; reject(new Error("Falha ao carregar " + url)); };
+    document.head.appendChild(s);
+  });
+  return _scriptLoadPromises[url];
+}
+
 let state = {
   area: null,
   disciplina: null,
@@ -489,7 +510,7 @@ async function callClaudeForJSON(system, userMsg){
 // recurso, competência/habilidade) e recebe a questão pronta. A chamada à API da
 // Anthropic e a chave usada para isso ficam só no servidor — nunca no navegador.
 async function generateQuestion(q){
-  q.status = "generating"; q.errorMsg = ""; renderResults();
+  q.status = "generating"; q.errorMsg = ""; updateQuestionCard(q, state.questions.indexOf(q));
   try{
     const validar = document.getElementById("chkValidacao").checked;
     const resp = await fetch(QUESTION_BACKEND_URL, {
@@ -524,7 +545,7 @@ async function generateQuestion(q){
     q.status = "error";
     q.errorMsg = err.message || String(err);
   }
-  renderResults();
+  updateQuestionCard(q, state.questions.indexOf(q));
   updateProgress();
 }
 
@@ -545,7 +566,10 @@ async function generateAll(){
   state.questions.forEach(q => { q.status = "idle"; q.data = null; q.errorMsg = ""; });
   renderResults();
   updateProgress();
-  await runPool(state.questions, generateQuestion, 2);
+  // Concorrência aumentada de 2 para 4: cada questão já roda inteiramente no
+  // backend (Supabase Edge Function), então gerar mais questões em paralelo
+  // reduz bastante o tempo total para simulados com várias questões.
+  await runPool(state.questions, generateQuestion, 4);
   document.getElementById("genProgressWrap").classList.add("hidden");
   toast("Simulado gerado! Revise, edite ou regenere questões conforme necessário.", "ok");
 }
@@ -569,6 +593,27 @@ function renderResults(){
   renderSummaryTable();
 }
 
+// Atualiza SÓ o card da questão `q` (em vez de recriar o painel inteiro, como
+// renderResults() faz). Antes, cada mudança de status de UMA questão durante a
+// geração (que roda em paralelo para várias questões) reconstruía TODOS os
+// cards e recriava do zero todos os gráficos Chart.js já prontos — deixando a
+// geração de simulados com várias questões visivelmente mais lenta e travada
+// quanto mais questões eram configuradas. Atualizar só o card afetado evita
+// esse trabalho redundante.
+function updateQuestionCard(q, idx){
+  const wrap = document.getElementById("questionResults");
+  const existing = wrap.querySelector(`.qcard[data-qid="${q.id}"]`);
+  if(existing){
+    existing.querySelectorAll("canvas").forEach(cv => {
+      const ch = (window.Chart && typeof Chart.getChart === "function") ? Chart.getChart(cv) : null;
+      if(ch) ch.destroy();
+    });
+  }
+  const fresh = renderQuestionCard(q, idx);
+  if(existing){ existing.replaceWith(fresh); } else { wrap.appendChild(fresh); }
+  renderSummaryTable();
+}
+
 function renderSummaryTable(){
   const done = state.questions.filter(q => q.status === "done");
   const card = document.getElementById("summaryCard");
@@ -589,6 +634,7 @@ function escapeHtml(s){ return String(s==null?"":s).replace(/[&<>"']/g, c => ({"
 function renderQuestionCard(q, idx){
   const el = document.createElement("div");
   el.className = "qcard";
+  el.dataset.qid = q.id;
   const top = document.createElement("div"); top.className = "qcard-top"; el.appendChild(top);
   const inner = document.createElement("div"); inner.className = "qcard-inner";
 
@@ -1451,8 +1497,12 @@ async function exportPdf(){
     return;
   }
   if(!window.jspdf){
-    toast("Biblioteca de PDF não carregou (verifique sua conexão com a internet) e tente novamente.", "err");
-    return;
+    try{
+      await loadScriptOnce(CDN_URLS.jspdf);
+    }catch(e){
+      toast("Não foi possível carregar a biblioteca de PDF (verifique sua conexão com a internet) e tente novamente.", "err");
+      return;
+    }
   }
 
   const btn = document.getElementById("btnExportPdf");
@@ -1768,8 +1818,12 @@ async function exportDocx(){
     return;
   }
   if(!window.docx){
-    toast("Biblioteca de DOCX não carregou (verifique sua conexão com a internet) e tente novamente.", "err");
-    return;
+    try{
+      await loadScriptOnce(CDN_URLS.docx);
+    }catch(e){
+      toast("Não foi possível carregar a biblioteca de DOCX (verifique sua conexão com a internet) e tente novamente.", "err");
+      return;
+    }
   }
 
   const btn = document.getElementById("btnExportDocx");
