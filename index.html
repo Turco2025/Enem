@@ -6,6 +6,7 @@
 <title>Gerador Inteligente de Simulados ENEM</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.5.0/chart.umd.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/4.2.1/jspdf.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/docx@8.5.0/build/index.umd.js"></script>
 <style>
 :root{
   --bg-0:#0b0f1e; --bg-1:#131a2e; --bg-2:#1b2440;
@@ -357,6 +358,7 @@ body.mode-professor .qcard{box-shadow:0 25px 60px -25px rgba(0,0,0,.6), 0 0 0 1.
           </div>
           <button class="btn ghost sm" id="btnPrint">🖨️ Imprimir</button>
           <button class="btn ghost sm" id="btnExportPdf">📄 Exportar PDF</button>
+          <button class="btn ghost sm" id="btnExportDocx">📝 Exportar DOCX</button>
           <button class="btn ghost sm" id="btnExport">⬇️ Exportar HTML</button>
           <button class="btn ghost sm" id="btnBackToForm">← Nova configuração</button>
         </div>
@@ -1964,6 +1966,338 @@ async function exportPdf(){
   }
 }
 
+/* ---------------- DOCX export (espelho exato do layout do PDF, em Word) ----------------
+ * Usa as MESMAS constantes de layout (PDF_PALETTE, dimensões A4 em pt, margens, ordem
+ * das seções) que o exportPdf() acima, para que o DOCX gerado seja um espelho fiel do
+ * PDF: mesmas caixas coloridas com barra de destaque à esquerda, mesmos rótulos, mesma
+ * ordem de blocos por questão, mesma quebra de página por questão.
+ * Duas diferenças estruturais, inerentes ao formato Word (não afetam o layout visível):
+ * 1) O Word faz flow automático de texto grande dentro de uma caixa/tabela entre páginas
+ *    — não precisamos do equivalente a pdfDrawBoxPaginated().
+ * 2) O Word tem suporte nativo a Unicode — símbolos como π, √, ², ≤, ≥ aparecem
+ *    corretamente sem precisar da sanitização usada no PDF (pdfSanitizeText).
+ * -------------------------------------------------------------------------------------- */
+
+const DOCX_PAGE_WIDTH_PT = 595.28;   // A4 em pt — mesmo valor usado pelo jsPDF acima
+const DOCX_PAGE_HEIGHT_PT = 841.89;
+const DOCX_MARGIN_PT = 40;           // mesma margem usada no PDF (const margin = 40 em exportPdf)
+const DOCX_CONTENT_WIDTH_PT = DOCX_PAGE_WIDTH_PT - DOCX_MARGIN_PT * 2;
+const DOCX_CONTENT_WIDTH_TWIPS = Math.round(DOCX_CONTENT_WIDTH_PT * 20); // 1pt = 20 twips (DXA)
+
+function ptToTwips(pt){ return Math.round(pt * 20); }
+function ptToHalfPt(pt){ return Math.round(pt * 2); }       // TextRun "size" é em meios-de-ponto
+function ptToPx(pt){ return Math.round(pt * (96 / 72)); }   // ImageRun usa "pixels" a 96dpi
+function ptToEighths(pt){ return Math.round(pt * 8); }      // bordas OOXML em oitavos de ponto
+
+function rgbToHex([r, g, b]){
+  return [r, g, b].map(n => Math.max(0, Math.min(255, Math.round(n))).toString(16).padStart(2, "0")).join("").toUpperCase();
+}
+
+function docxColors(paletteEntry){
+  return {
+    fill: rgbToHex(paletteEntry.fill),
+    accent: rgbToHex(paletteEntry.accent),
+    text: rgbToHex(paletteEntry.text),
+  };
+}
+
+function docxImageType(dataUrl){
+  const m = /^data:image\/(png|jpe?g|webp|gif|bmp);base64,/i.exec(dataUrl || "");
+  if(!m) return "png";
+  const f = m[1].toLowerCase();
+  if(f === "jpeg" || f === "jpg") return "jpg";
+  if(f === "webp") return "png"; // docx não suporta webp nativamente; nossos casos reais geram png/jpeg
+  return f;
+}
+
+function docxDataUrlToUint8Array(dataUrl){
+  const base64 = (dataUrl || "").split(",")[1] || "";
+  const binary = atob(base64);
+  const bytes = new Uint8Array(binary.length);
+  for(let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+  return bytes;
+}
+
+// Equivalente, em DOCX, da caixa colorida desenhada por pdfDrawBox() no PDF: uma tabela
+// de 1 célula (truque padrão para caixa com fundo colorido no Word), com borda esquerda
+// grossa e colorida simulando a barra de destaque do PDF, rótulo em maiúsculas e corpo
+// de texto — mesmas cores (PDF_PALETTE), mesmo tamanho de fonte, mesma ordem de blocos.
+function docxBuildBox({ label, text, colors, fontSize = 10.5, big = false, gap = 10 }){
+  const { Table, TableRow, TableCell, Paragraph, TextRun, WidthType, BorderStyle, ShadingType, AlignmentType } = window.docx;
+  const c = docxColors(colors);
+  const cellChildren = [];
+
+  if(label){
+    cellChildren.push(new Paragraph({
+      spacing: { after: 60 },
+      children: [ new TextRun({ text: String(label).toUpperCase(), bold: true, size: ptToHalfPt(8), color: c.accent, font: "Helvetica" }) ],
+    }));
+  }
+
+  if(big){
+    cellChildren.push(new Paragraph({
+      alignment: AlignmentType.CENTER,
+      children: [ new TextRun({ text: String(text || "—"), bold: true, size: ptToHalfPt(26), color: c.text, font: "Helvetica" }) ],
+    }));
+  } else {
+    const raw = String(text || "").trim();
+    const bodyLines = raw ? raw.split(/\n+/) : ["—"];
+    bodyLines.forEach((line, i) => {
+      cellChildren.push(new Paragraph({
+        spacing: { after: i === bodyLines.length - 1 ? 0 : 60 },
+        children: [ new TextRun({ text: line, size: ptToHalfPt(fontSize), color: c.text, font: "Helvetica" }) ],
+      }));
+    });
+  }
+
+  const table = new Table({
+    width: { size: DOCX_CONTENT_WIDTH_TWIPS, type: WidthType.DXA },
+    rows: [ new TableRow({ children: [ new TableCell({
+      width: { size: DOCX_CONTENT_WIDTH_TWIPS, type: WidthType.DXA },
+      shading: { fill: c.fill, type: ShadingType.CLEAR, color: "auto" },
+      margins: { top: 140, bottom: 140, left: 170, right: 140 },
+      borders: {
+        top: { style: BorderStyle.NONE, size: 0, color: "auto" },
+        bottom: { style: BorderStyle.NONE, size: 0, color: "auto" },
+        right: { style: BorderStyle.NONE, size: 0, color: "auto" },
+        left: { style: BorderStyle.SINGLE, size: ptToEighths(4), color: c.accent },
+      },
+      children: cellChildren,
+    }) ] }) ],
+  });
+
+  return [ table, new Paragraph({ spacing: { after: ptToTwips(gap) } }) ];
+}
+
+// Equivalente, em DOCX, de pdfDrawVisualBox(): a mesma caixa (cor PDF_PALETTE.visual)
+// contendo, dependendo do tipo — imagem gerada por IA / gráfico (embutidos como imagem,
+// lidos da tela via pdfGetVisualImageInfo/pdfGetVisualChartInfo, reaproveitadas do bloco
+// de PDF acima) ou tabela (desenhada como tabela nativa do Word, não como imagem).
+function docxBuildVisualBox(visual, cardIdx){
+  if(!visual || !visual.tipo) return [];
+  const { Table, TableRow, TableCell, Paragraph, TextRun, ImageRun, WidthType, BorderStyle, ShadingType, AlignmentType } = window.docx;
+  const c = docxColors(PDF_PALETTE.visual);
+  const titleText = visual.titulo || (visual.tipo === "imagem" ? "Imagem ilustrativa" : visual.tipo === "grafico" ? "Gráfico" : "Tabela");
+  const innerChildren = [
+    new Paragraph({
+      spacing: { after: 90 },
+      children: [ new TextRun({ text: String(titleText).toUpperCase(), bold: true, size: ptToHalfPt(8), color: c.accent, font: "Helvetica" }) ],
+    }),
+  ];
+
+  if(visual.tipo === "tabela"){
+    const cols = visual.colunas || [];
+    const rows = visual.linhas || [];
+    if(cols.length){
+      const tableWidthTwips = DOCX_CONTENT_WIDTH_TWIPS - 600;
+      const colWidthTwips = Math.round(tableWidthTwips / cols.length);
+      const headerRow = new TableRow({
+        children: cols.map(col => new TableCell({
+          width: { size: colWidthTwips, type: WidthType.DXA },
+          shading: { fill: "FFFFFF", type: ShadingType.CLEAR, color: "auto" },
+          margins: { top: 80, bottom: 80, left: 100, right: 100 },
+          children: [ new Paragraph({ children: [ new TextRun({ text: String(col), bold: true, size: ptToHalfPt(9), color: "000000", font: "Helvetica" }) ] }) ],
+        })),
+      });
+      const dataRows = rows.map(row => new TableRow({
+        children: row.map(cell => new TableCell({
+          width: { size: colWidthTwips, type: WidthType.DXA },
+          shading: { fill: "FCFCFD", type: ShadingType.CLEAR, color: "auto" },
+          margins: { top: 80, bottom: 80, left: 100, right: 100 },
+          children: [ new Paragraph({ children: [ new TextRun({ text: String(cell), size: ptToHalfPt(9), color: "000000", font: "Helvetica" }) ] }) ],
+        })),
+      }));
+      innerChildren.push(new Table({
+        width: { size: tableWidthTwips, type: WidthType.DXA },
+        rows: [ headerRow, ...dataRows ],
+      }));
+    }
+  } else {
+    const info = visual.tipo === "imagem" ? pdfGetVisualImageInfo(cardIdx) : pdfGetVisualChartInfo(cardIdx);
+    if(info){
+      const maxW = DOCX_CONTENT_WIDTH_PT - 20 - 6;
+      const maxH = 260;
+      let w = maxW, h = w * (info.height / info.width);
+      if(h > maxH){ h = maxH; w = h * (info.width / info.height); }
+      try{
+        innerChildren.push(new Paragraph({
+          alignment: AlignmentType.CENTER,
+          children: [ new ImageRun({
+            data: docxDataUrlToUint8Array(info.dataUrl),
+            transformation: { width: ptToPx(w), height: ptToPx(h) },
+            type: docxImageType(info.dataUrl),
+          }) ],
+        }));
+      }catch(e){ /* imagem inválida — ignora silenciosamente, igual ao PDF */ }
+      if(visual.descricao){
+        innerChildren.push(new Paragraph({
+          spacing: { before: 80 },
+          children: [ new TextRun({ text: visual.descricao, italics: true, size: ptToHalfPt(8.5), color: c.text, font: "Helvetica" }) ],
+        }));
+      }
+    }
+  }
+
+  const table = new Table({
+    width: { size: DOCX_CONTENT_WIDTH_TWIPS, type: WidthType.DXA },
+    rows: [ new TableRow({ children: [ new TableCell({
+      width: { size: DOCX_CONTENT_WIDTH_TWIPS, type: WidthType.DXA },
+      shading: { fill: c.fill, type: ShadingType.CLEAR, color: "auto" },
+      margins: { top: 140, bottom: 140, left: 170, right: 140 },
+      borders: {
+        top: { style: BorderStyle.NONE, size: 0, color: "auto" },
+        bottom: { style: BorderStyle.NONE, size: 0, color: "auto" },
+        right: { style: BorderStyle.NONE, size: 0, color: "auto" },
+        left: { style: BorderStyle.SINGLE, size: ptToEighths(4), color: c.accent },
+      },
+      children: innerChildren,
+    }) ] }) ],
+  });
+
+  return [ table, new Paragraph({ spacing: { after: ptToTwips(10) } }) ];
+}
+
+function docxBuildQuestionHeader(q, idx){
+  const { Paragraph, TextRun } = window.docx;
+  const d = q.data;
+  const title = `Questão ${idx + 1}` + (d.tema ? ` — ${d.tema}` : "");
+  const metaParts = [d.disciplina || state.disciplina, d.dificuldade].filter(Boolean);
+  return [
+    new Paragraph({
+      spacing: { after: 40 },
+      children: [ new TextRun({ text: title, bold: true, size: ptToHalfPt(14), color: "1E293B", font: "Helvetica" }) ],
+    }),
+    new Paragraph({
+      spacing: { after: 160 },
+      children: [ new TextRun({ text: metaParts.join("   ·   "), size: ptToHalfPt(9), color: "64748B", font: "Helvetica" }) ],
+    }),
+  ];
+}
+
+async function exportDocx(){
+  if(!state.questions.length || !state.questions.some(q => q.status === "done")){
+    toast("Gere ao menos uma questão antes de exportar em DOCX.", "err");
+    return;
+  }
+  if(document.getElementById("resultsPanel").querySelector(".visual-image-loading")){
+    toast("Aguarde a geração das imagens terminar antes de exportar em DOCX.", "err");
+    return;
+  }
+  if(!window.docx){
+    toast("Biblioteca de DOCX não carregou (verifique sua conexão com a internet) e tente novamente.", "err");
+    return;
+  }
+
+  const btn = document.getElementById("btnExportDocx");
+  const originalLabel = btn.textContent;
+  btn.disabled = true; btn.textContent = "Gerando DOCX...";
+
+  try{
+    const { Document, Packer, Paragraph, TextRun, PageBreak } = window.docx;
+    const isAluno = state.viewMode === "aluno";
+
+    const doneQuestions = state.questions.map((q, idx) => ({ q, idx })).filter(o => o.q.status === "done");
+    if(!doneQuestions.length){ throw new Error("Nenhuma questão para exportar."); }
+
+    const children = [];
+    children.push(new Paragraph({
+      spacing: { after: 60 },
+      children: [ new TextRun({ text: "Simulado ENEM", bold: true, size: ptToHalfPt(20), color: "1E293B", font: "Helvetica" }) ],
+    }));
+    children.push(new Paragraph({
+      spacing: { after: 40 },
+      children: [ new TextRun({ text: `${AREA_META[state.area] ? AREA_META[state.area].label : ""} · ${state.disciplina || ""}`, size: ptToHalfPt(11), color: "475569", font: "Helvetica" }) ],
+    }));
+    children.push(new Paragraph({
+      spacing: { after: 260 },
+      children: [ new TextRun({ text: isAluno ? "Versão do aluno (sem gabarito)" : "Versão do professor (com gabarito e comentários)", size: ptToHalfPt(11), color: "475569", font: "Helvetica" }) ],
+    }));
+
+    doneQuestions.forEach((o, i) => {
+      const { q, idx } = o;
+      const d = q.data;
+      if(i > 0){
+        children.push(new Paragraph({ children: [ new PageBreak() ] }));
+      }
+
+      children.push(...docxBuildQuestionHeader(q, idx));
+
+      if(d.textoBase){
+        children.push(...docxBuildBox({ label: "Texto de apoio", text: d.textoBase, colors: PDF_PALETTE.contexto, fontSize: 10 }));
+      }
+
+      if(d.visual && d.visual.tipo){
+        children.push(...docxBuildVisualBox(d.visual, idx));
+      }
+
+      if(d.comando){
+        children.push(...docxBuildBox({ label: "Pergunta", text: d.comando, colors: PDF_PALETTE.pergunta, fontSize: 11.5 }));
+      }
+
+      ["A", "B", "C", "D", "E"].forEach(letter => {
+        const isCorrect = !isAluno && d.gabarito === letter;
+        const altText = (d.alternativas && d.alternativas[letter]) || "";
+        children.push(...docxBuildBox({
+          label: `Alternativa ${letter}` + (isCorrect ? " — CORRETA" : ""),
+          text: altText,
+          colors: isCorrect ? PDF_PALETTE.correta : PDF_PALETTE.alternativa,
+          fontSize: 10.5,
+          gap: 8,
+        }));
+      });
+
+      if(!isAluno){
+        const habText = `Competência ${d.competencia?.numero || "—"}: ${d.competencia?.texto || ""}\n\n${d.habilidade?.codigo || "—"}: ${d.habilidade?.texto || ""}`;
+        children.push(...docxBuildBox({ label: "Habilidade e competência", text: habText, colors: PDF_PALETTE.habilidade, fontSize: 10 }));
+
+        children.push(...docxBuildBox({ label: "Gabarito", text: d.gabarito || "—", colors: PDF_PALETTE.gabarito, big: true, gap: 14 }));
+
+        const respostaText = (d.alternativas && d.alternativas[d.gabarito]) || "";
+        children.push(...docxBuildBox({ label: "Resposta correta", text: respostaText, colors: PDF_PALETTE.resposta, fontSize: 10.5 }));
+
+        children.push(...docxBuildBox({ label: "Resolução comentada", text: d.resolucaoComentada || "", colors: PDF_PALETTE.resolucao, fontSize: 10 }));
+
+        const comentarios = ["A", "B", "C", "D", "E"].map(letter => {
+          const info = d.analiseAlternativas && d.analiseAlternativas[letter];
+          if(!info) return "";
+          const status = info.status === "correta" ? "CORRETA" : "INCORRETA";
+          return `${letter} — ${status}: ${info.comentario || ""}`;
+        }).filter(Boolean).join("\n\n");
+        children.push(...docxBuildBox({ label: "Comentários das alternativas", text: comentarios, colors: PDF_PALETTE.comentario, fontSize: 10 }));
+      }
+    });
+
+    const doc = new Document({
+      sections: [{
+        properties: {
+          page: {
+            size: { width: Math.round(DOCX_PAGE_WIDTH_PT * 20), height: Math.round(DOCX_PAGE_HEIGHT_PT * 20) },
+            margin: {
+              top: ptToTwips(DOCX_MARGIN_PT), bottom: ptToTwips(DOCX_MARGIN_PT),
+              left: ptToTwips(DOCX_MARGIN_PT), right: ptToTwips(DOCX_MARGIN_PT),
+            },
+          },
+        },
+        children,
+      }],
+    });
+
+    const blob = await Packer.toBlob(doc);
+    const rotulo = isAluno ? "aluno" : "professor";
+    const safeName = `Simulado_ENEM_${(state.disciplina||"questoes").replace(/[^a-zA-Z0-9]+/g,"_")}_${rotulo}.docx`;
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url; a.download = safeName;
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    setTimeout(() => URL.revokeObjectURL(url), 4000);
+    toast("DOCX exportado com sucesso.", "ok");
+  }catch(err){
+    toast("Não foi possível exportar o DOCX: " + (err.message || err), "err");
+  }finally{
+    btn.disabled = false; btn.textContent = originalLabel;
+  }
+}
+
 /* ---------------- Init / events ---------------- */
 function init(){
   renderAreaGrid();
@@ -2018,6 +2352,7 @@ function init(){
   });
   document.getElementById("btnExport").addEventListener("click", exportHtmlSnapshot);
   document.getElementById("btnExportPdf").addEventListener("click", exportPdf);
+  document.getElementById("btnExportDocx").addEventListener("click", exportDocx);
 
   document.getElementById("btnSettings").addEventListener("click", () => openModal("settingsModal"));
   document.getElementById("btnCloseSettings").addEventListener("click", () => closeModal("settingsModal"));
