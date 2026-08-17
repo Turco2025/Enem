@@ -225,7 +225,6 @@ function buildQuestionBlock(q, idx){
           ${resOpt("tabela","📋","Tabela",q.recurso)}
         </div>
       </div>
-      <div></div>
     </div>
     <div class="visual-instr-block" style="margin-top:12px;${q.recurso==="nenhum"?"display:none;":""}">
       <label class="field-label">Instruções opcionais para a criação d${q.recurso==="imagem"?"a imagem":q.recurso==="tabela"?"a tabela":"o gráfico"}</label>
@@ -677,7 +676,7 @@ function toggleEdit(cardEl, q, idx){
         <label class="field-label">Tema</label>
         <textarea class="edit-tema">${escapeHtml(q.tema)}</textarea>
       </div>
-      <div class="qgrid2">
+      <div class="qgrid-stack">
         <div>
           <label class="field-label">Dificuldade</label>
           <select class="edit-dif">
