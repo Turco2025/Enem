@@ -449,7 +449,7 @@ async function generateImageViaBackend(promptText){
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
-      prompt: `Ilustração educacional realista para uma questão de vestibular (estilo ENEM). Sem texto, legendas ou marcas d'água sobrepostas na imagem. Cena: ${promptText}`,
+      prompt: `Ilustração educacional em MÁXIMA QUALIDADE para uma questão de vestibular (estilo ENEM). Use o estilo mais adequado à cena, entre estes dois, mas sempre com o máximo de qualidade: (1) ULTRA REALISTA e ULTRA DEFINIÇÃO — fotorrealismo hiper-detalhado, alta resolução (nível 8K/4K), iluminação profissional, texturas e detalhes nítidos; ou (2) renderização 3D SEMI-REALISTA de altíssima qualidade — modelagem 3D moderna, texturas ricas, iluminação e sombreamento suaves e realistas, acabamento profissional de estúdio de animação. Em ambos os casos: máxima riqueza de detalhes, nitidez e acabamento profissional, sem elementos borrados, pixelizados ou de baixa qualidade. Sem texto, legendas ou marcas d'água sobrepostas na imagem. Cena: ${promptText}`,
       size: "1536x1024",
     }),
   });
