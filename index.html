@@ -1311,7 +1311,7 @@ function renderGeneratedImage(holder, promptText, descricao){
   holder.innerHTML = `
     <div class="visual-image-loading" style="text-align:center;padding:28px 12px;">
       <div class="spinner" style="margin:0 auto;"></div>
-      <div class="hint" style="margin-top:10px;">Gerando imagem com IA (ChatGPT · GPT Image 2)... pode levar alguns segundos.</div>
+      <div class="hint" style="margin-top:10px;">Gerando imagem... pode levar alguns segundos.</div>
     </div>
   `;
   generateImageViaBackend(promptText).then(dataUrl => {
