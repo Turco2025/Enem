@@ -173,7 +173,7 @@ const JSON_SCHEMA_TXT = `Responda SOMENTE com um objeto JSON válido (sem markdo
    "E": {"status":"correta"|"incorreta","comentario":"string"}
  }
 }
-No campo "comentario" de cada alternativa errada, nomeie explicitamente o tipo de distrator (leitura parcial, inversão de causa/efeito, verdade parcial, anacronismo/confusão conceitual, senso comum, erro de processo, excesso de escopo, reaproveitamento fora de contexto) e explique o raciocínio equivocado que ela representa. Nunca deixe mais de uma alternativa com status "correta".`;
+No campo "comentario" de cada alternativa errada, nomeie explicitamente o tipo de distrator (leitura parcial, inversão de causa/efeito, verdade parcial, anacronismo/confusão conceitual, senso comum, erro de processo, excesso de escopo, reaproveitamento fora de contexto) e explique EM TERMOS CONCEITUAIS o raciocínio equivocado que ela representa — nunca justifique a incorreção apenas apontando que a alternativa usa uma palavra absoluta/extrema; a palavra não é o motivo do erro, o raciocínio é. Nunca deixe mais de uma alternativa com status "correta".`;
 
 // Bloco anti-alucinação: injetado apenas para disciplinas em que o texto-suporte
 // tipicamente cita autor/obra/pesquisa real (ver DISCIPLINAS_FONTES_REAIS_OBRIGATORIAS).
@@ -239,7 +239,7 @@ Responda SOMENTE com um objeto JSON válido (sem markdown, sem texto antes ou de
 
 // Convertido de constante para função: o critério 14 (fontes reais) só é incluído
 // quando a disciplina exige autores/textos reais (ver DISCIPLINAS_FONTES_REAIS_OBRIGATORIAS).
-function buildValidationChecklist(disciplina: string): string {
+function buildValidationChecklist(disciplina: string, dificuldade: string): string {
   const criterioFontesReais = precisaFontesReais(disciplina)
     ? `\n14. PROIBIDO INVENTAR AUTORES OU TEXTOS: verifique se TODO autor, obra, pesquisador, teoria, evento histórico ou fonte citada no textoBase (e em qualquer outro campo) é real e verificável — não inventado nem "hipotético". Se houver qualquer dúvida sobre a existência, autoria, título exato ou conteúdo de algo citado, use a ferramenta web_search para confirmar antes de manter a questão; se não for possível confirmar que é real e correto, substitua por um autor/texto/estudo real e comprovadamente existente sobre o mesmo tema, e cite a fonte real correspondente no formato ENEM.`
     : "";
@@ -251,7 +251,11 @@ function buildValidationChecklist(disciplina: string): string {
       })()
     : "";
   const criterioAntiGeneralizacao = `\n16. LINGUAGEM ABSOLUTISTA/TOTALIZANTE (verifique as 5 alternativas, uma a uma): nenhuma alternativa — nem a correta, nem as 4 erradas — pode conter palavras/expressões como "apoio irrestrito", "somente e exclusivamente", "completamente", "rejeição completa", "negam qualquer participação", "integralmente", "drasticamente", "todos", "totalmente", "nunca", "sempre", "sem exceção", "de forma alguma", "em absoluto", "unicamente", "jamais" ou equivalentes. Esse tipo de termo funciona como uma pista lexical que permite ao candidato descartar ou marcar a alternativa só pelo tom, sem precisar do conteúdo — o que nivela questões fáceis, médias e difíceis para baixo. Se encontrar algum termo desses em qualquer alternativa, reescreva-a mantendo exatamente o mesmo erro de raciocínio (ou a mesma ideia, se for a correta), porém expresso em linguagem comedida, específica e no mesmo registro das demais alternativas — a dificuldade deve vir da necessidade de interpretar, problematizar, analisar e contextualizar, nunca de um advérbio ou pronome totalizante.
-17. TEXTO-SUPORTE NEUTRO: confirme que o textoBase apenas apresenta informação/dado/situação/trecho para o candidato interpretar, e que em nenhum momento formula, parafraseia antecipadamente ou sinaliza explicitamente a conclusão que o comando pede como resposta. Se o texto-suporte já entrega, mesmo que indiretamente, a inferência que deveria ser o objeto do raciocínio da questão, reescreva-o removendo esse direcionamento, mantendo apenas o material bruto necessário para que a ponte até a resposta seja construída pelo próprio candidato.`;
+17. TEXTO-SUPORTE NEUTRO E SEM ECO LEXICAL: confirme que o textoBase apenas apresenta informação/dado/situação/trecho para o candidato interpretar, e que em nenhum momento formula, parafraseia antecipadamente ou sinaliza explicitamente a conclusão que o comando pede como resposta. Confirme também que o textoBase não repete o mesmo vocabulário/palavras-chave que aparecem só na alternativa correta (pista por associação lexical). Se o texto-suporte já entrega, mesmo que indiretamente, a inferência que deveria ser o objeto do raciocínio da questão, ou ecoa vocabulário exclusivo da alternativa correta, reescreva-o removendo esse direcionamento, mantendo apenas o material bruto necessário para que a ponte até a resposta seja construída pelo próprio candidato.
+18. COMANDO NÃO REVELA A ESTRATÉGIA DE RESOLUÇÃO: confirme que o comando apresenta a tarefa cognitiva a ser realizada, mas não indica explicitamente qual conceito, fórmula, dado ou caminho de raciocínio conduz diretamente ao gabarito. Se o comando estiver "entregando" a estratégia de resolução (não apenas o que se pede, mas como chegar lá), reescreva-o de forma mais neutra, preservando a clareza sobre o que está sendo pedido.
+19. PARIDADE TÉCNICA E DE ELABORAÇÃO ENTRE ALTERNATIVAS: além de extensão e estrutura sintática parecidas, confirme que as 5 alternativas têm nível de elaboração e precisão técnica equivalentes — a alternativa correta não pode ser a mais longa, mais detalhada ou mais cuidadosamente redigida, nem os distratores podem parecer rasos, genéricos ou mal elaborados em comparação com ela. Se houver esse desequilíbrio, reescreva as alternativas mais fracas com o mesmo nível de cuidado técnico da mais forte (sem torná-las corretas).
+20. JUSTIFICATIVA CONCEITUAL DOS COMENTÁRIOS: em analiseAlternativas, confirme que o "comentario" de cada alternativa errada explica o erro em termos de raciocínio/conteúdo (leitura parcial real, inversão real, confusão conceitual real, etapa de cálculo perdida etc.), nunca apontando apenas que a alternativa "usa uma palavra absoluta/extrema" como se essa fosse a causa do erro — a palavra pode ter sido removida pelo critério 16, mas o comentário sempre precisa explicar o raciocínio equivocado em si.
+21. DIFERENCIAÇÃO REAL DE DIFICULDADE: confirme que o nível "${dificuldade}" desta questão está refletido na complexidade cognitiva real exigida (profundidade de análise, número de relações conceituais a articular, grau de interpretação/contextualização) — nunca em pistas linguísticas nas alternativas. Uma questão fácil deve ser fácil pelo raciocínio simples que exige, não por ter distratores marcados por linguagem óbvia/extrema; uma questão difícil deve ser difícil pela profundidade exigida, não por ter alternativas mal disfarçadas.`;
   return `Revise a questão JSON abaixo (elaborada por você mesmo) contra estes critérios pedagógicos, um a um:
 1. Existe somente uma alternativa correta e inequívoca.
 2. Não há alternativas ambíguas ou defensáveis como corretas além do gabarito.
@@ -296,30 +300,10 @@ function backoffDelay(attempt: number) {
   return Math.min(800 * 2 ** (attempt - 1), 8000) + Math.random() * 400;
 }
 
-// Chama a Anthropic em modo streaming (Server-Sent Events) e monta o texto aos
-// poucos. Isso evita o erro 524: numa chamada NÃO-streaming, a conexão fica em
-// silêncio (sem nenhum byte trafegando) até a resposta inteira estar pronta, e
-// se isso demorar demais um proxy/CDN no meio do caminho derruba a conexão com
-// 524. Em modo streaming, bytes continuam chegando aos poucos durante toda a
-// geração, então a conexão nunca fica "parada" por tempo suficiente para ser
-// cortada — mesmo quando a geração completa leva bastante tempo (comum quando
-// várias questões estão sendo geradas ao mesmo tempo e a API está mais ocupada).
-// Além disso, qualquer falha transitória (rede, 429/5xx/524/529) é reexecutada
-// automaticamente algumas vezes antes de desistir.
-// Ferramenta nativa de busca na internet da Anthropic (server-side: a própria API
-// executa a busca e injeta os resultados na mesma resposta, antes do texto final —
-// não precisamos de um segundo turno para isso). Usada quando enableWebSearch=true,
-// para as disciplinas que exigem autores/textos reais (ver precisaFontesReais) —
-// permite ao modelo verificar autoria, título, data etc. em fontes confiáveis antes
-// de escrever a questão, em vez de arriscar inventar algo. max_uses limita custo/latência.
-const WEB_SEARCH_TOOL = { type: "web_search_20250305", name: "web_search", max_uses: 5 };
-
 async function callClaude(system: string, userMsg: string, maxTokens: number, enableWebSearch = false): Promise<{ text: string; truncated: boolean }> {
   let lastErr: any;
   for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
     const controller = new AbortController();
-    // Rede de segurança: aborta e tenta de novo se uma tentativa individual ficar
-    // presa por muito tempo (bem abaixo do limite de execução da Edge Function).
     const watchdog = setTimeout(() => controller.abort(), 240_000);
     try {
       const resp = await fetch("https://api.anthropic.com/v1/messages", {
@@ -395,7 +379,7 @@ async function callClaude(system: string, userMsg: string, maxTokens: number, en
     } catch (err: any) {
       clearTimeout(watchdog);
       const isAbort = err?.name === "AbortError";
-      const isNetwork = err instanceof TypeError; // fetch "failed to fetch" / conexão caiu no meio do streaming
+      const isNetwork = err instanceof TypeError;
       if ((isAbort || isNetwork) && attempt < MAX_ATTEMPTS) {
         lastErr = err;
         await sleep(backoffDelay(attempt));
@@ -406,6 +390,8 @@ async function callClaude(system: string, userMsg: string, maxTokens: number, en
   }
   throw lastErr || new Error("Falha ao contatar a Anthropic após múltiplas tentativas.");
 }
+
+const WEB_SEARCH_TOOL = { type: "web_search_20250305", name: "web_search", max_uses: 5 };
 
 function sanitizeJsonControlChars(text: string) {
   let out = "";
@@ -470,9 +456,6 @@ async function callClaudeForJSON(system: string, userMsg: string, enableWebSearc
 
 /* ---------------- HTTP handler ---------------- */
 
-// Limite diário de segurança para proteger os créditos da conta Anthropic conectada,
-// já que esta função fica publicamente acessível por qualquer aplicativo autorizado.
-// Usado tanto na geração completa de questão quanto no "refazer recurso visual".
 async function checkDailyCap(): Promise<Response | null> {
   try {
     const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
@@ -527,8 +510,6 @@ Deno.serve(async (req: Request) => {
   const tema = (body.tema || "").toString().trim();
   const instrucoesVisual = (body.instrucoesVisual || "").toString().trim().slice(0, 1000);
 
-  // Modo "refazer só o recurso visual" de uma questão já pronta — não gera uma questão
-  // nova, só uma nova versão do gráfico/tabela/imagem, mantendo o resto intacto.
   if (body.regenerarVisual === true) {
     const recurso = ["imagem", "grafico", "tabela"].includes(body.recurso) ? body.recurso : null;
     if (!recurso) {
@@ -560,7 +541,7 @@ Deno.serve(async (req: Request) => {
   const recurso = ["nenhum", "imagem", "grafico", "tabela"].includes(body.recurso) ? body.recurso : "nenhum";
   const competenciaNum = typeof body.competenciaNum === "number" ? body.competenciaNum : null;
   const habilidadeCod = body.habilidadeCod ? String(body.habilidadeCod) : null;
-  const validar = body.validar !== false; // default: true (roda a checagem pedagógica)
+  const validar = body.validar !== false;
 
   const capResponse = await checkDailyCap();
   if (capResponse) return capResponse;
@@ -572,7 +553,7 @@ Deno.serve(async (req: Request) => {
     let data = await callClaudeForJSON(system, userMsg, webSearch);
 
     if (validar) {
-      const valPrompt = buildValidationChecklist(disciplina).replace("__DRAFT_JSON__", JSON.stringify(data));
+      const valPrompt = buildValidationChecklist(disciplina, dificuldade).replace("__DRAFT_JSON__", JSON.stringify(data));
       data = await callClaudeForJSON(system, valPrompt, webSearch);
     }
 
