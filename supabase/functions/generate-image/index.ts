@@ -11,7 +11,10 @@ const CORS_HEADERS = {
 const OPENAI_API_KEY = Deno.env.get("OPENAI_API_KEY");
 const IMAGE_MODEL = Deno.env.get("OPENAI_IMAGE_MODEL") || "gpt-image-2";
 const IMAGE_QUALITY = Deno.env.get("OPENAI_IMAGE_QUALITY") || "high";
-const MAX_DAILY_IMAGES = Number(Deno.env.get("MAX_DAILY_IMAGES") || "200");
+// SEM TETO DIÁRIO (decisão do professor): ausente, 0 ou negativo = ilimitado.
+// Para reativar um limite depois, basta definir MAX_DAILY_IMAGES com um número
+// positivo nos secrets do projeto Supabase — não é preciso reimplantar a função.
+const MAX_DAILY_IMAGES = Number(Deno.env.get("MAX_DAILY_IMAGES") || "0");
 
 const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
 const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -53,9 +56,9 @@ Deno.serve(async (req: Request) => {
   }
   const size = body.size || "1536x1024";
 
-  // Limite diário de segurança para proteger os créditos da conta OpenAI
-  // conectada, já que esta função fica publicamente acessível pelo app.
-  try {
+  // Limite diário opcional (desligado por padrão). Quando MAX_DAILY_IMAGES não
+  // está definido, nada é consultado nem bloqueado — a geração é ilimitada.
+  if (Number.isFinite(MAX_DAILY_IMAGES) && MAX_DAILY_IMAGES > 0) try {
     const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
     const { count, error: countErr } = await supabase
       .from("image_generation_log")
