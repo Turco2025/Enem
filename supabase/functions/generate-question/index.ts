@@ -1,5 +1,8 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "jsr:@supabase/supabase-js@2";
+import APP_DATA_JSON from "./app_data.json" with { type: "json" };
+const APP_DATA: any = APP_DATA_JSON;
+
 
 const CORS_HEADERS = {
   "Access-Control-Allow-Origin": "*",
@@ -20,7 +23,7 @@ const supabase = createClient(supabaseUrl, supabaseServiceKey);
 // Matriz de Referência oficial do ENEM (competências/habilidades por área),
 // contexto pedagógico por área e o "modelo universal" de elaboração de itens —
 // é o mesmo conteúdo usado pelo app cliente (Gerador Inteligente de Simulados ENEM).
-const APP_DATA = JSON.parse("{\"matriz\":{\"linguagens\":{\"label\":\"Linguagens, Códigos e suas Tecnologias\",\"competencias\":[{\"numero\":1,\"texto\":\"Aplicar as tecnologias da comunicação e da informação na escola, no trabalho e em outros contextos relevantes para sua vida.\",\"habilidades\":[{\"codigo\":\"H1\",\"texto\":\"Identificar as diferentes linguagens e seus recursos expressivos como elementos de caracterização dos sistemas de comunicação.\"},{\"codigo\":\"H2\",\"texto\":\"Recorrer aos conhecimentos sobre as linguagens dos sistemas de comunicação e informação para resolver problemas sociais.\"},{\"codigo\":\"H3\",\"texto\":\"Relacionar informações geradas nos sistemas de comunicação e informação, considerando a função social desses sistemas.\"},{\"codigo\":\"H4\",\"texto\":\"Reconhecer posições críticas aos usos sociais que são feitos das linguagens e dos sistemas de comunicação e informação.\"}]},{\"numero\":2,\"texto\":\"Conhecer e usar língua(s) estrangeira(s) moderna(s) como instrumento de acesso a informações e a outras culturas e grupos sociais*.\",\"habilidades\":[{\"codigo\":\"H5\",\"texto\":\"Associar vocábulos e expressões de um texto em LEM ao seu tema.\"},{\"codigo\":\"H6\",\"texto\":\"Utilizar os conhecimentos da LEM e de seus mecanismos como meio de ampliar as possibilidades de acesso a informações, tecnologias e culturas.\"},{\"codigo\":\"H7\",\"texto\":\"Relacionar um texto em LEM, as estruturas linguísticas, sua função e seu uso social.\"},{\"codigo\":\"H8\",\"texto\":\"Reconhecer a importância da produção cultural em LEM como representação da diversidade cultural e linguística.\"}]},{\"numero\":3,\"texto\":\"Compreender e usar a linguagem corporal como relevante para a própria vida, integradora social e formadora da identidade.\",\"habilidades\":[{\"codigo\":\"H9\",\"texto\":\"Reconhecer as manifestações corporais de movimento como originárias de necessidades cotidianas de um grupo social.\"},{\"codigo\":\"H10\",\"texto\":\"Reconhecer a necessidade de transformação de hábitos corporais em função das necessidades cinestésicas.\"},{\"codigo\":\"H11\",\"texto\":\"Reconhecer a linguagem corporal como meio de interação social, considerando os limites de desempenho e as alternativas de adaptação para diferentes indivíduos.\"}]},{\"numero\":4,\"texto\":\"Compreender a arte como saber cultural e estético gerador de significação e integrador da organização do mundo e da própria identidade.\",\"habilidades\":[{\"codigo\":\"H12\",\"texto\":\"Reconhecer diferentes funções da arte, do trabalho da produção dos artistas em seus meios culturais.\"},{\"codigo\":\"H13\",\"texto\":\"Analisar as diversas produções artísticas como meio de explicar diferentes culturas, padrões de beleza e preconceitos.\"},{\"codigo\":\"H14\",\"texto\":\"Reconhecer o valor da diversidade artística e das inter-relações de elementos que se apresentam nas manifestações de vários grupos sociais e étnicos.\"}]},{\"numero\":5,\"texto\":\"Analisar, interpretar e aplicar recursos expressivos das linguagens, relacionando textos com seus contextos, mediante a natureza, função, organização, estrutura das manifestações, de acordo com as condições de produção e recepção.\",\"habilidades\":[{\"codigo\":\"H15\",\"texto\":\"Estabelecer relações entre o texto literário e o momento de sua produção, situando aspectos do contexto histórico, social e político.\"},{\"codigo\":\"H16\",\"texto\":\"Relacionar informações sobre concepções artísticas e procedimentos de construção do texto literário.\"},{\"codigo\":\"H17\",\"texto\":\"Reconhecer a presença de valores sociais e humanos atualizáveis e permanentes no patrimônio literário nacional.\"}]},{\"numero\":6,\"texto\":\"Compreender e usar os sistemas simbólicos das diferentes linguagens como meios de organização cognitiva da realidade pela constituição de significados, expressão, comunicação e informação.\",\"habilidades\":[{\"codigo\":\"H18\",\"texto\":\"Identificar os elementos que concorrem para a progressão temática e para a organização e estruturação de textos de diferentes gêneros e tipos.\"},{\"codigo\":\"H19\",\"texto\":\"Analisar a função da linguagem predominante nos textos em situações específicas de interlocução.\"},{\"codigo\":\"H20\",\"texto\":\"Reconhecer a importância do patrimônio linguístico para a preservação da memória e da identidade nacional.\"}]},{\"numero\":7,\"texto\":\"Confrontar opiniões e pontos de vista sobre as diferentes linguagens e suas manifestações específicas.\",\"habilidades\":[{\"codigo\":\"H21\",\"texto\":\"Reconhecer em textos de diferentes gêneros, recursos verbais e não-verbais utilizados com a finalidade de criar e mudar comportamentos e hábitos.\"},{\"codigo\":\"H22\",\"texto\":\"Relacionar, em diferentes textos, opiniões, temas, assuntos e recursos linguísticos.\"},{\"codigo\":\"H23\",\"texto\":\"Inferir em um texto quais são os objetivos de seu produtor e quem é seu público alvo, pela análise dos procedimentos argumentativos utilizados.\"},{\"codigo\":\"H24\",\"texto\":\"Reconhecer no texto estratégias argumentativas empregadas para o convencimento do público, tais como a intimidação, sedução, comoção, chantagem, entre outras.\"}]},{\"numero\":8,\"texto\":\"Compreender e usar a língua portuguesa como língua materna, geradora de significação e integradora da organização do mundo e da própria identidade.\",\"habilidades\":[{\"codigo\":\"H25\",\"texto\":\"Identificar, em textos de diferentes gêneros, as marcas linguísticas que singularizam as variedades linguísticas sociais, regionais e de registro.\"},{\"codigo\":\"H26\",\"texto\":\"Relacionar as variedades linguísticas a situações específicas de uso social.\"},{\"codigo\":\"H27\",\"texto\":\"Reconhecer os usos da norma padrão da língua portuguesa nas diferentes situações de comunicação.\"}]},{\"numero\":9,\"texto\":\"Entender os princípios, a natureza, a função e o impacto das tecnologias da comunicação e da informação na sua vida pessoal e social, no desenvolvimento do conhecimento, associando-o aos conhecimentos científicos, às linguagens que lhes dão suporte, às demais tecnologias, aos processos de produção e aos problemas que se propõem solucionar.\",\"habilidades\":[{\"codigo\":\"H28\",\"texto\":\"Reconhecer a função e o impacto social das diferentes tecnologias da comunicação e informação.\"},{\"codigo\":\"H29\",\"texto\":\"Identificar pela análise de suas linguagens, as tecnologias da comunicação e informação.\"},{\"codigo\":\"H30\",\"texto\":\"Relacionar as tecnologias de comunicação e informação ao desenvolvimento das sociedades e ao conhecimento que elas produzem.\"}]}]},\"matematica\":{\"label\":\"Matemática e suas Tecnologias\",\"competencias\":[{\"numero\":1,\"texto\":\"Construir significados para os números naturais, inteiros, racionais e reais.\",\"habilidades\":[{\"codigo\":\"H1\",\"texto\":\"Reconhecer, no contexto social, diferentes significados e representações dos números e operações - naturais, inteiros, racionais ou reais.\"},{\"codigo\":\"H2\",\"texto\":\"Identificar padrões numéricos ou princípios de contagem.\"},{\"codigo\":\"H3\",\"texto\":\"Resolver situação-problema envolvendo conhecimentos numéricos.\"},{\"codigo\":\"H4\",\"texto\":\"Avaliar a razoabilidade de um resultado numérico na construção de argumentos sobre afirmações quantitativas.\"},{\"codigo\":\"H5\",\"texto\":\"Avaliar propostas de intervenção na realidade utilizando conhecimentos numéricos.\"}]},{\"numero\":2,\"texto\":\"Utilizar o conhecimento geométrico para realizar a leitura e a representação da realidade e agir sobre ela.\",\"habilidades\":[{\"codigo\":\"H6\",\"texto\":\"Interpretar a localização e a movimentação de pessoas/objetos no espaço tridimensional e sua representação no espaço bidimensional.\"},{\"codigo\":\"H7\",\"texto\":\"Identificar características de figuras planas ou espaciais.\"},{\"codigo\":\"H8\",\"texto\":\"Resolver situação-problema que envolva conhecimentos geométricos de espaço e forma.\"},{\"codigo\":\"H9\",\"texto\":\"Utilizar conhecimentos geométricos de espaço e forma na seleção de argumentos propostos como solução de problemas do cotidiano.\"}]},{\"numero\":3,\"texto\":\"Construir noções de grandezas e medidas para a compreensão da realidade e a solução de problemas do cotidiano.\",\"habilidades\":[{\"codigo\":\"H10\",\"texto\":\"Identificar relações entre grandezas e unidades de medida.\"},{\"codigo\":\"H11\",\"texto\":\"Utilizar a noção de escalas na leitura de representação de situação do cotidiano.\"},{\"codigo\":\"H12\",\"texto\":\"Resolver situação-problema que envolva medidas de grandezas.\"},{\"codigo\":\"H13\",\"texto\":\"Avaliar o resultado de uma medição na construção de um argumento consistente.\"},{\"codigo\":\"H14\",\"texto\":\"Avaliar proposta de intervenção na realidade utilizando conhecimentos geométricos relacionados a grandezas e medidas.\"}]},{\"numero\":4,\"texto\":\"Construir noções de variação de grandezas para a compreensão da realidade e a solução de problemas do cotidiano.\",\"habilidades\":[{\"codigo\":\"H15\",\"texto\":\"Identificar a relação de dependência entre grandezas.\"},{\"codigo\":\"H16\",\"texto\":\"Resolver situação-problema envolvendo a variação de grandezas, direta ou inversamente proporcionais.\"},{\"codigo\":\"H17\",\"texto\":\"Analisar informações envolvendo a variação de grandezas como recurso para a construção de argumentação.\"},{\"codigo\":\"H18\",\"texto\":\"Avaliar propostas de intervenção na realidade envolvendo variação de grandezas.\"}]},{\"numero\":5,\"texto\":\"Modelar e resolver problemas que envolvem variáveis socioeconômicas ou técnico-científicas, usando representações algébricas.\",\"habilidades\":[{\"codigo\":\"H19\",\"texto\":\"Identificar representações algébricas que expressem a relação entre grandezas.\"},{\"codigo\":\"H20\",\"texto\":\"Interpretar gráfico cartesiano que represente relações entre grandezas.\"},{\"codigo\":\"H21\",\"texto\":\"Resolver situação-problema cuja modelagem envolva conhecimentos algébricos.\"},{\"codigo\":\"H22\",\"texto\":\"Utilizar conhecimentos algébricos/geométricos como recurso para a construção de argumentação.\"},{\"codigo\":\"H23\",\"texto\":\"Avaliar propostas de intervenção na realidade utilizando conhecimentos algébricos.\"}]},{\"numero\":6,\"texto\":\"Interpretar informações de natureza científica e social obtidas da leitura de gráficos e tabelas, realizando previsão de tendência, extrapolação, interpolação e interpretação.\",\"habilidades\":[{\"codigo\":\"H24\",\"texto\":\"Utilizar informações expressas em gráficos ou tabelas para fazer inferências.\"},{\"codigo\":\"H25\",\"texto\":\"Resolver problema com dados apresentados em tabelas ou gráficos.\"},{\"codigo\":\"H26\",\"texto\":\"Analisar informações expressas em gráficos ou tabelas como recurso para a construção de argumentos.\"}]},{\"numero\":7,\"texto\":\"Compreender o caráter aleatório e não-determinístico dos fenômenos naturais e sociais e utilizar instrumentos adequados para medidas, determinação de amostras e cálculos de probabilidade para interpretar informações de variáveis apresentadas em uma distribuição estatística.\",\"habilidades\":[{\"codigo\":\"H27\",\"texto\":\"Calcular medidas de tendência central ou de dispersão de um conjunto de dados expressos em uma tabela de frequências de dados agrupados (não em classes) ou em gráficos.\"},{\"codigo\":\"H28\",\"texto\":\"Resolver situação-problema que envolva conhecimentos de estatística e probabilidade.\"},{\"codigo\":\"H29\",\"texto\":\"Utilizar conhecimentos de estatística e probabilidade como recurso para a construção de argumentação.\"},{\"codigo\":\"H30\",\"texto\":\"Avaliar propostas de intervenção na realidade utilizando conhecimentos de estatística e probabilidade.\"}]}]},\"natureza\":{\"label\":\"Ciências da Natureza e suas Tecnologias\",\"competencias\":[{\"numero\":1,\"texto\":\"Compreender as ciências naturais e as tecnologias a elas associadas como construções humanas, percebendo seus papéis nos processos de produção e no desenvolvimento econômico e social da humanidade.\",\"habilidades\":[{\"codigo\":\"H1\",\"texto\":\"Reconhecer características ou propriedades de fenômenos ondulatórios ou oscilatórios, relacionando-os a seus usos em diferentes contextos.\"},{\"codigo\":\"H2\",\"texto\":\"Associar a solução de problemas de comunicação, transporte, saúde ou outro, com o correspondente desenvolvimento científico e tecnológico.\"},{\"codigo\":\"H3\",\"texto\":\"Confrontar interpretações científicas com interpretações baseadas no senso comum, ao longo do tempo ou em diferentes culturas.\"},{\"codigo\":\"H4\",\"texto\":\"Avaliar propostas de intervenção no ambiente, considerando a qualidade da vida humana ou medidas de conservação, recuperação ou utilização sustentável da biodiversidade.\"}]},{\"numero\":2,\"texto\":\"Identificar a presença e aplicar as tecnologias associadas às ciências naturais em diferentes contextos.\",\"habilidades\":[{\"codigo\":\"H5\",\"texto\":\"Dimensionar circuitos ou dispositivos elétricos de uso cotidiano.\"},{\"codigo\":\"H6\",\"texto\":\"Relacionar informações para compreender manuais de instalação ou utilização de aparelhos, ou sistemas tecnológicos de uso comum.\"},{\"codigo\":\"H7\",\"texto\":\"Selecionar testes de controle, parâmetros ou critérios para a comparação de materiais e produtos, tendo em vista a defesa do consumidor, a saúde do trabalhador ou a qualidade de vida.\"}]},{\"numero\":3,\"texto\":\"Associar intervenções que resultam em degradação ou conservação ambiental a processos produtivos e sociais e a instrumentos ou ações científico-tecnológicos.\",\"habilidades\":[{\"codigo\":\"H8\",\"texto\":\"Identificar etapas em processos de obtenção, transformação, utilização ou reciclagem de recursos naturais, energéticos ou matérias-primas, considerando processos biológicos, químicos ou físicos neles envolvidos.\"},{\"codigo\":\"H9\",\"texto\":\"Compreender a importância dos ciclos biogeoquímicos ou do fluxo energia para a vida, ou da ação de agentes ou fenômenos que podem causar alterações nesses processos.\"},{\"codigo\":\"H10\",\"texto\":\"Analisar perturbações ambientais, identificando fontes, transporte e(ou) destino dos poluentes ou prevendo efeitos em sistemas naturais, produtivos ou sociais.\"},{\"codigo\":\"H11\",\"texto\":\"Reconhecer benefícios, limitações e aspectos éticos da biotecnologia, considerando estruturas e processos biológicos envolvidos em produtos biotecnológicos.\"},{\"codigo\":\"H12\",\"texto\":\"Avaliar impactos em ambientes naturais decorrentes de atividades sociais ou econômicas, considerando interesses contraditórios.\"}]},{\"numero\":4,\"texto\":\"Compreender interações entre organismos e ambiente, em particular aquelas relacionadas à saúde humana, relacionando conhecimentos científicos, aspectos culturais e características individuais.\",\"habilidades\":[{\"codigo\":\"H13\",\"texto\":\"Reconhecer mecanismos de transmissão da vida, prevendo ou explicando a manifestação de características dos seres vivos.\"},{\"codigo\":\"H14\",\"texto\":\"Identificar padrões em fenômenos e processos vitais dos organismos, como manutenção do equilíbrio interno, defesa, relações com o ambiente, sexualidade, entre outros.\"},{\"codigo\":\"H15\",\"texto\":\"Interpretar modelos e experimentos para explicar fenômenos ou processos biológicos em qualquer nível de organização dos sistemas biológicos.\"},{\"codigo\":\"H16\",\"texto\":\"Compreender o papel da evolução na produção de padrões, processos biológicos ou na organização taxonômica dos seres vivos.\"}]},{\"numero\":5,\"texto\":\"Entender métodos e procedimentos próprios das ciências naturais e aplicá-los em diferentes contextos.\",\"habilidades\":[{\"codigo\":\"H17\",\"texto\":\"Relacionar informações apresentadas em diferentes formas de linguagem e representação usadas nas ciências físicas, químicas ou biológicas, como texto discursivo, gráficos, tabelas, relações matemáticas ou linguagem simbólica.\"},{\"codigo\":\"H18\",\"texto\":\"Relacionar propriedades físicas, químicas ou biológicas de produtos, sistemas ou procedimentos tecnológicos às finalidades a que se destinam.\"},{\"codigo\":\"H19\",\"texto\":\"Avaliar métodos, processos ou procedimentos das ciências naturais que contribuam para diagnosticar ou solucionar problemas de ordem social, econômica ou ambiental.\"}]},{\"numero\":6,\"texto\":\"Apropriar-se de conhecimentos da física para, em situações problema, interpretar, avaliar ou planejar intervenções científico- tecnológicas.\",\"habilidades\":[{\"codigo\":\"H20\",\"texto\":\"Caracterizar causas ou efeitos dos movimentos de partículas, substâncias, objetos ou corpos celestes.\"},{\"codigo\":\"H21\",\"texto\":\"Utilizar leis físicas e (ou) químicas para interpretar processos naturais ou tecnológicos inseridos no contexto da termodinâmica e(ou) do eletromagnetismo.\"},{\"codigo\":\"H22\",\"texto\":\"Compreender fenômenos decorrentes da interação entre a radiação e a matéria em suas manifestações em processos naturais ou tecnológicos, ou em suas implicações biológicas, sociais, econômicas ou ambientais.\"},{\"codigo\":\"H23\",\"texto\":\"Avaliar possibilidades de geração, uso ou transformação de energia em ambientes específicos, considerando implicações éticas, ambientais, sociais e/ou econômicas.\"}]},{\"numero\":7,\"texto\":\"Apropriar-se de conhecimentos da química para, em situações problema, interpretar, avaliar ou planejar intervenções científico- tecnológicas.\",\"habilidades\":[{\"codigo\":\"H24\",\"texto\":\"Utilizar códigos e nomenclatura da química para caracterizar materiais, substâncias ou transformações químicas.\"},{\"codigo\":\"H25\",\"texto\":\"Caracterizar materiais ou substâncias, identificando etapas, rendimentos ou implicações biológicas, sociais, econômicas ou ambientais de sua obtenção ou produção.\"},{\"codigo\":\"H26\",\"texto\":\"Avaliar implicações sociais, ambientais e/ou econômicas na produção ou no consumo de recursos energéticos ou minerais, identificando transformações químicas ou de energia envolvidas nesses processos.\"},{\"codigo\":\"H27\",\"texto\":\"Avaliar propostas de intervenção no meio ambiente aplicando conhecimentos químicos, observando riscos ou benefícios.\"}]},{\"numero\":8,\"texto\":\"Apropriar-se de conhecimentos da biologia para, em situações problema, interpretar, avaliar ou planejar intervenções científico- tecnológicas.\",\"habilidades\":[{\"codigo\":\"H28\",\"texto\":\"Associar características adaptativas dos organismos com seu modo de vida ou com seus limites de distribuição em diferentes ambientes, em especial em ambientes brasileiros.\"},{\"codigo\":\"H29\",\"texto\":\"Interpretar experimentos ou técnicas que utilizam seres vivos, analisando implicações para o ambiente, a saúde, a produção de alimentos, matérias primas ou produtos industriais.\"},{\"codigo\":\"H30\",\"texto\":\"Avaliar propostas de alcance individual ou coletivo, identificando aquelas que visam à preservação e a implementação da saúde individual, coletiva ou do ambiente.\"}]}]},\"humanas\":{\"label\":\"Ciências Humanas e suas Tecnologias\",\"competencias\":[{\"numero\":1,\"texto\":\"Compreender os elementos culturais que constituem as identidades\",\"habilidades\":[{\"codigo\":\"H1\",\"texto\":\"Interpretar historicamente e/ou geograficamente fontes documentais acerca de aspectos da cultura.\"},{\"codigo\":\"H2\",\"texto\":\"Analisar a produção da memória pelas sociedades humanas.\"},{\"codigo\":\"H3\",\"texto\":\"Associar as manifestações culturais do presente aos seus processos históricos.\"},{\"codigo\":\"H4\",\"texto\":\"Comparar pontos de vista expressos em diferentes fontes sobre determinado aspecto da cultura.\"},{\"codigo\":\"H5\",\"texto\":\"Identificar as manifestações ou representações da diversidade do patrimônio cultural e artístico em diferentes sociedades.\"}]},{\"numero\":2,\"texto\":\"Compreender as transformações dos espaços geográficos como produto das relações socioeconômicas e culturais de poder.\",\"habilidades\":[{\"codigo\":\"H6\",\"texto\":\"Interpretar diferentes representações gráficas e cartográficas dos espaços geográficos.\"},{\"codigo\":\"H7\",\"texto\":\"Identificar os significados histórico-geográficos das relações de poder entre as nações\"},{\"codigo\":\"H8\",\"texto\":\"Analisar a ação dos estados nacionais no que se refere à dinâmica dos fluxos populacionais e no enfrentamento de problemas de ordem econômico-social.\"},{\"codigo\":\"H9\",\"texto\":\"Comparar o significado histórico-geográfico das organizações políticas e socioeconômicas em escala local, regional ou mundial.\"},{\"codigo\":\"H10\",\"texto\":\"Reconhecer a dinâmica da organização dos movimentos sociais e a importância da participação da coletividade na transformação da realidade histórico-geográfica.\"}]},{\"numero\":3,\"texto\":\"Compreender a produção e o papel histórico das instituições sociais, políticas e econômicas, associando-as aos diferentes grupos, conflitos e movimentos sociais.\",\"habilidades\":[{\"codigo\":\"H11\",\"texto\":\"Identificar registros de práticas de grupos sociais no tempo e no espaço.\"},{\"codigo\":\"H12\",\"texto\":\"Analisar o papel da justiça como instituição na organização das sociedades.\"},{\"codigo\":\"H13\",\"texto\":\"Analisar a atuação dos movimentos sociais que contribuíram para mudanças ou rupturas em processos de disputa pelo poder.\"},{\"codigo\":\"H14\",\"texto\":\"Comparar diferentes pontos de vista, presentes em textos analíticos e interpretativos, sobre situação ou fatos de natureza histórico-geográfica acerca das instituições sociais, políticas e econômicas.\"},{\"codigo\":\"H15\",\"texto\":\"Avaliar criticamente conflitos culturais, sociais, políticos, econômicos ou ambientais ao longo da história.\"}]},{\"numero\":4,\"texto\":\"Entender as transformações técnicas e tecnológicas e seu impacto nos processos de produção, no desenvolvimento do conhecimento e na vida social.\",\"habilidades\":[{\"codigo\":\"H16\",\"texto\":\"Identificar registros sobre o papel das técnicas e tecnologias na organização do trabalho e/ou da vida social.\"},{\"codigo\":\"H17\",\"texto\":\"Analisar fatores que explicam o impacto das novas tecnologias no processo de territorialização da produção.\"},{\"codigo\":\"H18\",\"texto\":\"Analisar diferentes processos de produção ou circulação de riquezas e suas implicações sócio-espaciais.\"},{\"codigo\":\"H19\",\"texto\":\"Reconhecer as transformações técnicas e tecnológicas que determinam as várias formas de uso e apropriação dos espaços rural e urbano.\"},{\"codigo\":\"H20\",\"texto\":\"Selecionar argumentos favoráveis ou contrários às modificações impostas pelas novas tecnologias à vida social e ao mundo do trabalho.\"}]},{\"numero\":5,\"texto\":\"Utilizar os conhecimentos históricos para compreender e valorizar os fundamentos da cidadania e da democracia, favorecendo uma atuação consciente do indivíduo na sociedade.\",\"habilidades\":[{\"codigo\":\"H21\",\"texto\":\"Identificar o papel dos meios de comunicação na construção da vida social.\"},{\"codigo\":\"H22\",\"texto\":\"Analisar as lutas sociais e conquistas obtidas no que se refere às mudanças nas legislações ou nas políticas públicas.\"},{\"codigo\":\"H23\",\"texto\":\"Analisar a importância dos valores éticos na estruturação política das sociedades.\"},{\"codigo\":\"H24\",\"texto\":\"Relacionar cidadania e democracia na organização das sociedades.\"},{\"codigo\":\"H25\",\"texto\":\"Identificar estratégias que promovam formas de inclusão social.\"}]},{\"numero\":6,\"texto\":\"Compreender a sociedade e a natureza, reconhecendo suas interações no espaço em diferentes contextos históricos e geográficos.\",\"habilidades\":[{\"codigo\":\"H26\",\"texto\":\"Identificar em fontes diversas o processo de ocupação dos meios físicos e as relações da vida humana com a paisagem.\"},{\"codigo\":\"H27\",\"texto\":\"Analisar de maneira crítica as interações da sociedade com o meio físico, levando em consideração aspectos históricos e(ou) geográficos.\"},{\"codigo\":\"H28\",\"texto\":\"Relacionar o uso das tecnologias com os impactos sócio-ambientais em diferentes contextos histórico-geográficos.\"},{\"codigo\":\"H29\",\"texto\":\"Reconhecer a função dos recursos naturais na produção do espaço geográfico, relacionando-os com as mudanças provocadas pelas ações humanas.\"},{\"codigo\":\"H30\",\"texto\":\"Avaliar as relações entre preservação e degradação da vida no planeta nas diferentes escalas.\"}]}]}},\"areaContext\":{\"linguagens\":\"CONTEXTO ESPECÍFICO DA ÁREA — LINGUAGENS, CÓDIGOS E SUAS TECNOLOGIAS:\\nAs 45 questões da área se distribuem em: língua estrangeira moderna, inglês ou espanhol (~11%); língua portuguesa e leitura de gêneros textuais diversos, como notícia, crônica, charge, propaganda, infográfico, carta, artigo de opinião, tira, verbete (~35%); texto literário de todas as escolas, do romantismo à literatura contemporânea (~21%); artes visuais, música, dança, teatro, cultura afro-brasileira e indígena (~14%); educação física e práticas corporais (~10%); tecnologias da informação e gêneros digitais (~10%).\\nTextos-suporte típicos: reportagem digital (g1, BBC, Folha, UOL), texto literário, letra de canção, texto publicitário/cartaz, charge/tira, infográfico, verbete de dicionário, trecho de lei, obra de arte com ficha técnica (autor, técnica, dimensões, data, acervo). É comum o par TEXTO I/TEXTO II em leitura comparativa.\\nVerbos de comando típicos: evidenciar, revelar, demonstrar, indicar, ressaltar, apontar, reconhecer, ter como objetivo/propósito/função, constatar-se que/infere-se que, remeter a, contribuir para, caracterizar-se por.\\nDistratores típicos: leitura parcial/localizada; generalização ou inversão indevida; contradição sutil (\\\"distrator espelho\\\", vocabulário parecido com o correto mas sentido oposto); externalidade plausível (senso comum sobre o tema, não sustentado pelo texto). Raramente há \\\"pegadinha\\\" gramatical pura, mesmo em questões de norma culta/variação linguística — o critério de erro é o julgamento sociolinguístico, não a gramática isolada.\\nTemas em ascensão: justiça social e representatividade (povos indígenas, cultura afro-brasileira, pessoas com deficiência, diversidade de gênero, saúde mental), patrimônio linguístico e variedades regionais brasileiras (sempre valorizadas, nunca tratadas como \\\"erro\\\"), gêneros nativamente digitais (podcast, redes sociais, IA).\",\"humanas\":\"CONTEXTO ESPECÍFICO DA ÁREA — CIÊNCIAS HUMANAS E SUAS TECNOLOGIAS (História, Geografia, Filosofia, Sociologia):\\nDistribuição aproximada: História (~26%), Geografia (~24%), Filosofia (~22%), Sociologia (~22%), interdisciplinar (~4%).\\nTextos-suporte típicos, em ordem de frequência: trecho historiográfico ou jornalístico curto com citação completa; excerto de obra clássica de filosofia/ciências sociais (Aristóteles, Hobbes, Rousseau, Kant, Marx, Foucault, Bauman, Arendt — frequentemente via comentador/divulgador quando o conceito é muito denso); textos comparativos TEXTO I/TEXTO II; gráfico, tabela ou mapa (dados IBGE, INPE); charge ou obra de arte com legenda de crédito; texto legal/normativo (Constituição, declaração da ONU); letra de música ou poema; fotografia histórica ou contemporânea legendada.\\nComandos típicos: \\\"De acordo com o texto...\\\", \\\"O texto evidencia/revela/indica...\\\", \\\"Está associado(a) a...\\\", \\\"Tem como objetivo...\\\", \\\"Os textos I e II se aproximam/divergem no seguinte aspecto:\\\". O comando quase sempre pede que se relacione o texto a um conceito ou processo mais amplo — a resposta correta é uma paráfrase conceitual, nunca cópia literal.\\nDistratores típicos: generalização indevida; inversão de causa/efeito; anacronismo (atribuir a um período um conceito de outra época); termo tecnicamente correto mas fora de contexto (confundir autores/correntes teóricas); verdade parcial; inversão de polaridade; distrator de senso comum; excesso de escopo/consequência exagerada.\\nTemas em ascensão: raça, gênero, povos indígenas e quilombolas; tecnologia digital como objeto sociológico (vigilância, algoritmos, desinformação); mudanças climáticas e sustentabilidade (quase obrigatório em 2-3 questões de Geografia por prova desde 2020).\",\"natureza\":\"CONTEXTO ESPECÍFICO DA ÁREA — CIÊNCIAS DA NATUREZA E SUAS TECNOLOGIAS (Física, Química, Biologia):\\nProporção aproximada: Química (~35-38%), Física (~33-36%), Biologia (~27-31%).\\nTextos-suporte típicos, em ordem de frequência: notícia/reportagem de divulgação científica (sempre com fonte citada); processo industrial ou tecnológico descrito passo a passo; experimento didático ou de laboratório; fenômeno cotidiano ou crença popular a ser confrontada com a ciência (ex.: mitos sobre raios, crendices); texto científico mais longo citando artigo/paper real; situação-problema puramente numérica (mais rara, mais comum em Física).\\nComandos típicos: \\\"Qual...é/são\\\" (o mais comum); \\\"O(A) que representa/indica/decorre de...\\\"; \\\"Nessas condições/Com base nesses dados, calcule/estime/é mais próximo(a) de...\\\" (formato \\\"valor mais próximo de\\\", evita gabarito redondo, muito comum em Física/Química); \\\"Esse processo/fenômeno ocorre porque...\\\"; \\\"Qual gráfico representa...\\\".\\nDistratores típicos: erro de unidade ou ordem de grandeza; troca de sinal ou sentido físico; confusão conceitual clássica entre termos próximos (ex.: cátodo/ânodo); cálculo com etapa esquecida ou trocada; resultado \\\"quase certo\\\" mas com grandeza incorretamente combinada (ex.: somar decibéis linearmente em vez de logaritmicamente); inversão de causa/efeito ou proporcionalidade; em Biologia, citar um mecanismo biológico real mas inaplicável à situação do enunciado.\\nTemas em ascensão: sustentabilidade, energias renováveis, química verde; biotecnologia, biossensores, materiais inteligentes (desde 2023); textos-suporte cada vez mais citando artigos científicos reais e recentes.\\nIMPORTANTE: quando a questão pedir gráfico/tabela como recurso visual, gere dados numéricos plausíveis e coerentes (não apenas decorativos) que sejam efetivamente necessários para responder à questão.\",\"matematica\":\"CONTEXTO ESPECÍFICO DA ÁREA — MATEMÁTICA E SUAS TECNOLOGIAS:\\nBlocos de conteúdo aproximados: números e operações — porcentagem, razão/proporção, juros, PA/PG, combinatória (~30%, quase sempre em contexto financeiro/produção); geometria plana e espacial — áreas, volumes, semelhança, escalas, sólidos (~25%); grandezas e medidas — conversão de unidades, densidade, vazão (~12%); funções e álgebra — 1º/2º grau, exponencial, logarítmica, sistemas (~20%); leitura de gráficos e tabelas (~15%); estatística e probabilidade — média, mediana, moda, desvio padrão, probabilidade simples/condicional (~18%).\\nQuestões de matemática pura, sem nenhum contexto aplicado, são raríssimas — use sempre um contexto: financeiro/comercial, saúde, esportivo, engenharia/arquitetura/design, tecnologia/jogos, ambiental/agrícola.\\nComandos típicos: \\\"Qual é o/a valor/quantidade/número/probabilidade de...\\\", \\\"...é/será/deverá ser\\\", \\\"correto afirmar que/correspondente a\\\", \\\"O gráfico/esboço que melhor representa...\\\", \\\"Para atender/garantir/atingir [objetivo], [a pessoa/empresa] deverá...\\\".\\nDistratores: SEMPRE erros de raciocínio derivados do processo de resolução, nunca números aleatórios. Padrões: confundir média simples com ponderada; esquecer de elevar a razão de escala ao quadrado (área) ou ao cubo (volume); trocar numerador/denominador; parar em etapa intermediária do cálculo; usar fórmula plausível mas errada (ex.: juros simples em vez de composto); esquecer de converter unidades; aplicar só parte de uma restrição composta; inverter a direção do arredondamento/comparação; reaproveitar um número do enunciado fora de contexto.\\nConvenção fixa: forneça sempre aproximações numéricas (\\\"considere π = 3\\\", \\\"utilize 1,4 como aproximação para √2\\\") sempre que a resposta exata exigisse calculadora — a prova é desenhada para ser resolvida sem calculadora.\"},\"universalModel\":\"VOCÊ É UM ELABORADOR OFICIAL DE ITENS NO PADRÃO ENEM. Siga rigorosamente este modelo, comum às quatro áreas do exame, derivado da leitura integral de 11 provas reais (2015-2025):\\n\\nANATOMIA DA QUESTÃO (sempre três partes):\\n1) TEXTO-SUPORTE: quase toda questão parte de um texto-suporte real ou verossímil (reportagem, trecho literário, obra clássica, gráfico, tabela, mapa, charge, texto legal, letra de música, processo técnico/industrial). Termine sempre com uma citação de fonte no formato \\\"SOBRENOME, Nome. Título. Veículo/Editora, cidade, data.\\\" ou \\\"Disponível em: [site]. Acesso em: [data] (adaptado).\\\" — mesmo quando a fonte é fictícia, o formato deve ser respeitado. Nunca insira um texto-suporte gratuito: cada frase deve servir para ancorar a resposta correta ou alimentar um distrator específico.\\n2) COMANDO: curto (1-2 linhas), nunca pede repetição literal do texto. Usa verbos-gatilho como: evidencia, revela, indica, tem como objetivo, propõe, reflete, decorre de, é resultado de, pode-se concluir, corresponde a, é correto afirmar, contribui para, caracteriza-se por. Exige uma operação cognitiva (inferir, relacionar causa/efeito, aplicar conceito a situação nova, comparar fontes, calcular) — nunca decoreba.\\n3) CINCO ALTERNATIVAS (A-E): a correta é uma PARÁFRASE CONCEITUAL do texto-suporte (nunca cópia literal de frase). As 4 erradas (distratores) NUNCA são aleatórias — cada uma deve representar um erro de raciocínio específico e catalogável, escolhido dentre estas estratégias (use pelo menos 3 estratégias diferentes entre os 4 distratores de uma mesma questão, nunca repita a mesma lógica 4 vezes):\\n   - Leitura parcial / recorte indevido: generaliza um detalhe isolado do texto.\\n   - Inversão de causa/efeito ou de polaridade: troca aumenta/diminui, causa/consequência.\\n   - Verdade parcial / meia-verdade: correta em outro contexto, mas não responde ao pedido.\\n   - Anacronismo / confusão conceitual clássica: aplica conceito de outro período ou confunde termos próximos (ex.: cátodo/ânodo, autores/correntes teóricas).\\n   - Senso comum: crença intuitiva que o texto existe para desconstruir.\\n   - Erro no processo de resolução (Matemática/Natureza): esquecer etapa de cálculo, trocar média simples por ponderada, erro de conversão de unidade, fórmula plausível mas errada.\\n   - Excesso de escopo / generalização indevida: estende para \\\"todos\\\"/\\\"sempre\\\"/\\\"nunca\\\" algo que era específico ou condicional.\\n   - Reaproveitamento fora de contexto: usa um número/termo do enunciado só que aplicado a algo diferente do pedido.\\n\\nCALIBRAÇÃO DE DIFICULDADE:\\n- Fácil: comando direto, texto-suporte curto, distratores mais óbvios (leitura parcial/senso comum).\\n- Médio: exige uma etapa de inferência, comparação ou cálculo.\\n- Difícil: exige combinar duas informações do texto, ou um distrator do tipo \\\"verdade parcial\\\"/\\\"erro de processo\\\" muito próximo da resposta certa (armadilha fina).\\n\\nREGRAS OBRIGATÓRIAS:\\n- NUNCA copie ou parafraseie de perto uma questão real do ENEM. A questão deve ser inédita, apenas seguindo o estilo, o padrão e o nível de dificuldade.\\n- A habilidade e a competência citadas devem realmente corresponder à operação cognitiva exigida pela questão, não apenas ao assunto de superfície.\\n- As 5 alternativas devem ter extensão e estrutura sintática parecidas entre si (nenhuma \\\"denuncia\\\" a resposta certa pelo tamanho ou forma).\\n- Todo comentário (inclusive das alternativas erradas) deve nomear o tipo de distrator usado, não apenas dizer \\\"está errada\\\".\"}");
+
 
 const AREA_LABELS: Record<string, string> = {
   linguagens: "Linguagens, Códigos e suas Tecnologias",
@@ -28,6 +31,67 @@ const AREA_LABELS: Record<string, string> = {
   natureza: "Ciências da Natureza e suas Tecnologias",
   matematica: "Matemática e suas Tecnologias",
 };
+
+// Disciplinas em que o texto-suporte tipicamente se apoia em autores, obras, pesquisas
+// ou registros históricos/culturais reais — nestas disciplinas é proibido "inventar"
+// autores/textos/estudos que não existem; o modelo deve usar apenas fontes reais e,
+// em caso de dúvida, pesquisar na internet antes de escrever a questão (ver
+// buildUserPrompt/buildValidationChecklist). Comparação por substring, em minúsculas,
+// para cobrir variações do rótulo (ex.: "Língua Estrangeira (Inglês/Espanhol)").
+const DISCIPLINAS_FONTES_REAIS_OBRIGATORIAS = [
+  "literatura", "língua portuguesa", "artes", "língua estrangeira",
+  "história", "geografia", "filosofia", "sociologia", "biologia",
+];
+function precisaFontesReais(disciplina: string): boolean {
+  const d = (disciplina || "").toLowerCase();
+  return DISCIPLINAS_FONTES_REAIS_OBRIGATORIAS.some((alvo) => d.includes(alvo));
+}
+
+const CALIBRACAO_EXTENSAO: Record<string, { n: number; texto: [number, number, number]; comando: [number, number, number]; item: [number, number, number] }> = {
+  "Língua Portuguesa": { n: 213, texto: [608, 1201, 902], comando: [82, 180, 138], item: [44, 70, 58] },
+  "Literatura": { n: 105, texto: [608, 1122, 868], comando: [82, 164, 118], item: [45, 67, 57] },
+  "Artes": { n: 50, texto: [384, 798, 610], comando: [107, 189, 143], item: [48, 70, 61] },
+  "Educação Física": { n: 32, texto: [799, 1134, 962], comando: [83, 128, 106], item: [35, 73, 59] },
+  "Língua Estrangeira (Inglês/Espanhol)": { n: 100, texto: [409, 1073, 761], comando: [77, 179, 129], item: [37, 60, 50] },
+  "História": { n: 132, texto: [469, 757, 620], comando: [84, 130, 104], item: [33, 53, 45] },
+  "Geografia": { n: 152, texto: [398, 737, 554], comando: [76, 126, 101], item: [29, 43, 37] },
+  "Filosofia": { n: 80, texto: [477, 671, 596], comando: [78, 118, 95], item: [31, 51, 41] },
+  "Sociologia": { n: 86, texto: [497, 780, 625], comando: [76, 123, 107], item: [28, 49, 40] },
+  "Biologia": { n: 163, texto: [374, 634, 527], comando: [41, 102, 93], item: [13, 49, 34] },
+  "Física": { n: 154, texto: [476, 805, 648], comando: [47, 122, 109], item: [5, 40, 25] },
+  "Química": { n: 133, texto: [483, 780, 641], comando: [56, 110, 104], item: [7, 41, 26] },
+  "Matemática": { n: 450, texto: [420, 725, 586], comando: [47, 134, 142], item: [3, 10, 9] },
+};
+
+function findCalibracaoKey(disciplina: string): string | null {
+  const alvo = (disciplina || "").trim().toLowerCase();
+  if (!alvo) return null;
+  for (const key of Object.keys(CALIBRACAO_EXTENSAO)) {
+    if (key.toLowerCase() === alvo) return key;
+  }
+  for (const key of Object.keys(CALIBRACAO_EXTENSAO)) {
+    const k = key.toLowerCase();
+    if (alvo.includes(k) || k.includes(alvo)) return key;
+  }
+  if (alvo.includes("tecnologia") && alvo.includes("informa")) return "Língua Portuguesa";
+  return null;
+}
+
+function buildCalibracaoExtensao(disciplina: string): string {
+  const key = findCalibracaoKey(disciplina);
+  if (!key) return "";
+  const cal = CALIBRACAO_EXTENSAO[key];
+  const [tP25, tP75, tMean] = cal.texto;
+  const [cP25, cP75, cMean] = cal.comando;
+  const [iP25, iP75, iMean] = cal.item;
+  return `
+
+📏 CALIBRAÇÃO DE EXTENSÃO (baseada na contagem real de caracteres de ${cal.n} questões de "${key}" nas provas do ENEM 2015-2025):
+- Texto-suporte (campo "textoBase"): mire em torno de ${tMean} caracteres; a maioria das questões reais desta disciplina fica entre ${tP25} e ${tP75} caracteres.
+- Comando (campo "comando"): mire em torno de ${cMean} caracteres; faixa típica real: ${cP25}–${cP75} caracteres.
+- Cada alternativa (A-E): mire em torno de ${iMean} caracteres cada; faixa típica real: ${iP25}–${iP75} caracteres (alternativas numéricas curtas são normais quando ${iMean} for baixo).
+Trate estes números como META DE REFERÊNCIA, não como contagem rígida obrigatória: o objetivo é que a questão gerada "pareça" uma questão real do ENEM em tamanho — nem artificialmente mais curta nem mais longa que o padrão histórico desta disciplina. Pequena variação em torno da meta é normal e aceitável; o que deve ser evitado é uma questão sistematicamente muito mais longa ou muito mais curta que a média real acima.`;
+}
 
 function jsonResponse(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), {
@@ -44,7 +108,7 @@ function buildSystemPrompt(area: string) {
 
 const RECURSO_INSTRUCOES: Record<string, string> = {
   nenhum: `Recurso visual: NENHUM. Não inclua gráfico, tabela ou imagem. Explore a situação-problema apenas por meio do texto-suporte. Deixe o campo "visual" como null e "recurso" como "nenhum".`,
-  imagem: `Recurso visual: IMAGEM. A questão deve depender de uma imagem/ilustração pedagogicamente necessária (nunca meramente decorativa) para ser respondida corretamente — por exemplo: esquema anatômico, diagrama de processo, mapa, representação de fenômeno, estrutura, infográfico. Preencha "recurso":"imagem" e "visual" com: {"tipo":"imagem","descricao":"<legenda em português explicando o que a imagem mostra e por que ela é necessária para resolver a questão>","promptImagem":"<descrição em INGLÊS, detalhada, objetiva, no estilo de ilustração científica/educacional plana, limpa, sem nenhum texto ou letra embutida na imagem, adequada para um gerador de imagens>"}. O enunciado e o comando devem fazer referência explícita ao que aparece na imagem.`,
+  imagem: `Recurso visual: IMAGEM. A questão deve depender de uma imagem/ilustração pedagogicamente necessária (nunca meramente decorativa) para ser respondida corretamente — por exemplo: esquema anatômico, diagrama de processo, mapa, representação de fenômeno, estrutura, infográfico. Preencha "recurso":"imagem" e "visual" com: {"tipo":"imagem","descricao":"<legenda em português explicando o que a imagem mostra e por que ela é necessária para resolver a questão>","promptImagem":"<descrição em INGLÊS, detalhada, objetiva, no estilo de ilustração científica/educacional plana, limpa, adequada para um gerador de imagens>"}. REGRA OBRIGATÓRIA SOBRE DADOS REFERENCIAIS NA IMAGEM: evite texto ou letras soltas/decorativas sem função na imagem, MAS se a imagem contiver qualquer dado referencial necessário para resolver a questão — régua/escala graduada, marcações de altura/distância/tempo/velocidade, valores em um eixo, rótulos de unidades, ou qualquer número/rótulo que a "descricao" ou o "comando" mencionem explicitamente (ex.: "régua indicando alturas de 5 m, 10 m, 15 m e 20 m") — esses números e rótulos são OBRIGATÓRIOS e DEVEM aparecer desenhados de forma nítida e legível na própria imagem gerada, não apenas citados na legenda. Nunca descreva na "descricao" um dado que não esteja de fato visível na imagem. Para isso, o "promptImagem" deve instruir explicitamente o gerador de imagens a desenhar essas marcações/números exatos (ex.: "with a graduated ruler showing clearly legible labeled numbers at 5 m, 10 m, 15 m, and 20 m next to each tick mark"). O enunciado e o comando devem fazer referência explícita ao que aparece na imagem, e tudo que for citado como visível deve estar de fato desenhado nela.`,
   grafico: `Recurso visual: GRÁFICO. A questão deve depender de um gráfico com dados numéricos plausíveis e coerentes (cientificamente ou matematicamente consistentes com o texto-suporte), efetivamente necessários para resolver a questão — não apenas decorativos. Preencha "recurso":"grafico" e "visual" com: {"tipo":"grafico","chartType":"bar" ou "line" ou "pie","titulo":"...","labels":["...","..."],"datasets":[{"label":"...","data":[num,num,...]}]}. Os números usados no gráfico devem ser os mesmos que a resolução comentada utiliza.`,
   tabela: `Recurso visual: TABELA. A questão deve depender de uma tabela com dados relevantes (resultados experimentais, dados populacionais, séries históricas, comparações entre grupos etc.), efetivamente necessários para resolver a questão. Preencha "recurso":"tabela" e "visual" com: {"tipo":"tabela","titulo":"...","colunas":["...","..."],"linhas":[["...","..."],["...","..."]]}.`,
 };
@@ -96,8 +160,8 @@ const JSON_SCHEMA_TXT = `Responda SOMENTE com um objeto JSON válido (sem markdo
  "habilidade": {"codigo": "HXX", "texto": "string (texto oficial completo da habilidade)"},
  "recurso": "nenhum" | "imagem" | "grafico" | "tabela",
  "visual": null ou objeto conforme instruído acima,
- "textoBase": "string (texto-suporte com contextualização; termine com a citação de fonte no formato ENEM, real ou verossímil)",
- "comando": "string (o enunciado da pergunta, curto, indireto)",
+ "textoBase": "string (texto-suporte com contextualização; termine com a citação de fonte no formato ENEM — real ou verossímil, EXCETO quando a regra 'PROIBIDO INVENTAR AUTORES OU TEXTOS' abaixo se aplicar à disciplina, caso em que a fonte citada TEM que ser real)",
+ "comando": "string (o enunciado da pergunta, curto, indireto, SEM nenhum ponto de interrogação — é sempre uma frase afirmativa que se completa com as alternativas, nunca uma pergunta direta)",
  "alternativas": {"A":"string","B":"string","C":"string","D":"string","E":"string"},
  "gabarito": "A" | "B" | "C" | "D" | "E",
  "resolucaoComentada": "string (explicação detalhada do raciocínio para chegar à resposta correta)",
@@ -111,6 +175,18 @@ const JSON_SCHEMA_TXT = `Responda SOMENTE com um objeto JSON válido (sem markdo
 }
 No campo "comentario" de cada alternativa errada, nomeie explicitamente o tipo de distrator (leitura parcial, inversão de causa/efeito, verdade parcial, anacronismo/confusão conceitual, senso comum, erro de processo, excesso de escopo, reaproveitamento fora de contexto) e explique o raciocínio equivocado que ela representa. Nunca deixe mais de uma alternativa com status "correta".`;
 
+// Bloco anti-alucinação: injetado apenas para disciplinas em que o texto-suporte
+// tipicamente cita autor/obra/pesquisa real (ver DISCIPLINAS_FONTES_REAIS_OBRIGATORIAS).
+// Instrui o modelo a nunca inventar autoria e a usar a ferramenta web_search (quando
+// disponível na chamada) para verificar qualquer dado do qual não tenha certeza.
+function buildRegraFontesReais(disciplina: string): string {
+  if (!precisaFontesReais(disciplina)) return "";
+  return `
+
+⚠️ REGRA OBRIGATÓRIA — PROIBIDO INVENTAR AUTORES OU TEXTOS: a disciplina "${disciplina}" normalmente exige um texto-suporte apoiado em autor, obra, pesquisa, teoria, evento histórico ou registro cultural real. Você está TERMINANTEMENTE PROIBIDO de inventar, "criar hipóteses de", atribuir erroneamente ou apresentar como real qualquer autor, livro, poema, conto, artigo, quadro, obra de arte, filme, teoria, pesquisador, estudo científico, citação ou fato histórico que não exista de fato. Use SOMENTE autores/obras/estudos reais, verificáveis e reconhecidos, adequados ao nível de ensino médio/ENEM (autores consagrados da literatura em língua portuguesa e estrangeira, documentos e eventos históricos reais, teóricos e obras reais de filosofia/sociologia, pesquisas e pesquisadores reais de biologia, obras de arte reais, etc.).
+Se você tiver QUALQUER dúvida sobre a existência, autoria, título exato, data, conteúdo ou trecho de um texto/autor antes de usá-lo, USE A FERRAMENTA web_search para verificar em fontes confiáveis (sites de universidades, editoras, enciclopédias reconhecidas, artigos científicos/acadêmicos, acervos como Domínio Público, Fundação Biblioteca Nacional, Scielo) antes de escrever a questão — é sempre preferível pesquisar e confirmar a arriscar citar algo inexistente ou incorreto. No campo "textoBase", cite a fonte real (autor, obra, ano) no formato ENEM; é PROIBIDO usar uma citação "verossímil"/fictícia nesta disciplina. Você pode resumir, parafrasear ou adaptar um trecho real do texto (para não reproduzir excertos extensos protegidos por direitos autorais), mas a autoria e a obra citadas devem ser genuínas e o conteúdo do resumo deve corresponder fielmente ao que a obra real de fato trata.`;
+}
+
 function buildUserPrompt(opts: {
   area: string; disciplina: string; tema: string; dificuldade: string;
   recurso: string; competenciaNum: number | null; habilidadeCod: string | null;
@@ -122,6 +198,8 @@ function buildUserPrompt(opts: {
 Disciplina: ${opts.disciplina}
 Tema/conteúdo solicitado: ${opts.tema || "(o professor não detalhou; escolha um tema representativo da disciplina e do nível de dificuldade pedidos)"}
 Nível de dificuldade: ${opts.dificuldade}
+${buildRegraFontesReais(opts.disciplina)}
+${buildCalibracaoExtensao(opts.disciplina)}
 
 ${RECURSO_INSTRUCOES[opts.recurso]}
 ${opts.instrucoesVisual ? `\nInstruções adicionais do professor especificamente para o recurso visual (siga-as com prioridade, desde que compatíveis com o pedido acima): ${opts.instrucoesVisual}\n` : ""}
@@ -159,7 +237,20 @@ Responda SOMENTE com um objeto JSON válido (sem markdown, sem texto antes ou de
 {"visual": <objeto do recurso visual, no formato de "visual" instruído acima>}`;
 }
 
-const VALIDATION_CHECKLIST = `Revise a questão JSON abaixo (elaborada por você mesmo) contra estes critérios pedagógicos, um a um:
+// Convertido de constante para função: o critério 14 (fontes reais) só é incluído
+// quando a disciplina exige autores/textos reais (ver DISCIPLINAS_FONTES_REAIS_OBRIGATORIAS).
+function buildValidationChecklist(disciplina: string): string {
+  const criterioFontesReais = precisaFontesReais(disciplina)
+    ? `\n14. PROIBIDO INVENTAR AUTORES OU TEXTOS: verifique se TODO autor, obra, pesquisador, teoria, evento histórico ou fonte citada no textoBase (e em qualquer outro campo) é real e verificável — não inventado nem "hipotético". Se houver qualquer dúvida sobre a existência, autoria, título exato ou conteúdo de algo citado, use a ferramenta web_search para confirmar antes de manter a questão; se não for possível confirmar que é real e correto, substitua por um autor/texto/estudo real e comprovadamente existente sobre o mesmo tema, e cite a fonte real correspondente no formato ENEM.`
+    : "";
+  const calKey = findCalibracaoKey(disciplina);
+  const criterioExtensao = calKey
+    ? (() => {
+        const cal = CALIBRACAO_EXTENSAO[calKey];
+        return `\n15. EXTENSÃO CALIBRADA PELA MÉDIA REAL DO ENEM: confira se o tamanho de textoBase (meta: ~${cal.texto[2]} caracteres, faixa típica ${cal.texto[0]}–${cal.texto[1]}), de comando (meta: ~${cal.comando[2]} caracteres, faixa típica ${cal.comando[0]}–${cal.comando[1]}) e de cada alternativa A-E (meta: ~${cal.item[2]} caracteres cada, faixa típica ${cal.item[0]}–${cal.item[1]}) está compatível com a média real de "${calKey}" no ENEM. Se algum campo estiver muito fora dessas faixas (muito mais curto ou muito mais longo), ajuste-o para se aproximar da meta, preservando o conteúdo pedagógico correto — sem forçar preenchimento artificial nem cortar informação necessária.`;
+      })()
+    : "";
+  return `Revise a questão JSON abaixo (elaborada por você mesmo) contra estes critérios pedagógicos, um a um:
 1. Existe somente uma alternativa correta e inequívoca.
 2. Não há alternativas ambíguas ou defensáveis como corretas além do gabarito.
 3. Os quatro distratores são plausíveis, cada um representando um erro de raciocínio específico (nunca aleatório).
@@ -172,6 +263,7 @@ const VALIDATION_CHECKLIST = `Revise a questão JSON abaixo (elaborada por você
 10. Todas as informações necessárias para resolver a questão estão disponíveis no texto-base, no comando ou no recurso visual.
 11. Não há pistas involuntárias (ex.: alternativa correta com tamanho, redação ou grau de detalhe muito diferente das demais) que entreguem a resposta sem raciocínio.
 12. A resposta exige interpretação/raciocínio, não apenas memorização direta de um fato isolado.
+13. O comando NÃO contém nenhum ponto de interrogação (?) em nenhuma parte do seu texto — é sempre uma frase afirmativa/declarativa que se completa com as alternativas, nunca uma pergunta direta. Se encontrar um "?", reescreva o comando na forma declarativa (ex.: "Qual é o valor de x?" vira "O valor de x corresponde a").${criterioFontesReais}${criterioExtensao}
 
 Se ALGUM critério não for plenamente atendido, reescreva a questão inteira corrigindo o problema, mantendo o mesmo tema, dificuldade e recurso visual solicitados. Se todos os critérios já estiverem atendidos, apenas devolva a mesma questão.
 
@@ -179,40 +271,138 @@ QUESTÃO A REVISAR:
 __DRAFT_JSON__
 
 ${JSON_SCHEMA_TXT}`;
+}
 
 /* ---------------- Claude API (server-side) ---------------- */
 
-async function callClaude(system: string, userMsg: string, maxTokens: number) {
-  const resp = await fetch("https://api.anthropic.com/v1/messages", {
-    method: "POST",
-    headers: {
-      "content-type": "application/json",
-      "x-api-key": ANTHROPIC_API_KEY!,
-      "anthropic-version": "2023-06-01",
-    },
-    body: JSON.stringify({
-      model: MODEL,
-      max_tokens: maxTokens,
-      system,
-      messages: [{ role: "user", content: userMsg }],
-      thinking: { type: "disabled" },
-    }),
-  });
-  const rawBody = await resp.text();
-  let data: any = {};
-  try { data = rawBody ? JSON.parse(rawBody) : {}; } catch (_e) { /* corpo não é JSON */ }
+// Códigos de erro transitórios (sobrecarga momentânea, timeout de proxy/CDN entre
+// nós de rede e a Anthropic, etc.) — vale a pena tentar de novo automaticamente.
+// 524 é o "A timeout occurred" da Cloudflare: acontece quando a resposta da
+// Anthropic demora demais para ser entregue por completo, algo que fica bem mais
+// provável quando várias questões são geradas ao mesmo tempo (mais carga = respostas
+// mais lentas). 429/500/502/503/529 também são transitórios e merecem nova tentativa.
+const RETRYABLE_STATUS = new Set([429, 500, 502, 503, 504, 522, 523, 524, 529]);
+const MAX_ATTEMPTS = 4;
 
-  if (!resp.ok) {
-    let msg = (data && data.error && data.error.message) ? data.error.message : "";
-    if (!msg) msg = rawBody ? rawBody.slice(0, 300) : `Erro HTTP ${resp.status} ${resp.statusText || ""}`.trim();
-    if (resp.status === 401) {
-      msg = `Chave de API da Anthropic inválida ou expirada (401) nos secrets deste projeto Supabase. Detalhe: ${msg}`;
+function sleep(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+// Espera exponencial com jitter entre tentativas (0.8s, 1.6s, 3.2s... + até 400ms
+// aleatórios) para não martelar a API da Anthropic logo em seguida de uma falha.
+function backoffDelay(attempt: number) {
+  return Math.min(800 * 2 ** (attempt - 1), 8000) + Math.random() * 400;
+}
+
+// Chama a Anthropic em modo streaming (Server-Sent Events) e monta o texto aos
+// poucos. Isso evita o erro 524: numa chamada NÃO-streaming, a conexão fica em
+// silêncio (sem nenhum byte trafegando) até a resposta inteira estar pronta, e
+// se isso demorar demais um proxy/CDN no meio do caminho derruba a conexão com
+// 524. Em modo streaming, bytes continuam chegando aos poucos durante toda a
+// geração, então a conexão nunca fica "parada" por tempo suficiente para ser
+// cortada — mesmo quando a geração completa leva bastante tempo (comum quando
+// várias questões estão sendo geradas ao mesmo tempo e a API está mais ocupada).
+// Além disso, qualquer falha transitória (rede, 429/5xx/524/529) é reexecutada
+// automaticamente algumas vezes antes de desistir.
+// Ferramenta nativa de busca na internet da Anthropic (server-side: a própria API
+// executa a busca e injeta os resultados na mesma resposta, antes do texto final —
+// não precisamos de um segundo turno para isso). Usada quando enableWebSearch=true,
+// para as disciplinas que exigem autores/textos reais (ver precisaFontesReais) —
+// permite ao modelo verificar autoria, título, data etc. em fontes confiáveis antes
+// de escrever a questão, em vez de arriscar inventar algo. max_uses limita custo/latência.
+const WEB_SEARCH_TOOL = { type: "web_search_20250305", name: "web_search", max_uses: 5 };
+
+async function callClaude(system: string, userMsg: string, maxTokens: number, enableWebSearch = false): Promise<{ text: string; truncated: boolean }> {
+  let lastErr: any;
+  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+    const controller = new AbortController();
+    // Rede de segurança: aborta e tenta de novo se uma tentativa individual ficar
+    // presa por muito tempo (bem abaixo do limite de execução da Edge Function).
+    const watchdog = setTimeout(() => controller.abort(), 240_000);
+    try {
+      const resp = await fetch("https://api.anthropic.com/v1/messages", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          "x-api-key": ANTHROPIC_API_KEY!,
+          "anthropic-version": "2023-06-01",
+        },
+        body: JSON.stringify({
+          model: MODEL,
+          max_tokens: maxTokens,
+          system,
+          messages: [{ role: "user", content: userMsg }],
+          thinking: { type: "disabled" },
+          stream: true,
+          ...(enableWebSearch ? { tools: [WEB_SEARCH_TOOL] } : {}),
+        }),
+        signal: controller.signal,
+      });
+
+      if (!resp.ok) {
+        const rawErr = await resp.text().catch(() => "");
+        if (RETRYABLE_STATUS.has(resp.status) && attempt < MAX_ATTEMPTS) {
+          lastErr = new Error(`HTTP ${resp.status}`);
+          clearTimeout(watchdog);
+          await sleep(backoffDelay(attempt));
+          continue;
+        }
+        let msg = "";
+        try { const j = rawErr ? JSON.parse(rawErr) : {}; msg = j?.error?.message || ""; } catch { /* corpo não é JSON */ }
+        if (!msg) msg = rawErr ? rawErr.slice(0, 300) : `Erro HTTP ${resp.status} ${resp.statusText || ""}`.trim();
+        if (resp.status === 401) {
+          msg = `Chave de API da Anthropic inválida ou expirada (401) nos secrets deste projeto Supabase. Detalhe: ${msg}`;
+        }
+        if (resp.status === 524) {
+          msg = `A Anthropic demorou demais para responder (524 - timeout de proxy) mesmo após ${attempt} tentativa(s). Detalhe: ${msg}`;
+        }
+        throw new Error(msg);
+      }
+
+      const reader = resp.body!.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+      let text = "";
+      let stopReason: string | null = null;
+      let streamErrorMsg: string | null = null;
+      while (true) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split("\n");
+        buffer = lines.pop() || "";
+        for (const line of lines) {
+          const trimmed = line.trim();
+          if (!trimmed.startsWith("data:")) continue;
+          const jsonStr = trimmed.slice(5).trim();
+          if (!jsonStr || jsonStr === "[DONE]") continue;
+          let evt: any;
+          try { evt = JSON.parse(jsonStr); } catch { continue; }
+          if (evt.type === "content_block_delta" && evt.delta?.type === "text_delta") {
+            text += evt.delta.text || "";
+          } else if (evt.type === "message_delta" && evt.delta?.stop_reason) {
+            stopReason = evt.delta.stop_reason;
+          } else if (evt.type === "error") {
+            streamErrorMsg = evt.error?.message || "Erro reportado pelo streaming da Anthropic.";
+          }
+        }
+      }
+      clearTimeout(watchdog);
+      if (streamErrorMsg) throw new Error(streamErrorMsg);
+      return { text, truncated: stopReason === "max_tokens" };
+    } catch (err: any) {
+      clearTimeout(watchdog);
+      const isAbort = err?.name === "AbortError";
+      const isNetwork = err instanceof TypeError; // fetch "failed to fetch" / conexão caiu no meio do streaming
+      if ((isAbort || isNetwork) && attempt < MAX_ATTEMPTS) {
+        lastErr = err;
+        await sleep(backoffDelay(attempt));
+        continue;
+      }
+      throw err;
     }
-    throw new Error(msg);
   }
-  const textBlock = Array.isArray(data.content) ? data.content.find((b: any) => b && b.type === "text") : null;
-  const text = textBlock ? (textBlock.text || "") : "";
-  return { text, truncated: data.stop_reason === "max_tokens" };
+  throw lastErr || new Error("Falha ao contatar a Anthropic após múltiplas tentativas.");
 }
 
 function sanitizeJsonControlChars(text: string) {
@@ -263,13 +453,13 @@ function parseJSONLoose(text: string) {
   throw new Error(`Não foi possível interpretar a resposta do modelo como JSON (${detail}). Início da resposta recebida: "${preview}${raw.length > 220 ? "..." : ""}"`);
 }
 
-async function callClaudeForJSON(system: string, userMsg: string) {
-  const { text, truncated } = await callClaude(system, userMsg, 8000);
+async function callClaudeForJSON(system: string, userMsg: string, enableWebSearch = false) {
+  const { text, truncated } = await callClaude(system, userMsg, 8000, enableWebSearch);
   try {
     return parseJSONLoose(text);
   } catch (err) {
     if (truncated) {
-      const retry = await callClaude(system, userMsg, 12000);
+      const retry = await callClaude(system, userMsg, 12000, enableWebSearch);
       return parseJSONLoose(retry.text);
     }
     throw err;
@@ -376,11 +566,12 @@ Deno.serve(async (req: Request) => {
   try {
     const system = buildSystemPrompt(area);
     const userMsg = buildUserPrompt({ area, disciplina, tema, dificuldade, recurso, competenciaNum, habilidadeCod, instrucoesVisual });
-    let data = await callClaudeForJSON(system, userMsg);
+    const webSearch = precisaFontesReais(disciplina);
+    let data = await callClaudeForJSON(system, userMsg, webSearch);
 
     if (validar) {
-      const valPrompt = VALIDATION_CHECKLIST.replace("__DRAFT_JSON__", JSON.stringify(data));
-      data = await callClaudeForJSON(system, valPrompt);
+      const valPrompt = buildValidationChecklist(disciplina).replace("__DRAFT_JSON__", JSON.stringify(data));
+      data = await callClaudeForJSON(system, valPrompt, webSearch);
     }
 
     await logGeneration(area, disciplina, tema);
