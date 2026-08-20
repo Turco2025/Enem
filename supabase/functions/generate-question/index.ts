@@ -237,43 +237,98 @@ Responda SOMENTE com um objeto JSON válido (sem markdown, sem texto antes ou de
 {"visual": <objeto do recurso visual, no formato de "visual" instruído acima>}`;
 }
 
-// Convertido de constante para função: o critério 14 (fontes reais) só é incluído
-// quando a disciplina exige autores/textos reais (ver DISCIPLINAS_FONTES_REAIS_OBRIGATORIAS).
+// PROTOCOLO DE REVISÃO E VALIDAÇÃO — construído a partir da Ficha de Revisão de Item
+// do Inep/MEC (Guia de Elaboração e Revisão de Itens, seção 6: 35 critérios em 5 blocos),
+// acrescida do gate de falhas fatais (Guia, seção 6: motivos de devolução ao elaborador)
+// e das regras adicionais obrigatórias definidas pelo professor responsável.
+// Critérios condicionais: fontes reais (disciplinas que exigem autor/obra real) e
+// extensão calibrada (disciplinas com amostra em CALIBRACAO_EXTENSAO).
 function buildValidationChecklist(disciplina: string, dificuldade: string): string {
   const criterioFontesReais = precisaFontesReais(disciplina)
-    ? `\n14. PROIBIDO INVENTAR AUTORES OU TEXTOS: verifique se TODO autor, obra, pesquisador, teoria, evento histórico ou fonte citada no textoBase (e em qualquer outro campo) é real e verificável — não inventado nem "hipotético". Se houver qualquer dúvida sobre a existência, autoria, título exato ou conteúdo de algo citado, use a ferramenta web_search para confirmar antes de manter a questão; se não for possível confirmar que é real e correto, substitua por um autor/texto/estudo real e comprovadamente existente sobre o mesmo tema, e cite a fonte real correspondente no formato ENEM.`
+    ? `\n2.6 FONTE REAL OBRIGATÓRIA NESTA DISCIPLINA: todo autor, obra, pesquisador, teoria, evento histórico ou fonte citada no textoBase é real, verificável e corretamente atribuída — não inventada nem "hipotética". Se houver qualquer dúvida sobre existência, autoria, título exato, data ou conteúdo, use a ferramenta web_search para confirmar; se não for possível confirmar, substitua por autor/obra/estudo real e comprovadamente existente sobre o mesmo tema, com a fonte real citada no formato ABNT/ENEM.`
     : "";
   const calKey = findCalibracaoKey(disciplina);
   const criterioExtensao = calKey
     ? (() => {
         const cal = CALIBRACAO_EXTENSAO[calKey];
-        return `\n15. EXTENSÃO CALIBRADA PELA MÉDIA REAL DO ENEM: confira se o tamanho de textoBase (meta: ~${cal.texto[2]} caracteres, faixa típica ${cal.texto[0]}–${cal.texto[1]}), de comando (meta: ~${cal.comando[2]} caracteres, faixa típica ${cal.comando[0]}–${cal.comando[1]}) e de cada alternativa A-E (meta: ~${cal.item[2]} caracteres cada, faixa típica ${cal.item[0]}–${cal.item[1]}) está compatível com a média real de "${calKey}" no ENEM. Se algum campo estiver muito fora dessas faixas (muito mais curto ou muito mais longo), ajuste-o para se aproximar da meta, preservando o conteúdo pedagógico correto — sem forçar preenchimento artificial nem cortar informação necessária.`;
+        return `\n5.8 EXTENSÃO CALIBRADA PELA MÉDIA REAL DO ENEM: o tamanho de textoBase (meta ~${cal.texto[2]} caracteres, faixa típica ${cal.texto[0]}–${cal.texto[1]}), de comando (meta ~${cal.comando[2]}, faixa ${cal.comando[0]}–${cal.comando[1]}) e de cada alternativa A-E (meta ~${cal.item[2]} cada, faixa ${cal.item[0]}–${cal.item[1]}) está compatível com a média real de "${calKey}" no ENEM, e o item cabe no tempo médio de três minutos de resolução previsto pelo Guia do Inep. Se algum campo estiver muito fora dessas faixas, ajuste-o preservando o conteúdo pedagógico — sem preenchimento artificial nem corte de informação necessária.`;
       })()
     : "";
-  const criterioAntiGeneralizacao = `\n16. LINGUAGEM ABSOLUTISTA/TOTALIZANTE (verifique as 5 alternativas, uma a uma): nenhuma alternativa — nem a correta, nem as 4 erradas — pode conter palavras/expressões como "apoio irrestrito", "somente e exclusivamente", "completamente", "rejeição completa", "negam qualquer participação", "integralmente", "drasticamente", "todos", "totalmente", "nunca", "sempre", "sem exceção", "de forma alguma", "em absoluto", "unicamente", "jamais" ou equivalentes. Esse tipo de termo funciona como uma pista lexical que permite ao candidato descartar ou marcar a alternativa só pelo tom, sem precisar do conteúdo — o que nivela questões fáceis, médias e difíceis para baixo. Se encontrar algum termo desses em qualquer alternativa, reescreva-a mantendo exatamente o mesmo erro de raciocínio (ou a mesma ideia, se for a correta), porém expresso em linguagem comedida, específica e no mesmo registro das demais alternativas — a dificuldade deve vir da necessidade de interpretar, problematizar, analisar e contextualizar, nunca de um advérbio ou pronome totalizante.
-17. TEXTO-SUPORTE NEUTRO E SEM ECO LEXICAL: confirme que o textoBase apenas apresenta informação/dado/situação/trecho para o candidato interpretar, e que em nenhum momento formula, parafraseia antecipadamente ou sinaliza explicitamente a conclusão que o comando pede como resposta. Confirme também que o textoBase não repete o mesmo vocabulário/palavras-chave que aparecem só na alternativa correta (pista por associação lexical). Se o texto-suporte já entrega, mesmo que indiretamente, a inferência que deveria ser o objeto do raciocínio da questão, ou ecoa vocabulário exclusivo da alternativa correta, reescreva-o removendo esse direcionamento, mantendo apenas o material bruto necessário para que a ponte até a resposta seja construída pelo próprio candidato.
-18. COMANDO NÃO REVELA A ESTRATÉGIA DE RESOLUÇÃO: confirme que o comando apresenta a tarefa cognitiva a ser realizada, mas não indica explicitamente qual conceito, fórmula, dado ou caminho de raciocínio conduz diretamente ao gabarito. Se o comando estiver "entregando" a estratégia de resolução (não apenas o que se pede, mas como chegar lá), reescreva-o de forma mais neutra, preservando a clareza sobre o que está sendo pedido.
-19. PARIDADE TÉCNICA E DE ELABORAÇÃO ENTRE ALTERNATIVAS: além de extensão e estrutura sintática parecidas, confirme que as 5 alternativas têm nível de elaboração e precisão técnica equivalentes — a alternativa correta não pode ser a mais longa, mais detalhada ou mais cuidadosamente redigida, nem os distratores podem parecer rasos, genéricos ou mal elaborados em comparação com ela. Se houver esse desequilíbrio, reescreva as alternativas mais fracas com o mesmo nível de cuidado técnico da mais forte (sem torná-las corretas).
-20. JUSTIFICATIVA CONCEITUAL DOS COMENTÁRIOS: em analiseAlternativas, confirme que o "comentario" de cada alternativa errada explica o erro em termos de raciocínio/conteúdo (leitura parcial real, inversão real, confusão conceitual real, etapa de cálculo perdida etc.), nunca apontando apenas que a alternativa "usa uma palavra absoluta/extrema" como se essa fosse a causa do erro — a palavra pode ter sido removida pelo critério 16, mas o comentário sempre precisa explicar o raciocínio equivocado em si.
-21. DIFERENCIAÇÃO REAL DE DIFICULDADE: confirme que o nível "${dificuldade}" desta questão está refletido na complexidade cognitiva real exigida (profundidade de análise, número de relações conceituais a articular, grau de interpretação/contextualização) — nunca em pistas linguísticas nas alternativas. Uma questão fácil deve ser fácil pelo raciocínio simples que exige, não por ter distratores marcados por linguagem óbvia/extrema; uma questão difícil deve ser difícil pela profundidade exigida, não por ter alternativas mal disfarçadas.`;
-  return `Revise a questão JSON abaixo (elaborada por você mesmo) contra estes critérios pedagógicos, um a um:
-1. Existe somente uma alternativa correta e inequívoca.
-2. Não há alternativas ambíguas ou defensáveis como corretas além do gabarito.
-3. Os quatro distratores são plausíveis, cada um representando um erro de raciocínio específico (nunca aleatório).
-4. O conteúdo científico/conceitual está correto.
-5. A questão realmente corresponde ao nível de dificuldade solicitado.
-6. A competência indicada é adequada à operação cognitiva exigida pela questão.
-7. A habilidade indicada é adequada à operação cognitiva exigida pela questão.
-8. A questão tem as características estruturais do ENEM: texto-suporte com fonte citada, comando indireto (não pede repetição literal), 5 alternativas com extensão/estrutura parecidas.
-9. Se há gráfico, tabela ou imagem, os dados/descrição são coerentes com o enunciado e efetivamente necessários para a resolução (não decorativos).
-10. Todas as informações necessárias para resolver a questão estão disponíveis no texto-base, no comando ou no recurso visual.
-11. Não há pistas involuntárias (ex.: alternativa correta com tamanho, redação, grau de detalhe ou registro de linguagem muito diferente das demais) que entreguem a resposta sem raciocínio.
-12. A resposta exige interpretação/raciocínio, não apenas memorização direta de um fato isolado.
-13. O comando NÃO contém nenhum ponto de interrogação (?) em nenhuma parte do seu texto — é sempre uma frase afirmativa/declarativa que se completa com as alternativas, nunca uma pergunta direta. Se encontrar um "?", reescreva o comando na forma declarativa (ex.: "Qual é o valor de x?" vira "O valor de x corresponde a").${criterioFontesReais}${criterioExtensao}${criterioAntiGeneralizacao}
 
-Se ALGUM critério não for plenamente atendido, reescreva a questão inteira corrigindo o problema, mantendo o mesmo tema, dificuldade e recurso visual solicitados. Se todos os critérios já estiverem atendidos, apenas devolva a mesma questão.
+  return `Você é agora o REVISOR TÉCNICO-PEDAGÓGICO do item abaixo, que você mesmo elaborou. Aplique o PROTOCOLO OBRIGATÓRIO DE REVISÃO E VALIDAÇÃO baseado na Ficha de Revisão de Item do Inep/MEC, analisando CADA critério um a um, de forma ao mesmo tempo global e detalhada. Nenhum item pode ser aprovado com qualquer critério não atendido.
 
-QUESTÃO A REVISAR:
+═══════ ETAPA 1 — GATE DE FALHAS FATAIS (verifique ANTES de tudo) ═══════
+Conforme o Guia do Inep, o item é DEVOLVIDO PARA REFORMULAÇÃO se apresentar qualquer um destes problemas. Encontrando QUALQUER um deles, você é OBRIGADO a REESCREVER O ITEM INTEIRO — correção pontual é proibida neste caso:
+F1. O item não atende a nenhuma habilidade da Matriz de Referência, ou atende a mais de uma (o item deve contemplar UMA ÚNICA habilidade).
+F2. Há erro conceitual, factual, numérico ou de unidade em qualquer parte do item.
+F3. Há mais de um gabarito defensável, ou nenhuma alternativa é inequivocamente correta.
+F4. Falta justificativa para alguma alternativa, ou alguma justificativa é insuficiente/tautológica.
+F5. Há recurso visual (gráfico/tabela/imagem) ilegível, incoerente com o enunciado, meramente decorativo, ou cujos dados não sustentam a resolução comentada.
+F6. Falta referência bibliográfica quando ela é necessária.
+F7. O enunciado não apresenta problematização satisfatória, ou não explicita UM ÚNICO problema a ser resolvido.
+
+═══════ ETAPA 2 — FICHA DE REVISÃO (5 blocos) ═══════
+
+▸ BLOCO 1 — ASPECTOS FORMAIS
+1.1 O item indica a habilidade da Matriz (código e texto oficial completo).
+1.2 O item indica a competência de área (número e texto oficial completo).
+1.3 O item indica o nível de dificuldade, e este é o solicitado ("${dificuldade}").
+1.4 O item indica o gabarito de forma explícita e única.
+1.5 O item apresenta texto-base.
+1.6 O item apresenta referência bibliográfica completa do texto-base, no formato ABNT/ENEM (ou NA quando o texto-base for situação hipotética formulada pelo elaborador, o que só é permitido nas disciplinas em que fonte fictícia é autorizada).
+1.7 O item apresenta enunciado (comando).
+1.8 O item apresenta exatamente 5 alternativas (A-E).
+1.9 O item apresenta justificativa para CADA uma das 5 alternativas.
+
+▸ BLOCO 2 — COMPOSIÇÃO DO TEXTO-BASE
+2.1 O texto-base é adequado em termos de coesão e coerência.
+2.2 A referência utilizada é fidedigna — recuperável em pesquisa na Internet ou em material impresso de ampla divulgação — e não é livro didático (fonte proibida pelo Guia).
+2.3 O vocabulário e as situações utilizadas são NACIONALMENTE conhecidos (sem regionalismos ou referências locais que desfavoreçam parte dos candidatos).
+2.4 Havendo imagem/gráfico/tabela, é pertinente, de boa qualidade, legível e efetivamente necessária à resolução (nunca decorativa); todo dado citado como visível está de fato representado.
+2.5 O texto-base contém TODAS as informações necessárias à resolução e está livre de elementos meramente acessórios que gerem ambiguidade ou consumam tempo de leitura sem função; não exige informação simplesmente decorada (fórmula, data, nome, termo isolado).${criterioFontesReais}
+
+▸ BLOCO 3 — COMPOSIÇÃO DO ENUNCIADO
+3.1 O enunciado apresenta claramente o que deve ser solucionado.
+3.2 A problematização proposta pelo enunciado é satisfatória e explicita UM ÚNICO problema.
+3.3 O vocabulário e as situações do enunciado são nacionalmente conhecidos.
+3.4 O enunciado NÃO apresenta informações adicionais ou complementares ao texto-base — ele considera exatamente a totalidade das informações já oferecidas. (Se algum dado necessário à resolução aparece só no comando, mova-o para o texto-base.)
+3.5 O enunciado NÃO contém os termos "falso", "exceto", "incorreto", "não", "errado" nem qualquer formulação por negação.
+3.6 O enunciado NÃO contém termos absolutos ("sempre", "nunca", "todo", "totalmente", "absolutamente", "completamente", "somente").
+3.7 O enunciado NÃO usa as sentenças proibidas "Pode-se afirmar que" / "É correto afirmar que" nem equivalentes; usa termos impessoais ("considere-se", "calcula-se", "argumenta-se", "estima-se").
+3.8 O enunciado NÃO contém ponto de interrogação (?) — é sempre frase declarativa que se completa com as alternativas. Se encontrar "?", reescreva na forma declarativa (ex.: "Qual é o valor de x?" vira "O valor de x corresponde a").
+
+▸ BLOCO 4 — COMPOSIÇÃO DAS ALTERNATIVAS E DAS JUSTIFICATIVAS
+4.1 As alternativas relacionam-se com o enunciado e o texto-base, sem configurar proposições independentes.
+4.2 Há gabarito, e a indicação do gabarito é correta.
+4.3 O gabarito é ÚNICO — nenhuma outra alternativa é defensável como correta.
+4.4 O gabarito é claro e NÃO é mais atrativo que os distratores (não é o mais completo, o mais qualificado, o mais detalhado nem o mais bem redigido).
+4.5 Os quatro distratores são PLAUSÍVEIS: cada um retrata uma hipótese de raciocínio efetivamente utilizada por um estudante na busca da solução (preferencialmente um erro comum de ensino-aprendizagem), é tecnicamente bem elaborado e não é absurdo, grosseiro nem facilmente eliminável.
+4.6 Os distratores são claros, SEM INDUÇÃO AO ERRO — nenhum é uma "pegadinha" que faz o candidato errar por desatenção a um detalhe, em vez de por não dominar a habilidade testada.
+4.7 As alternativas apresentam paralelismo sintático e semântico.
+4.8 As alternativas foram redigidas SEM TERMOS ABSOLUTOS. Nenhuma delas — nem a correta, nem as 4 erradas — contém "apoio irrestrito", "somente e exclusivamente", "completamente", "rejeição completa", "negam qualquer participação", "integralmente", "drasticamente", "todos", "totalmente", "nunca", "sempre", "sem exceção", "de forma alguma", "em absoluto", "unicamente", "qualquer", "jamais" ou equivalentes. Esse tipo de termo é pista lexical: permite descartar ou marcar a alternativa só pelo tom, sem o conteúdo, nivelando por baixo qualquer nível de dificuldade. Encontrando algum, reescreva a alternativa mantendo EXATAMENTE o mesmo erro de raciocínio (ou a mesma ideia, se for a correta), porém em linguagem comedida e específica, no mesmo registro das demais.
+4.9 As alternativas apresentam extensão equivalente entre si.
+4.10 As alternativas seguem uma sequência lógica: valores numéricos em ordem crescente (ou decrescente) de A a E; alternativas verbais em ordem narrativa, cronológica ou alfabética quando houver ordem natural.
+4.11 As alternativas são independentes entre si — não mutuamente excludentes, não negam informações do texto, não são semanticamente muito próximas; nenhuma usa "todas as anteriores"/"nenhuma das anteriores"; nenhuma repete desnecessariamente palavras do enunciado.
+4.12 As justificativas são corretas, válidas e NÃO TAUTOLÓGICAS: cada uma informa exatamente por que aquela alternativa é ou não a resposta correta, nomeando o tipo de distrator e explicando EM TERMOS CONCEITUAIS o raciocínio, o conceito, a etapa de cálculo ou a leitura equivocada que a produz. É proibido justificar a incorreção apenas apontando que a alternativa "usa uma palavra absoluta/extrema" — a palavra não é o motivo do erro, o raciocínio é.
+4.13 A pontuação e a grafia das alternativas seguem a regra da área. Como o comando é sempre declarativo aqui, o caso padrão é "alternativa que complementa a sentença do enunciado": inicie em minúscula e finalize com ponto final — exceto alternativas exclusivamente numéricas/simbólicas de Matemática, Física e Química, em que se apresenta apenas o valor com sua unidade.
+
+▸ BLOCO 5 — ADEQUAÇÃO GLOBAL DO ITEM
+5.1 O item atende à habilidade indicada — a operação cognitiva realmente exigida corresponde ao "saber fazer" descrito na habilidade, não apenas ao assunto de superfície.
+5.2 O item atende à competência de área indicada.
+5.3 O item é ISENTO DE ERROS CONCEITUAIS. Reconfira todo dado científico, histórico, estatístico, numérico, gráfico, tabular, de fonte, de autoria, de data e de unidade de medida; confirme a coerência entre texto-base, recurso visual, alternativas e resolução comentada.
+5.4 O item é CONTEXTUALIZADO: configura uma situação-problema autêntica que permeia toda a estrutura (do texto-base às alternativas), e não uma questão tradicional de conteúdo acompanhada de um texto decorativo. O item forma UMA unidade de proposição, com coesão e coerência entre texto-base, enunciado e alternativas, explicitando uma única situação-problema e abordagem homogênea de conteúdo.
+5.5 O item é isento de informações preconceituosas, controversas ou polêmicas.
+5.6 O nível de dificuldade indicado ("${dificuldade}") é adequado E decorre da COMPLEXIDADE COGNITIVA REAL exigida (profundidade de análise, número de relações conceituais a articular, grau de interpretação e contextualização) — NUNCA de pistas linguísticas, obscuridade textual, pegadinhas ou alternativas mal construídas. Uma questão fácil é fácil pelo raciocínio simples que exige, não por ter distratores óbvios; uma difícil é difícil pela profundidade exigida, não por ter alternativas mal disfarçadas.
+5.7 O item está de acordo com a norma padrão da língua portuguesa e é isento de ambiguidade, dupla interpretação e informações desnecessárias.${criterioExtensao}
+5.9 A resposta exige interpretação, análise, comparação, aplicação, inferência ou resolução de problema — nunca memorização direta de um fato isolado.
+5.10 TEXTO-BASE NEUTRO E SEM ECO LEXICAL: o texto-base apenas apresenta material para o candidato interpretar; em nenhum momento formula, parafraseia antecipadamente ou sinaliza a conclusão que o comando pede como resposta, nem repete o vocabulário/palavras-chave que aparecem só na alternativa correta (pista por associação lexical). Se entregar a inferência que deveria ser o objeto do raciocínio, ou ecoar vocabulário exclusivo do gabarito, reescreva-o mantendo apenas o material bruto necessário para que a ponte até a resposta seja construída pelo próprio candidato.
+5.11 COMANDO NÃO REVELA A ESTRATÉGIA DE RESOLUÇÃO: o comando apresenta a tarefa cognitiva a ser realizada, mas não indica qual conceito, fórmula, dado ou caminho de raciocínio conduz diretamente ao gabarito. Se estiver entregando a estratégia (não apenas o que se pede, mas como chegar lá), reescreva-o de forma mais neutra, preservando a clareza sobre o que está sendo pedido.
+5.12 PARIDADE TÉCNICA E DE ELABORAÇÃO: as 5 alternativas têm nível de elaboração e precisão técnica equivalentes — a correta não é a mais longa, mais detalhada ou mais bem redigida, nem os distratores parecem rasos, genéricos ou mal elaborados em comparação com ela. Havendo desequilíbrio, reescreva as mais fracas com o mesmo cuidado técnico da mais forte, sem torná-las corretas.
+
+═══════ ETAPA 3 — SÍNTESE DA REVISÃO ═══════
+Se QUALQUER critério das etapas 1 e 2 não for plenamente atendido, REESCREVA o item corrigindo o problema — integralmente quando se tratar de falha fatal (F1-F7) — mantendo o mesmo tema, o mesmo nível de dificuldade e o mesmo recurso visual solicitados. Se todos os critérios já estiverem atendidos, devolva o mesmo item sem alterações. Devolva SEMPRE o item completo no formato JSON especificado ao final, nunca um relatório da revisão.
+
+ITEM A REVISAR:
 __DRAFT_JSON__
 
 ${JSON_SCHEMA_TXT}`;
