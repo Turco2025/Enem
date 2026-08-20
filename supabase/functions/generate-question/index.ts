@@ -102,8 +102,19 @@ function jsonResponse(body: unknown, status = 200) {
 
 /* ---------------- Prompt building (porta fiel da lógica do app cliente) ---------------- */
 
+// Objetos de conhecimento oficiais (Anexo da Matriz de Referência do ENEM), por área.
+// Vão no PROMPT DO SISTEMA — e não no prompt do usuário — para que tanto a chamada de
+// geração quanto a de revisão enxerguem a mesma lista: o revisor precisa dela para
+// conferir se o objeto declarado pela questão existe de fato na Matriz.
+function buildObjetosConhecimento(area: string): string {
+  const lista = APP_DATA.objetosConhecimento ? APP_DATA.objetosConhecimento[area] : null;
+  if (!Array.isArray(lista) || lista.length === 0) return "";
+  const itens = lista.map((o: string, i: number) => `${i + 1}. ${o}`).join("\n");
+  return `\n\n📚 OBJETOS DE CONHECIMENTO OFICIAIS DESTA ÁREA (Anexo da Matriz de Referência do ENEM) — a questão DEVE declarar exatamente UM deles, no campo "objetoConhecimento", escolhido por ser o recorte de conteúdo que ela efetivamente mobiliza (não por afinidade temática de superfície). Copie literalmente, no campo "objetoConhecimento", um dos títulos da lista abaixo — sem abreviar, parafrasear ou combinar dois deles. É PROIBIDO declarar um objeto de conhecimento que não esteja nesta lista:\n${itens}`;
+}
+
 function buildSystemPrompt(area: string) {
-  return APP_DATA.universalModel + "\n\n" + APP_DATA.areaContext[area];
+  return APP_DATA.universalModel + "\n\n" + APP_DATA.areaContext[area] + buildObjetosConhecimento(area);
 }
 
 const RECURSO_INSTRUCOES: Record<string, string> = {
@@ -158,6 +169,7 @@ const JSON_SCHEMA_TXT = `Responda SOMENTE com um objeto JSON válido (sem markdo
  "dificuldade": "Fácil" | "Médio" | "Difícil",
  "competencia": {"numero": number, "texto": "string (texto oficial completo da competência)"},
  "habilidade": {"codigo": "HXX", "texto": "string (texto oficial completo da habilidade)"},
+ "objetoConhecimento": "string (título do objeto de conhecimento oficial da área, copiado literalmente da lista de OBJETOS DE CONHECIMENTO OFICIAIS apresentada no prompt do sistema — nunca um objeto inventado)",
  "recurso": "nenhum" | "imagem" | "grafico" | "tabela",
  "visual": null ou objeto conforme instruído acima,
  "textoBase": "string (texto-suporte com contextualização; termine com a citação de fonte no formato ENEM — real ou verossímil, EXCETO quando a regra 'PROIBIDO INVENTAR AUTORES OU TEXTOS' abaixo se aplicar à disciplina, caso em que a fonte citada TEM que ser real)",
@@ -251,7 +263,7 @@ function buildValidationChecklist(disciplina: string, dificuldade: string): stri
   const criterioExtensao = calKey
     ? (() => {
         const cal = CALIBRACAO_EXTENSAO[calKey];
-        return `\n5.8 EXTENSÃO CALIBRADA PELA MÉDIA REAL DO ENEM: o tamanho de textoBase (meta ~${cal.texto[2]} caracteres, faixa típica ${cal.texto[0]}–${cal.texto[1]}), de comando (meta ~${cal.comando[2]}, faixa ${cal.comando[0]}–${cal.comando[1]}) e de cada alternativa A-E (meta ~${cal.item[2]} cada, faixa ${cal.item[0]}–${cal.item[1]}) está compatível com a média real de "${calKey}" no ENEM, e o item cabe no tempo médio de três minutos de resolução previsto pelo Guia do Inep. Se algum campo estiver muito fora dessas faixas, ajuste-o preservando o conteúdo pedagógico — sem preenchimento artificial nem corte de informação necessária.`;
+        return `\n5.9 EXTENSÃO CALIBRADA PELA MÉDIA REAL DO ENEM: o tamanho de textoBase (meta ~${cal.texto[2]} caracteres, faixa típica ${cal.texto[0]}–${cal.texto[1]}), de comando (meta ~${cal.comando[2]}, faixa ${cal.comando[0]}–${cal.comando[1]}) e de cada alternativa A-E (meta ~${cal.item[2]} cada, faixa ${cal.item[0]}–${cal.item[1]}) está compatível com a média real de "${calKey}" no ENEM, e o item cabe no tempo médio de três minutos de resolução previsto pelo Guia do Inep. Se algum campo estiver muito fora dessas faixas, ajuste-o preservando o conteúdo pedagógico — sem preenchimento artificial nem corte de informação necessária.`;
       })()
     : "";
 
@@ -264,7 +276,7 @@ F2. Há erro conceitual, factual, numérico ou de unidade em qualquer parte do i
 F3. Há mais de um gabarito defensável, ou nenhuma alternativa é inequivocamente correta.
 F4. Falta justificativa para alguma alternativa, ou alguma justificativa é insuficiente/tautológica.
 F5. Há recurso visual (gráfico/tabela/imagem) ilegível, incoerente com o enunciado, meramente decorativo, ou cujos dados não sustentam a resolução comentada.
-F6. Falta referência bibliográfica quando ela é necessária.
+F6. Falta referência bibliográfica quando ela é necessária, ou o objeto de conhecimento declarado não existe na lista oficial da área (foi inventado).
 F7. O enunciado não apresenta problematização satisfatória, ou não explicita UM ÚNICO problema a ser resolvido.
 
 ═══════ ETAPA 2 — FICHA DE REVISÃO (5 blocos) ═══════
@@ -273,12 +285,13 @@ F7. O enunciado não apresenta problematização satisfatória, ou não explicit
 1.1 O item indica a habilidade da Matriz (código e texto oficial completo).
 1.2 O item indica a competência de área (número e texto oficial completo).
 1.3 O item indica o nível de dificuldade, e este é o solicitado ("${dificuldade}").
-1.4 O item indica o gabarito de forma explícita e única.
-1.5 O item apresenta texto-base.
-1.6 O item apresenta referência bibliográfica completa do texto-base, no formato ABNT/ENEM (ou NA quando o texto-base for situação hipotética formulada pelo elaborador, o que só é permitido nas disciplinas em que fonte fictícia é autorizada).
-1.7 O item apresenta enunciado (comando).
-1.8 O item apresenta exatamente 5 alternativas (A-E).
-1.9 O item apresenta justificativa para CADA uma das 5 alternativas.
+1.4 O item indica o objeto de conhecimento (campo "objetoConhecimento"), copiado literalmente de um item da lista oficial da área apresentada no prompt do sistema.
+1.5 O item indica o gabarito de forma explícita e única.
+1.6 O item apresenta texto-base.
+1.7 O item apresenta referência bibliográfica completa do texto-base, no formato ABNT/ENEM (ou NA quando o texto-base for situação hipotética formulada pelo elaborador, o que só é permitido nas disciplinas em que fonte fictícia é autorizada).
+1.8 O item apresenta enunciado (comando).
+1.9 O item apresenta exatamente 5 alternativas (A-E).
+1.10 O item apresenta justificativa para CADA uma das 5 alternativas.
 
 ▸ BLOCO 2 — COMPOSIÇÃO DO TEXTO-BASE
 2.1 O texto-base é adequado em termos de coesão e coerência.
@@ -305,7 +318,7 @@ F7. O enunciado não apresenta problematização satisfatória, ou não explicit
 4.5 Os quatro distratores são PLAUSÍVEIS: cada um retrata uma hipótese de raciocínio efetivamente utilizada por um estudante na busca da solução (preferencialmente um erro comum de ensino-aprendizagem), é tecnicamente bem elaborado e não é absurdo, grosseiro nem facilmente eliminável.
 4.6 Os distratores são claros, SEM INDUÇÃO AO ERRO — nenhum é uma "pegadinha" que faz o candidato errar por desatenção a um detalhe, em vez de por não dominar a habilidade testada.
 4.7 As alternativas apresentam paralelismo sintático e semântico.
-4.8 As alternativas foram redigidas SEM TERMOS ABSOLUTOS. Nenhuma delas — nem a correta, nem as 4 erradas — contém "apoio irrestrito", "somente e exclusivamente", "completamente", "rejeição completa", "negam qualquer participação", "integralmente", "drasticamente", "todos", "totalmente", "nunca", "sempre", "sem exceção", "de forma alguma", "em absoluto", "unicamente", "qualquer", "jamais" ou equivalentes. Esse tipo de termo é pista lexical: permite descartar ou marcar a alternativa só pelo tom, sem o conteúdo, nivelando por baixo qualquer nível de dificuldade. Encontrando algum, reescreva a alternativa mantendo EXATAMENTE o mesmo erro de raciocínio (ou a mesma ideia, se for a correta), porém em linguagem comedida e específica, no mesmo registro das demais.
+4.8 As alternativas foram redigidas SEM TERMOS ABSOLUTOS. Nenhuma delas — nem a correta, nem as 4 erradas — contém "apoio irrestrito", "somente e exclusivamente", "completamente", "rejeição completa", "negam qualquer participação", "integralmente", "drasticamente", "todos", "totalmente", "nunca", "sempre", "sem exceção", "de forma alguma", "em absoluto", "unicamente", "somente", "exclusivamente", "qualquer", "jamais" ou equivalentes. Esse tipo de termo é pista lexical: permite descartar ou marcar a alternativa só pelo tom, sem o conteúdo, nivelando por baixo qualquer nível de dificuldade. Encontrando algum, reescreva a alternativa mantendo EXATAMENTE o mesmo erro de raciocínio (ou a mesma ideia, se for a correta), porém em linguagem comedida e específica, no mesmo registro das demais.
 4.9 As alternativas apresentam extensão equivalente entre si.
 4.10 As alternativas seguem uma sequência lógica: valores numéricos em ordem crescente (ou decrescente) de A a E; alternativas verbais em ordem narrativa, cronológica ou alfabética quando houver ordem natural.
 4.11 As alternativas são independentes entre si — não mutuamente excludentes, não negam informações do texto, não são semanticamente muito próximas; nenhuma usa "todas as anteriores"/"nenhuma das anteriores"; nenhuma repete desnecessariamente palavras do enunciado.
@@ -315,15 +328,16 @@ F7. O enunciado não apresenta problematização satisfatória, ou não explicit
 ▸ BLOCO 5 — ADEQUAÇÃO GLOBAL DO ITEM
 5.1 O item atende à habilidade indicada — a operação cognitiva realmente exigida corresponde ao "saber fazer" descrito na habilidade, não apenas ao assunto de superfície.
 5.2 O item atende à competência de área indicada.
-5.3 O item é ISENTO DE ERROS CONCEITUAIS. Reconfira todo dado científico, histórico, estatístico, numérico, gráfico, tabular, de fonte, de autoria, de data e de unidade de medida; confirme a coerência entre texto-base, recurso visual, alternativas e resolução comentada.
-5.4 O item é CONTEXTUALIZADO: configura uma situação-problema autêntica que permeia toda a estrutura (do texto-base às alternativas), e não uma questão tradicional de conteúdo acompanhada de um texto decorativo. O item forma UMA unidade de proposição, com coesão e coerência entre texto-base, enunciado e alternativas, explicitando uma única situação-problema e abordagem homogênea de conteúdo.
-5.5 O item é isento de informações preconceituosas, controversas ou polêmicas.
-5.6 O nível de dificuldade indicado ("${dificuldade}") é adequado E decorre da COMPLEXIDADE COGNITIVA REAL exigida (profundidade de análise, número de relações conceituais a articular, grau de interpretação e contextualização) — NUNCA de pistas linguísticas, obscuridade textual, pegadinhas ou alternativas mal construídas. Uma questão fácil é fácil pelo raciocínio simples que exige, não por ter distratores óbvios; uma difícil é difícil pela profundidade exigida, não por ter alternativas mal disfarçadas.
-5.7 O item está de acordo com a norma padrão da língua portuguesa e é isento de ambiguidade, dupla interpretação e informações desnecessárias.${criterioExtensao}
-5.9 A resposta exige interpretação, análise, comparação, aplicação, inferência ou resolução de problema — nunca memorização direta de um fato isolado.
-5.10 TEXTO-BASE NEUTRO E SEM ECO LEXICAL: o texto-base apenas apresenta material para o candidato interpretar; em nenhum momento formula, parafraseia antecipadamente ou sinaliza a conclusão que o comando pede como resposta, nem repete o vocabulário/palavras-chave que aparecem só na alternativa correta (pista por associação lexical). Se entregar a inferência que deveria ser o objeto do raciocínio, ou ecoar vocabulário exclusivo do gabarito, reescreva-o mantendo apenas o material bruto necessário para que a ponte até a resposta seja construída pelo próprio candidato.
-5.11 COMANDO NÃO REVELA A ESTRATÉGIA DE RESOLUÇÃO: o comando apresenta a tarefa cognitiva a ser realizada, mas não indica qual conceito, fórmula, dado ou caminho de raciocínio conduz diretamente ao gabarito. Se estiver entregando a estratégia (não apenas o que se pede, mas como chegar lá), reescreva-o de forma mais neutra, preservando a clareza sobre o que está sendo pedido.
-5.12 PARIDADE TÉCNICA E DE ELABORAÇÃO: as 5 alternativas têm nível de elaboração e precisão técnica equivalentes — a correta não é a mais longa, mais detalhada ou mais bem redigida, nem os distratores parecem rasos, genéricos ou mal elaborados em comparação com ela. Havendo desequilíbrio, reescreva as mais fracas com o mesmo cuidado técnico da mais forte, sem torná-las corretas.
+5.3 O OBJETO DE CONHECIMENTO declarado é um dos objetos oficiais da área (conferido contra a lista do prompt do sistema, sem invenção nem paráfrase do título) E corresponde ao conteúdo que a questão de fato mobiliza — não apenas a um assunto vizinho ou de afinidade superficial. Se não corresponder, troque pelo objeto correto ou reformule a questão para que ela realmente trate do objeto declarado.
+5.4 O item é ISENTO DE ERROS CONCEITUAIS. Reconfira todo dado científico, histórico, estatístico, numérico, gráfico, tabular, de fonte, de autoria, de data e de unidade de medida; confirme a coerência entre texto-base, recurso visual, alternativas e resolução comentada.
+5.5 O item é CONTEXTUALIZADO: configura uma situação-problema autêntica que permeia toda a estrutura (do texto-base às alternativas), e não uma questão tradicional de conteúdo acompanhada de um texto decorativo. O item forma UMA unidade de proposição, com coesão e coerência entre texto-base, enunciado e alternativas, explicitando uma única situação-problema e abordagem homogênea de conteúdo.
+5.6 O item é isento de informações preconceituosas, controversas ou polêmicas.
+5.7 O nível de dificuldade indicado ("${dificuldade}") é adequado E decorre da COMPLEXIDADE COGNITIVA REAL exigida (profundidade de análise, número de relações conceituais a articular, grau de interpretação e contextualização) — NUNCA de pistas linguísticas, obscuridade textual, pegadinhas ou alternativas mal construídas. Uma questão fácil é fácil pelo raciocínio simples que exige, não por ter distratores óbvios; uma difícil é difícil pela profundidade exigida, não por ter alternativas mal disfarçadas.
+5.8 O item está de acordo com a norma padrão da língua portuguesa e é isento de ambiguidade, dupla interpretação e informações desnecessárias.${criterioExtensao}
+5.10 A resposta exige interpretação, análise, comparação, aplicação, inferência ou resolução de problema — nunca memorização direta de um fato isolado.
+5.11 TEXTO-BASE NEUTRO E SEM ECO LEXICAL: o texto-base apenas apresenta material para o candidato interpretar; em nenhum momento formula, parafraseia antecipadamente ou sinaliza a conclusão que o comando pede como resposta, nem repete o vocabulário/palavras-chave que aparecem só na alternativa correta (pista por associação lexical). Se entregar a inferência que deveria ser o objeto do raciocínio, ou ecoar vocabulário exclusivo do gabarito, reescreva-o mantendo apenas o material bruto necessário para que a ponte até a resposta seja construída pelo próprio candidato.
+5.12 COMANDO NÃO REVELA A ESTRATÉGIA DE RESOLUÇÃO: o comando apresenta a tarefa cognitiva a ser realizada, mas não indica qual conceito, fórmula, dado ou caminho de raciocínio conduz diretamente ao gabarito. Se estiver entregando a estratégia (não apenas o que se pede, mas como chegar lá), reescreva-o de forma mais neutra, preservando a clareza sobre o que está sendo pedido.
+5.13 PARIDADE TÉCNICA E DE ELABORAÇÃO: as 5 alternativas têm nível de elaboração e precisão técnica equivalentes — a correta não é a mais longa, mais detalhada ou mais bem redigida, nem os distratores parecem rasos, genéricos ou mal elaborados em comparação com ela. Havendo desequilíbrio, reescreva as mais fracas com o mesmo cuidado técnico da mais forte, sem torná-las corretas.
 
 ═══════ ETAPA 3 — SÍNTESE DA REVISÃO ═══════
 Se QUALQUER critério das etapas 1 e 2 não for plenamente atendido, REESCREVA o item corrigindo o problema — integralmente quando se tratar de falha fatal (F1-F7) — mantendo o mesmo tema, o mesmo nível de dificuldade e o mesmo recurso visual solicitados. Se todos os critérios já estiverem atendidos, devolva o mesmo item sem alterações. Devolva SEMPRE o item completo no formato JSON especificado ao final, nunca um relatório da revisão.
