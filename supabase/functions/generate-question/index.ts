@@ -14,7 +14,10 @@ const CORS_HEADERS = {
 // nunca é exposta ao navegador nem a quem chama esta função.
 const ANTHROPIC_API_KEY = Deno.env.get("ANTHROPIC_API_KEY");
 const MODEL = Deno.env.get("ANTHROPIC_MODEL") || "claude-sonnet-5";
-const MAX_DAILY_QUESTIONS = Number(Deno.env.get("MAX_DAILY_QUESTIONS") || "500");
+// SEM TETO DIÁRIO (decisão do professor): ausente, 0 ou negativo = ilimitado.
+// Para reativar um limite depois, basta definir MAX_DAILY_QUESTIONS com um número
+// positivo nos secrets do projeto Supabase — não é preciso reimplantar a função.
+const MAX_DAILY_QUESTIONS = Number(Deno.env.get("MAX_DAILY_QUESTIONS") || "0");
 
 const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
 const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -526,6 +529,8 @@ async function callClaudeForJSON(system: string, userMsg: string, enableWebSearc
 /* ---------------- HTTP handler ---------------- */
 
 async function checkDailyCap(): Promise<Response | null> {
+  // Sem limite configurado: não consulta o log nem bloqueia nada.
+  if (!Number.isFinite(MAX_DAILY_QUESTIONS) || MAX_DAILY_QUESTIONS <= 0) return null;
   try {
     const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
     const { count, error: countErr } = await supabase
