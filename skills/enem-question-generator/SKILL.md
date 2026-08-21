@@ -51,6 +51,8 @@ Se faltar alguma dessas informações, você pode prosseguir com valores razoáv
 
    Use esses exemplos reais **apenas como referência de estilo e nível de dificuldade** — nunca copie um enunciado real; a questão entregue precisa ser inédita (ver `references/formato_saida.md`, regra 1).
 
+   Quando a questão pedir um recurso visual do tipo **imagem/ilustração**, leia `references/especificacao_imagem.md` antes de escrever o campo `promptImagem` — o gerador de imagens não lê a questão e desenha apenas o que estiver especificado, de modo que direção de seta, posição de rótulo e valor numérico precisam ser declarados explicitamente.
+
    Consulte também `references/calibracao_extensao.md` — traz a extensão real (em caracteres) de texto-suporte, comando e alternativas, calculada por disciplina a partir de milhares de questões reais, para calibrar o tamanho da questão que você vai escrever no passo 6.
 
 5. **Calibre a dificuldade pela complexidade cognitiva, nunca por pista linguística.** Nível fácil: comando direto, texto-suporte curto, distratores mais diretos (tipicamente tipo 1 ou 5 do catálogo), mas ainda assim plausíveis e no mesmo registro das demais alternativas. Nível médio: exige uma etapa de inferência ou cálculo. Nível difícil: exige combinar duas ou mais informações do texto-suporte, ou um distrator do tipo "erro de processo"/"verdade parcial" muito próximo da resposta certa (armadilha fina). A diferença entre os três níveis nunca pode vir do tom das alternativas (mais "óbvias" vs. mais "comedidas") — ver `references/modelo_construcao_enem.md`, seção 4.2.
@@ -70,6 +72,7 @@ Se faltar alguma dessas informações, você pode prosseguir com valores razoáv
    - O texto-suporte apenas apresenta material para interpretação — não formula nem antecipa, em nenhum momento, a conclusão que o comando pede como resposta.
    - Cada comentário de alternativa errada nomeia o tipo de distrator e explica o raciocínio equivocado em termos conceituais — nunca apontando só que a alternativa "usa uma palavra absoluta" como se essa fosse a causa do erro.
    - A diferença de dificuldade entre questões fácil/médio/difícil está na complexidade cognitiva exigida, não em pistas linguísticas nas alternativas (`references/modelo_construcao_enem.md`, seção 4.2).
+   - Havendo **imagem/ilustração**, o `promptImagem` traz as 8 seções do protocolo de `references/especificacao_imagem.md`; **cada seta** declara origem, destino, posição da ponta e direção na tela (nenhuma seta genérica do tipo "arrow between A and B"); **cada rótulo** traz texto exato entre aspas, elemento dono e lado; **todo texto visível está em português**; e **todo número** citado no texto-base, no comando, nas alternativas ou na resolução comentada aparece com o mesmo valor na especificação da imagem.
    - A habilidade e a competência citadas realmente correspondem ao que a questão exige fazer, não apenas ao assunto.
    - O **objeto de conhecimento** declarado consta do Anexo da Matriz (não foi inventado nem parafraseado) e corresponde ao conteúdo efetivamente mobilizado pela questão.
    - Cada distrator tem uma lógica de erro identificável e diferente das outras (não repita a mesma estratégia de distrator nas 4 alternativas erradas de uma mesma questão).
