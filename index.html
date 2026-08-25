@@ -475,7 +475,20 @@ async function generateImageViaBackend(promptText){
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
-      prompt: `Ilustração educacional em MÁXIMA QUALIDADE para uma questão de vestibular (estilo ENEM). Use o estilo mais adequado à cena, entre estes dois, mas sempre com o máximo de qualidade: (1) ULTRA REALISTA e ULTRA DEFINIÇÃO — fotorrealismo hiper-detalhado, alta resolução (nível 8K/4K), iluminação profissional, texturas e detalhes nítidos; ou (2) renderização 3D SEMI-REALISTA de altíssima qualidade — modelagem 3D moderna, texturas ricas, iluminação e sombreamento suaves e realistas, acabamento profissional de estúdio de animação. Em ambos os casos: máxima riqueza de detalhes, nitidez e acabamento profissional, sem elementos borrados, pixelizados ou de baixa qualidade. Não inclua textos decorativos soltos, legendas ou marcas d'água sobrepostas na imagem SEM função — EXCETO números, rótulos ou marcações que sejam um dado referencial essencial da cena descrita abaixo (ex.: valores numéricos em uma régua/escala graduada, marcações de eixo, rótulos de unidade de medida): se a cena descrita mencionar esse tipo de marcação, ela DEVE aparecer desenhada de forma nítida, legível e corretamente posicionada na imagem, pois é indispensável para resolver a questão. Cena: ${promptText}`,
+      prompt: `Ilustração educacional de MÁXIMA QUALIDADE para uma questão de vestibular (padrão ENEM). A imagem tem DUAS CAMADAS, e as duas são obrigatórias.
+
+CAMADA 1 — BASE CINEMATOGRÁFICA: ultra-realistic 4K/8K photography, ultra definition, razor-sharp focus on the subject, cinematic composition, dramatic directional natural lighting, rich material textures and micro-detail, deep saturated color, atmospheric depth of field, epic sense of scale and grandeur — no padrão visual de National Geographic, BBC Earth, Planet Earth e projeção IMAX. Acabamento profissional de fotografia documental de museu. Nada chapado, genérico, borrado, pixelizado ou com cara de clipart.
+
+CAMADA 2 — CAMADA DE ANOTAÇÃO: por cima da cena, uma sobreposição gráfica limpa e vetorial, em estilo de infográfico moderno com princípios de UI/UX — clean vector annotation overlay, consistent labeling system, clear visual hierarchy, clean sans-serif typography at consistent sizes, thin leader lines, generous spacing, high contrast against the scene, e halo suave ou tarja translúcida sutil atrás do texto onde o fundo estiver detalhado. Ela carrega as setas, os rótulos e as marcações de medida descritos na cena abaixo.
+
+REGRA DE PRECEDÊNCIA: the cinematic scene must never obscure the annotation layer. Todo rótulo, seta e valor numérico permanece plenamente legível; se a riqueza da cena ameaçar a leitura, é a cena que cede (menos detalhe, área escurecida ou desfocada atrás da anotação, mais espaço na composição).
+
+TEXTO NA IMAGEM: nenhum texto decorativo, legenda solta, assinatura ou marca d'água. Os únicos textos permitidos são os rótulos, números e marcações descritos na cena abaixo — esses são obrigatórios, precisam aparecer desenhados de forma nítida, legível e corretamente posicionados, e devem ser renderizados EM PORTUGUÊS, exatamente como escritos, com ortografia correta.
+
+FIDELIDADE: a cena deve refletir exatamente a situação descrita, sem acrescentar elementos espetaculares que não façam parte dela.
+
+Cena: ${promptText}`,
+
       size: "1536x1024",
     }),
   });
