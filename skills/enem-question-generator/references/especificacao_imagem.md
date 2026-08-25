@@ -29,9 +29,13 @@ Nos três casos o gerador não falhou: ele completou uma lacuna que o prompt dei
 Escreva-o **em inglês**, em **8 seções nomeadas**, nesta ordem. Todas obrigatórias.
 
 ### 1. SCENE AND VIEWPOINT
-O que é a figura, em uma frase, e o ponto de vista exato: *front view · side view · top-down view · cross-section · exploded view · three-quarter view*. Declare a orientação absoluta e o fundo.
+O que é a figura, em uma frase, e o ponto de vista exato: *front view · side view · top-down view · cross-section · exploded view · three-quarter view*. Declare a orientação absoluta e o **ambiente**.
 
-> *A cross-section diagram of a plant leaf, side view, cut vertically. The leaf surface is horizontal, upper epidermis at the top, lower epidermis at the bottom. Plain white background, no scenery, no horizon line.*
+Por padrão o ambiente é **real e coerente com a cena**, renderizado com profundidade e atmosfera — não um vazio branco. Ao definir o enquadramento, **reserve deliberadamente uma área visualmente calma** (céu, água, parede, fundo desfocado, espaço negativo) do lado em que os rótulos vão entrar. É assim que um infográfico da National Geographic consegue ser bonito e legível ao mesmo tempo.
+
+> *A cross-section of a living plant leaf, side view, cut vertically, upper epidermis at the top and lower epidermis at the bottom, set against a softly blurred sunlit forest canopy; the upper-right third of the frame is left visually calm for the labels.*
+
+Fundo neutro e liso (`plain white background`) **só** quando a figura for um esquema puramente técnico em que qualquer cenário atrapalharia a leitura: diagrama de circuito, gráfico de eixos, esquema geométrico.
 
 ### 2. ELEMENT INVENTORY
 Lista numerada de **todos** os elementos, com **quantidade explícita**. O gerador tende a inventar elementos extras; contar reduz isso. Nada fora desta lista pode aparecer.
@@ -88,17 +92,31 @@ Se a questão depende de dado referencial (régua, escala, marcações de altura
 
 Os valores desenhados devem ser **exatamente** os mesmos usados no texto-base, no comando, nas alternativas e na resolução comentada — nunca aproximados nem arredondados de outra forma.
 
-### 7. STYLE AND LEGIBILITY
+### 7. STYLE AND LEGIBILITY — as duas camadas
 
-Linhas nítidas, contornos definidos, alto contraste entre vizinhos, **cores distintas e nomeadas** para elementos que a questão pede para comparar, espaço em branco ao redor de cada rótulo.
+A imagem tem **duas camadas**, e as duas são obrigatórias.
 
-> *Quando a figura tiver rótulos, setas ou marcações de medida, a legibilidade técnica tem prioridade sobre o realismo decorativo.*
+**▸ Camada 1 — base cinematográfica.** É o que dá beleza e impacto. Padrão de fotografia e renderização de documentário de primeira linha: **National Geographic, BBC Earth, Planet Earth, projeção IMAX**.
+
+> *ultra-realistic 4K/8K photography, ultra definition, razor-sharp focus on the subject, cinematic composition, dramatic directional natural lighting, rich material textures and micro-detail, deep saturated color, atmospheric depth of field, epic sense of scale and grandeur, museum-quality documentary photography*
+
+**▸ Camada 2 — camada de anotação.** É o que dá precisão. Por cima da cena, uma sobreposição gráfica limpa e vetorial com as setas (§4), os rótulos (§5) e as marcações (§6), seguindo princípios de **UI/UX**: hierarquia visual clara, tipografia sans-serif de tamanhos consistentes, sistema de cores coerente (mesma cor para o mesmo tipo de elemento), espaçamento generoso, contraste garantido contra o que está atrás.
+
+> *clean vector annotation overlay in modern UI/UX infographic style, consistent labeling system, clear visual hierarchy, thin leader lines, generous spacing, high contrast between annotation and background, subtle translucent backing plates or soft halo behind text wherever the scene behind it is busy*
+
+**▸ Regra de precedência — não negociável.** A Camada 1 nunca prejudica a Camada 2. Se a riqueza da cena ameaçar a leitura de um número, de um rótulo ou do sentido de uma seta, **é a cena que cede**: menos detalhe naquele ponto, área escurecida ou desfocada atrás da anotação, mais espaço na composição. Escreva isso no prompt:
+
+> *the cinematic scene must never obscure the annotation layer; every label, arrow and numeric mark must remain fully legible*
+
+Uma imagem deslumbrante com a régua ilegível é uma imagem **inútil** para a questão.
+
+**▸ Fidelidade ao conteúdo.** O esplendor visual jamais custa exatidão. A cena reflete **exatamente** a situação-problema: o mesmo objeto, o mesmo processo, o mesmo momento, os mesmos valores. É proibido acrescentar elementos espetaculares que a questão não previu (relâmpagos, erupções, fauna extra, efeitos de luz impossíveis) só para impressionar — tudo que a Camada 1 mostra e a questão não previu vira ruído ou erro conceitual.
 
 ### 8. NEGATIVE CONSTRAINTS
 
 Encerre com o que **não** pode aparecer:
 
-> *No decorative text, no watermark, no signature, no caption bar, no extra arrows, no additional objects beyond those listed above, no duplicated labels, no cropped or cut-off elements, no text in any language other than Portuguese.*
+> *No decorative text, no watermark, no signature, no caption bar, no extra arrows, no additional objects beyond those listed above, no duplicated labels, no cropped or cut-off elements, no text in any language other than Portuguese, no flat clipart or generic cartoon style, no blurry, pixelated or low-detail rendering, no annotation hidden or obscured by the scene.*
 
 ---
 
@@ -111,17 +129,20 @@ Releia a `descricao`, o texto-base, o comando, as alternativas e a resolução c
 - [ ] Todo rótulo tem **texto exato, elemento dono e lado** declarados; todo texto visível está em português.
 - [ ] Todo número citado em qualquer parte da questão aparece com o **mesmo valor** na seção NUMBERS.
 - [ ] Nada foi afirmado na `descricao` que não esteja especificado na imagem — e nenhum dado essencial da imagem ficou fora da `descricao`.
+- [ ] As **duas camadas** estão descritas (base cinematográfica **e** camada de anotação), com a regra de precedência escrita no prompt.
+- [ ] Nenhum elemento espetacular alheio à questão foi acrescentado só por impacto visual.
 
 ---
 
-## 4. Exemplo completo
+## 4. Exemplo A — esquema técnico (a exceção do fundo liso)
 
 **Questão:** Física, média, sobre energia potencial gravitacional. O comando pergunta em qual altura a esfera tem o dobro da energia potencial que tem a 5 m.
 
 ```
 SCENE AND VIEWPOINT
-A simple physics diagram, front view, showing a vertical drop setup. Plain white
-background, no scenery.
+A clean technical physics diagram, front view, showing a vertical drop setup.
+Plain white background, no scenery — this is a pure schematic, where any
+environment would compete with the ruler.
 
 ELEMENT INVENTORY
 (1) exactly one vertical graduated ruler; (2) exactly one small solid sphere;
@@ -153,8 +174,11 @@ The ruler has exactly four clearly legible labeled tick marks, at 5 m, 10 m,
 of its own tick.
 
 STYLE AND LEGIBILITY
-Sharp clean lines, high contrast, dark linework on white. Technical legibility
-takes priority over decorative realism.
+Sharp clean lines, high contrast, dark linework on white, clean vector annotation
+in modern UI/UX infographic style, consistent labeling system, clear visual
+hierarchy. The sphere itself is rendered photorealistically, with a real material
+surface and soft directional lighting, so the figure still reads as a crafted
+image rather than a flat drawing.
 
 NEGATIVE CONSTRAINTS
 No decorative text, no watermark, no signature, no extra arrows, no additional
@@ -170,3 +194,70 @@ Compare com o que **não** funciona:
 > ❌ *A ball falling from a height with a ruler showing the heights and an arrow indicating the movement.*
 
 Essa frase deixa em aberto: quantos traços tem a régua, quais valores, de que lado ficam impressos, onde está a bola, para onde aponta a seta e em que idioma sai o texto. Seis lacunas, seis chances de erro.
+
+---
+
+## 5. Exemplo B — cena cinematográfica com anotação
+
+**Questão:** Biologia, média, sobre branqueamento de corais. O comando pede o processo que explica a perda de cor observada.
+
+```
+SCENE AND VIEWPOINT
+A shallow tropical coral reef photographed underwater, three-quarter view from
+slightly above, in a single continuous scene. Shafts of sunlight descend from the
+surface at the top of the frame. The upper-right third of the frame is open blue
+water, left visually calm for the annotation layer.
+
+ELEMENT INVENTORY
+(1) exactly one healthy coral colony, vividly colored, in the left foreground;
+(2) exactly one bleached coral colony, stark white, in the right foreground, the
+same species and roughly the same size; (3) exactly two arrows; (4) exactly three
+text labels; (5) exactly one small inset circle magnifying the coral tissue.
+
+LAYOUT AND POSITION
+The healthy colony sits at the lower-left of the frame; the bleached colony sits
+at the lower-right, at the same depth and scale, so the two read as a direct
+comparison. The magnifying inset circle is at the mid-right, above the bleached
+colony, connected to it by a thin leader line.
+
+ARROWS
+One arrow starting at the tissue of the healthy coral and ending at the open
+water above it, with the arrowhead at the upper end and pointing up-right,
+representing the expulsion of the symbiotic algae.
+One arrow starting at the sun shafts at the top of the frame and ending at the
+water surrounding both colonies, with the arrowhead touching the water and
+pointing straight down, representing rising water temperature.
+
+TEXT LABELS
+The label "Coral saudável" placed immediately below the left colony.
+The label "Coral branqueado" placed immediately below the right colony.
+The label "Expulsão das zooxantelas" placed to the right of the inset circle.
+All visible text must be rendered exactly as written above, in Portuguese, with
+correct spelling, in a clear sans-serif typeface, large enough to be read when
+the image is printed at half page width.
+
+NUMBERS, SCALES AND MEASUREMENT MARKS
+None required by this question.
+
+STYLE AND LEGIBILITY
+Layer 1: ultra-realistic 4K/8K underwater photography, ultra definition,
+razor-sharp focus on both colonies, cinematic composition, dramatic directional
+sunlight through water, rich coral textures and micro-detail, deep saturated
+color, atmospheric depth of field, epic sense of scale — National Geographic and
+BBC Earth documentary standard.
+Layer 2: clean vector annotation overlay in modern UI/UX infographic style,
+consistent labeling system, clear visual hierarchy, thin leader lines, generous
+spacing, subtle translucent backing plates behind the text where the reef behind
+it is busy.
+The cinematic scene must never obscure the annotation layer; every label and
+arrow must remain fully legible.
+
+NEGATIVE CONSTRAINTS
+No decorative text, no watermark, no signature, no caption bar, no extra arrows,
+no additional objects beyond those listed above, no duplicated labels, no cropped
+elements, no text in any language other than Portuguese, no flat clipart or
+cartoon style, no blurry or low-detail rendering, no annotation obscured by the
+scene, no extra marine animals or dramatic events the question did not describe.
+```
+
+Repare no que faz este prompt funcionar: a cena é **deslumbrante e fiel** ao mesmo tempo. Os dois corais têm a mesma espécie, o mesmo tamanho e a mesma profundidade — porque a questão pede uma comparação, não um cartão-postal. E o canto superior direito foi reservado desde o enquadramento para a anotação caber sem disputar espaço com o recife.
