@@ -1086,121 +1086,251 @@ function pdfDrawBoxPaginated(doc, ctx, opts, lines, lineHeight, labelHeight, pad
 }
 
 
-/* ================= ANATOMIA DO CADERNO ENEM — versão do aluno =================
+/* ================= ANATOMIA DO CADERNO ENEM 2025 — versão do aluno ============
    System design obrigatório para PDF, DOCX e impressão da VERSÃO DO ALUNO.
-   Todas as medidas vêm da especificação "Anatomia do caderno ENEM" (ENEM 2019,
-   2º dia, Caderno 7, Azul), extraída da geometria vetorial e das fontes
-   incorporadas no PDF oficial do INEP — não de leitura visual aproximada.
+   Todas as medidas vêm de "Anatomia do caderno ENEM" (revisão 2025), levantada
+   sobre o PDF oficial do ENEM 2025 — 2º dia, Caderno 7, Azul (INEP/MEC) — pela
+   geometria vetorial, pelas fontes incorporadas e por amostragem de pixels.
+   Nenhuma medida foi estimada a olho.
 
-   Divergência deliberada de UMA regra do original, a pedido do professor:
-   as ilustrações saem COLORIDAS (o caderno oficial é 100% escala de cinza).
-   Todo o resto — formato, tipografia, grade, cor do texto, componentes — segue
-   a especificação à risca.
+   O que mudou em relação à revisão anterior (que era de 2019): a família passou
+   de Arial para Calibri; a entrelinha caiu de 12,8 para 12,0 pt; as margens
+   passaram a ser espelhadas; o fio da calha virou sólido; o separador de questão
+   migrou de um filete pontilhado ABAIXO para uma barra bicolor ACIMA; o rótulo
+   virou caixa alta; e o miolo ganhou cor.
 
-   A versão do PROFESSOR permanece exatamente como era (caixas coloridas,
-   coluna única, gabarito, resolução e comentários). Nada aqui a afeta.        */
+   A versão do PROFESSOR permanece exatamente como era (caixas coloridas, coluna
+   única, gabarito, resolução e comentários). Nada aqui a afeta.                */
 
 const MM = 72 / 25.4;                       // 1 mm em pontos tipográficos
 
 const ENEM = {
   pageW: 200 * MM,                          // 200 mm — formato próprio do INEP
   pageH: 275 * MM,                          // 275 mm (menor que A4)
-  margTop: 25.6 * MM,                       // filete de cabeçalho
-  margBottom: 12.6 * MM,                    // filete de rodapé até a borda
-  margSide: 10.5 * MM,                      // margem da mancha gráfica
-  gutter: 3.3 * MM,                         // calha central com fio pontilhado
-  indent: 6 * MM,                           // recuo da primeira linha
+
+  // Margens ESPELHADAS: a mancha desliza 2,5 mm conforme a paridade da página.
+  // Página ímpar (mão direita) começa em 8,00 mm; página par, em 10,50 mm.
+  margOdd:  8.00 * MM,
+  margEven: 10.50 * MM,
+
+  manchaW: 182.33 * MM,                     // largura da mancha, igual em toda página
+  colW:    89.47 * MM,                      // 89,47 × 2 + 3,40 = 182,34 mm
+  gutter:   3.40 * MM,
+  flowTop:  28.00 * MM,                     // topo do fluxo das colunas
+  flowBottom: 260.00 * MM,                  // base do fluxo
+  ruleHead: 25.00 * MM,                     // filete de cabeçalho
+  ruleFoot: 263.00 * MM,                    // filete de rodapé
+  segBlue:  49.16 * MM,                     // trecho azul do filete
+  segMicro: 131.54 * MM,                    // trecho de microtexto do filete
+
+  indent:   6.00 * MM,                      // recuo da primeira linha
+  hang:     4.50 * MM,                      // texto da alternativa pendurado
+  ornStart:24.47 * MM,                      // início da barra, a partir da coluna
+  ornEndGap: 0.30 * MM,                     // folga antes da borda direita
+  ornH:     1.06 * MM,                      // altura da faixa
+  ornBlueShare: 0.795,                      // 79,5 % azul, 20,5 % escuro
+
   body: 10,                                 // corpo de texto e alternativas
-  leading: 12.8,                            // entrelinha fixa (1,28× o corpo)
-  qLabel: 11,                               // "Questão N" — bold
-  areaTitle: 12,                            // título de área — bold, caixa alta
-  caption: 8,                               // legendas e fonte bibliográfica
-  ink: [35, 31, 32],                        // #231F20 — preto quente de impressão
-  rule: [99, 101, 106],                     // #63656A — filetes e tarja de registro
+  leading: 12.0,                            // entrelinha do corpo (1,20×)
+  altLeading: 13.4,                         // entrelinha das alternativas (1,34×)
+  qLabel: 11,                               // "QUESTÃO N" — bold, caixa alta
+  areaTitle: 11,                            // título de área — bold, caixa alta
+  caption: 8,                               // referência / fonte bibliográfica
+  footer: 9,                                // rodapé corrido e fólio
+  micro: 1.5,                               // microtexto de segurança
+
+  ink:      [35, 31, 32],                   // #231F20 — preto quente de impressão
+  footGray: [88, 89, 91],                   // #58595B — rodapé corrido
+  ornGray:  [147, 149, 152],                // #939598 — ornamento do cabeçalho
+  azul:     [185, 229, 250],                // #B9E5FA — azul da versão
+  azulTab:  [109, 207, 246],                // #6DCFF6 — cabeçalho de tabela
+  azulLogo: [0, 75, 141],                   // #004B8D — logotipo "enem"
+
+  // O jsPDF não embarca Calibri. A Helvetica é 5,8 % mais larga: medido em 940
+  // linhas reais do caderno, a razão de avanço Calibri/Helvetica é 0,942. Usar
+  // Helvetica a 0,942 × o corpo reproduz a MEDIDA da Calibri (mesma quantidade
+  // de caracteres por linha) e, como a Helvetica tem altura-x maior, o texto
+  // ainda aparenta o tamanho certo. A entrelinha permanece absoluta — ela é
+  // propriedade da grade, não da fonte. No Word, a fonte declarada é Calibri.
+  helvK: 0.942,
 };
-ENEM.colW = (ENEM.pageW - ENEM.margSide * 2 - ENEM.gutter) / 2;   // ≈ 88 mm
 
-// Fio pontilhado — o mesmo traço da calha, do fim de cada questão e do rodapé.
-function enemDottedLine(doc, x1, y, x2){
-  doc.setDrawColor(ENEM.rule[0], ENEM.rule[1], ENEM.rule[2]);
-  doc.setLineWidth(0.4);
-  if(doc.setLineDashPattern) doc.setLineDashPattern([1, 2], 0);
+// Margem esquerda da mancha na página n (1 = primeira página de questões).
+function enemLeft(pageNo){ return (pageNo % 2 === 1) ? ENEM.margOdd : ENEM.margEven; }
+// Lado externo da página: ímpar → direita, par → esquerda.
+function enemOuterIsRight(pageNo){ return pageNo % 2 === 1; }
+
+// Define fonte e corpo já compensados para a substituição Helvetica → Calibri.
+function enemFont(doc, weight, size){
+  doc.setFont("helvetica", weight || "normal");
+  doc.setFontSize(size * ENEM.helvK);
+}
+function enemInk(doc, c){ const k = c || ENEM.ink; doc.setTextColor(k[0], k[1], k[2]); }
+
+// Filete sólido. No caderno 2025 NÃO existe traço pontilhado vetorial: tudo que
+// parece pontilhado é, na verdade, o microtexto de segurança.
+function enemSolidLine(doc, x1, y, x2, w, color){
+  const c = color || ENEM.ink;
+  doc.setDrawColor(c[0], c[1], c[2]);
+  doc.setLineWidth(w == null ? 0.5 : w);
   doc.line(x1, y, x2, y);
-  if(doc.setLineDashPattern) doc.setLineDashPattern([], 0);
 }
 
-// Cabeçalho e rodapé de uma página de questões, mais a calha pontilhada entre
-// as colunas. O código de barras do original alterna de lado a cada página; aqui
-// a tarja de registro cumpre o mesmo papel de marca de controle de impressão.
-function enemPageChrome(doc, ctx){
-  const left = ENEM.margSide;
-  const right = ENEM.pageW - ENEM.margSide;
-  const headY = ENEM.margTop - 8;
-  const footY = ENEM.pageH - ENEM.margBottom + 10;
-
-  enemDottedLine(doc, left, headY, right);
-  enemDottedLine(doc, left, footY, right);
-
-  // Calha central, coluna a coluna.
-  const gx = left + ENEM.colW + ENEM.gutter / 2;
-  doc.setDrawColor(ENEM.rule[0], ENEM.rule[1], ENEM.rule[2]);
-  doc.setLineWidth(0.4);
-  if(doc.setLineDashPattern) doc.setLineDashPattern([1, 2], 0);
-  doc.line(gx, ENEM.margTop, gx, ENEM.pageH - ENEM.margBottom);
-  if(doc.setLineDashPattern) doc.setLineDashPattern([], 0);
-
-  // Título de área no cabeçalho — 12 pt bold, caixa alta.
-  doc.setFont("helvetica", "bold");
-  doc.setFontSize(ENEM.areaTitle);
-  doc.setTextColor(ENEM.ink[0], ENEM.ink[1], ENEM.ink[2]);
-  doc.text(String(ctx.areaLabel || "").toUpperCase(), left, headY - 6);
-
-  // Rodapé — 8 pt, no padrão "CN · 2º dia · Caderno 7 · AZUL · Página 3".
-  doc.setFont("helvetica", "normal");
-  doc.setFontSize(ENEM.caption);
-  doc.setTextColor(ENEM.ink[0], ENEM.ink[1], ENEM.ink[2]);
-  doc.text(ctx.footerText + " · Página " + ctx.pageNo, left, footY + 12);
-
-  // Tarja cinza de registro na margem externa (~30 mm), alternando de lado.
-  const tarjaH = 30 * MM;
-  const tarjaW = 3.2;
-  const tarjaY = ENEM.margTop + 40;
-  const tarjaX = (ctx.pageNo % 2 === 1) ? (right + 2.5) : (left - tarjaW - 2.5);
-  doc.setFillColor(ENEM.rule[0], ENEM.rule[1], ENEM.rule[2]);
-  doc.rect(tarjaX, tarjaY, tarjaW, tarjaH, "F");
+// Microtexto de segurança: a palavra ENEM2025 repetida em 1,5 pt, ocupando
+// 131,54 mm. À vista parece um filete pontilhado; é recurso antifraude.
+function enemMicroText(doc, x, y, width, word){
+  const w = word || "SIMULADO";
+  enemFont(doc, "bold", ENEM.micro);
+  enemInk(doc);
+  const unit = doc.getTextWidth(w);
+  if(!unit || unit <= 0) return;
+  // Uma única linha, sem maxWidth: com quebra automática o filete viraria duas.
+  const n = Math.max(1, Math.floor(width / unit));
+  doc.text(w.repeat(n), x, y);
 }
 
-// Estado do fluxo em 2 colunas. Todo elemento é emitido na coluna corrente e,
-// quando não cabe, escorre para a coluna seguinte — e daí para a próxima página.
-function enemNewFlow(doc, ctx){
-  enemPageChrome(doc, ctx);
-  return {
-    col: 0,
-    x: ENEM.margSide,
-    y: ENEM.margTop,
-    top: ENEM.margTop,
-    bottom: ENEM.pageH - ENEM.margBottom,
-  };
+// Cabeçalho e rodapé de uma página de questões. Tudo que é "de canto" (fólio,
+// tarja de cor, marca de registro) segue a margem EXTERNA; tudo que é "de miolo"
+// (logotipo, rodapé corrido) segue a INTERNA.
+function enemPageChrome(doc, ctx, flow){
+  const n = ctx.pageNo;
+  const left = enemLeft(n);
+  const right = left + ENEM.manchaW;
+  const outerRight = enemOuterIsRight(n);
+
+  // --- Filete de cabeçalho: trecho azul do lado interno, microtexto do externo.
+  if(outerRight){
+    enemSolidLine(doc, left, ENEM.ruleHead, left + ENEM.segBlue, 1.0, ENEM.azul);
+    enemMicroText(doc, right - ENEM.segMicro, ENEM.ruleHead - 0.6, ENEM.segMicro);
+  }else{
+    enemMicroText(doc, left, ENEM.ruleHead - 0.6, ENEM.segMicro);
+    enemSolidLine(doc, right - ENEM.segBlue, ENEM.ruleHead, right, 1.0, ENEM.azul);
+  }
+
+  // --- Filete de rodapé: composição invertida em relação ao cabeçalho.
+  if(outerRight){
+    enemMicroText(doc, left, ENEM.ruleFoot - 0.6, ENEM.segMicro);
+    enemSolidLine(doc, right - ENEM.segBlue, ENEM.ruleFoot, right, 1.0, ENEM.azul);
+  }else{
+    enemSolidLine(doc, left, ENEM.ruleFoot, left + ENEM.segBlue, 1.0, ENEM.azul);
+    enemMicroText(doc, right - ENEM.segMicro, ENEM.ruleFoot - 0.6, ENEM.segMicro);
+  }
+
+  // --- Marca do caderno, na margem interna, na mesma geometria do logotipo do
+  // original. NÃO reproduzimos o logotipo do INEP nem a marca oficial "enem":
+  // isto é um simulado, e passar-se por caderno oficial seria falsificação.
+  // O que se copia é a diagramação, não a identidade da instituição.
+  const logoY = 15.6 * MM;
+  const ano = String(ctx.ano || new Date().getFullYear());
+  enemFont(doc, "bold", 16);
+  const wMark = doc.getTextWidth("simulado");
+  enemFont(doc, "normal", 16);
+  const wAno = doc.getTextWidth(ano);
+  const wLogo = wMark + 1.5 + wAno;
+  // Na página par o bloco é ancorado pela direita, para não vazar da mancha.
+  const logoX = outerRight ? left : (right - wLogo);
+  enemFont(doc, "bold", 16);
+  enemInk(doc, ENEM.azulLogo);
+  doc.text("simulado", logoX, logoY);
+  enemFont(doc, "normal", 16);
+  enemInk(doc, ENEM.ornGray);
+  doc.text(ano, logoX + wMark + 1.5, logoY);
+  const markEnd = logoX + wLogo;
+  enemFont(doc, "normal", 5.5);
+  enemInk(doc, ENEM.ornGray);
+  doc.text("Simulado no padrão do caderno ENEM",
+    outerRight ? logoX : markEnd, logoY + 5.2,
+    { align: outerRight ? "left" : "right" });
+
+  // --- Fileira de quadrados girados 20°, em #939598, encostada no logotipo.
+  const sqW = 5.5 * MM, sqH = 6.6 * MM, skew = Math.tan(20 * Math.PI / 180) * sqH;
+  const sqBlock = 4 * (sqW + 0.4);
+  let sqX = outerRight ? (markEnd + 4) : (logoX - sqBlock - 6);
+  doc.setFillColor(ENEM.ornGray[0], ENEM.ornGray[1], ENEM.ornGray[2]);
+  for(let i = 0; i < 4; i++){
+    const y0 = 10.25 * MM, y1 = y0 + sqH;
+    doc.triangle(sqX + skew, y0, sqX + skew + sqW, y0, sqX + sqW, y1, "F");
+    doc.triangle(sqX + skew, y0, sqX + sqW, y1, sqX, y1, "F");
+    sqX += sqW + 0.4;
+  }
+
+  // --- Barra cinza de 48,93 × 2,38 mm sob o logotipo, do lado interno.
+  const barW = 48.93 * MM, barH = 2.38 * MM;
+  doc.setFillColor(ENEM.ornGray[0], ENEM.ornGray[1], ENEM.ornGray[2]);
+  doc.rect(outerRight ? left : (right - barW), 19.29 * MM, barW, barH, "F");
+
+  // --- Tarja da versão: 11 × 30 mm sangrando na borda EXTERNA, com o quadrado
+  // de registro de 3 × 3 mm na quina interna. No caderno oficial a altura da
+  // tarja identifica a área; aqui o simulado tem uma área só, então ela fica
+  // sempre no topo.
+  const tW = 11 * MM, tH = 30 * MM;
+  const tX = outerRight ? (ENEM.pageW - 6 * MM) : (-5 * MM);
+  doc.setFillColor(ENEM.azul[0], ENEM.azul[1], ENEM.azul[2]);
+  doc.rect(tX, -5 * MM, tW, tH, "F");
+  doc.setFillColor(ENEM.ink[0], ENEM.ink[1], ENEM.ink[2]);
+  doc.rect(outerRight ? (ENEM.pageW - 7.5 * MM) : (4.5 * MM), 23.5 * MM, 3 * MM, 3 * MM, "F");
+
+  // --- Fio vertical da calha: sólido, 0,5 pt, só nas páginas de duas colunas.
+  if(!flow || flow.cols === 2){
+    const gx = left + 90.75 * MM;
+    doc.setDrawColor(ENEM.ink[0], ENEM.ink[1], ENEM.ink[2]);
+    doc.setLineWidth(0.5);
+    doc.line(gx, ENEM.flowTop, gx, ENEM.flowBottom);
+  }
+
+  // --- Rodapé: texto corrido na margem interna, fólio na externa.
+  const footY = ENEM.ruleFoot + 3.9 * MM;
+  enemFont(doc, "normal", ENEM.footer);
+  enemInk(doc, ENEM.footGray);
+  doc.text(ctx.footerText, outerRight ? left : right, footY, { align: outerRight ? "left" : "right" });
+  enemFont(doc, "bold", ENEM.footer);
+  enemInk(doc);
+  doc.text(String(n), outerRight ? right : left, footY, { align: outerRight ? "right" : "left" });
+}
+
+// Estado do fluxo. `cols` é 1 ou 2: a página inteira vira coluna única de
+// 182,33 mm quando a questão traz uma figura larga (§6 da especificação).
+function enemStartPage(doc, ctx, flow, cols){
+  flow.cols = cols;
+  flow.col = 0;
+  flow.x = enemLeft(ctx.pageNo);
+  flow.w = cols === 1 ? ENEM.manchaW : ENEM.colW;
+  flow.y = ENEM.flowTop;
+  enemPageChrome(doc, ctx, flow);
+}
+
+function enemNewFlow(doc, ctx, cols){
+  const flow = { cols: 2, col: 0, x: 0, y: 0, w: ENEM.colW, top: ENEM.flowTop, bottom: ENEM.flowBottom };
+  enemStartPage(doc, ctx, flow, cols || 2);
+  return flow;
 }
 
 function enemNextColumn(doc, ctx, flow){
-  if(flow.col === 0){
+  if(flow.cols === 2 && flow.col === 0){
     flow.col = 1;
-    flow.x = ENEM.margSide + ENEM.colW + ENEM.gutter;
+    flow.x = enemLeft(ctx.pageNo) + ENEM.colW + ENEM.gutter;
     flow.y = flow.top;
-  }else{
-    doc.addPage([ENEM.pageW, ENEM.pageH], "portrait");
-    ctx.pageNo += 1;
-    enemPageChrome(doc, ctx);
-    flow.col = 0;
-    flow.x = ENEM.margSide;
-    flow.y = flow.top;
+    return;
   }
+  doc.addPage([ENEM.pageW, ENEM.pageH], "portrait");
+  ctx.pageNo += 1;
+  enemStartPage(doc, ctx, flow, flow.cols);
+}
+
+// Troca o modo da página (1 ou 2 colunas). A troca sempre começa página nova,
+// como no caderno original — figura larga nunca atravessa colunas com texto ao
+// redor. Quando o modo já é o pedido, não faz nada.
+function enemSetMode(doc, ctx, flow, cols){
+  if(flow.cols === cols) return;
+  doc.addPage([ENEM.pageW, ENEM.pageH], "portrait");
+  ctx.pageNo += 1;
+  enemStartPage(doc, ctx, flow, cols);
 }
 
 function enemEnsure(doc, ctx, flow, needed){
   if(flow.y + needed > flow.bottom) enemNextColumn(doc, ctx, flow);
 }
+function enemFits(flow, needed){ return flow.y + needed <= flow.bottom; }
 
 // Justificação real: distribui o espaço restante entre as palavras da linha.
 // A última linha de cada parágrafo fica alinhada à esquerda, como no original.
@@ -1210,40 +1340,31 @@ function enemDrawJustified(doc, line, x, y, width, isLast){
   const wordsWidth = words.reduce((s, w) => s + doc.getTextWidth(w), 0);
   const gap = (width - wordsWidth) / (words.length - 1);
   let cx = x;
-  words.forEach((w, i) => {
-    doc.text(w, cx, y);
-    cx += doc.getTextWidth(w) + gap;
-  });
+  words.forEach(w => { doc.text(w, cx, y); cx += doc.getTextWidth(w) + gap; });
 }
 
-// Parágrafo de corpo de texto: 10 pt, entrelinha 12,8 pt, justificado, primeira
-// linha recuada em 6 mm, sem linha em branco entre parágrafos.
+// Parágrafo de corpo: 10 pt, entrelinha 12,0 pt, justificado, primeira linha
+// recuada em 6 mm, sem linha em branco entre parágrafos.
 function enemParagraph(doc, ctx, flow, text, opts){
   const o = opts || {};
   const size = o.size || ENEM.body;
   const lead = o.leading || ENEM.leading;
   const indent = o.indent != null ? o.indent : ENEM.indent;
-  const bold = !!o.bold;
+  const weight = o.bold ? "bold" : "normal";
   const clean = pdfSanitizeText(String(text || "").trim());
   if(!clean) return;
 
-  doc.setFont("helvetica", bold ? "bold" : "normal");
-  doc.setFontSize(size);
-  doc.setTextColor(ENEM.ink[0], ENEM.ink[1], ENEM.ink[2]);
-
   clean.split(/\n+/).forEach(par => {
-    const firstWidth = ENEM.colW - indent;
-    // Quebra a primeira linha considerando o recuo, e o restante na largura cheia.
     let remaining = par.trim();
     let first = true;
     while(remaining.length){
-      const width = first ? firstWidth : ENEM.colW;
+      enemFont(doc, weight, size);
+      const width = flow.w - (first ? indent : 0);
       const chunk = doc.splitTextToSize(remaining, width)[0];
       const isLast = chunk.length >= remaining.length;
       enemEnsure(doc, ctx, flow, lead);
-      doc.setFont("helvetica", bold ? "bold" : "normal");
-      doc.setFontSize(size);
-      doc.setTextColor(ENEM.ink[0], ENEM.ink[1], ENEM.ink[2]);
+      enemFont(doc, weight, size);
+      enemInk(doc);
       enemDrawJustified(doc, chunk, flow.x + (first ? indent : 0), flow.y + size, width, isLast);
       flow.y += lead;
       remaining = remaining.slice(chunk.length).trim();
@@ -1252,73 +1373,129 @@ function enemParagraph(doc, ctx, flow, text, opts){
   });
 }
 
-// Rótulo "Questão N" — 11 pt bold, precedido da fileira de quadrados girados 20°
-// que enfeita o cabeçalho de cada questão no caderno original (vetor, não imagem).
+// Rótulo "QUESTÃO N" em CAIXA ALTA (11 pt bold) seguido da barra-ornamento:
+// filete escuro de 1 pt no topo e, abaixo, faixa de 1,06 mm com 79,5 % em
+// #B9E5FA e 20,5 % em #231F20. A barra começa sempre a 24,47 mm da borda da
+// coluna, qualquer que seja o comprimento do rótulo.
 function enemQuestionLabel(doc, ctx, flow, numero){
-  enemEnsure(doc, ctx, flow, ENEM.qLabel * 2.2);
+  enemEnsure(doc, ctx, flow, ENEM.qLabel * 3);
   const y = flow.y + ENEM.qLabel;
-  const size = 3.4;
-  let sx = flow.x;
-  for(let i = 0; i < 4; i++){
-    const tone = 190 - i * 38;
-    doc.setFillColor(tone, tone, tone);
-    doc.saveGraphicsState && doc.saveGraphicsState();
-    // Quadrado girado 20°, desenhado como losango achatado via triângulos.
-    const cx = sx + size / 2, cy = y - size / 2 - 1;
-    const r = size / 2 * 1.28;
-    const a = 20 * Math.PI / 180;
-    const pts = [0, 1, 2, 3].map(k => {
-      const ang = a + k * Math.PI / 2;
-      return [cx + r * Math.cos(ang), cy + r * Math.sin(ang)];
-    });
-    doc.triangle(pts[0][0], pts[0][1], pts[1][0], pts[1][1], pts[2][0], pts[2][1], "F");
-    doc.triangle(pts[0][0], pts[0][1], pts[2][0], pts[2][1], pts[3][0], pts[3][1], "F");
-    doc.restoreGraphicsState && doc.restoreGraphicsState();
-    sx += size + 1.6;
+
+  enemFont(doc, "bold", ENEM.qLabel);
+  enemInk(doc);
+  doc.text("QUESTÃO " + numero, flow.x, y);
+
+  const x0 = flow.x + ENEM.ornStart;
+  const x1 = flow.x + flow.w - ENEM.ornEndGap;
+  if(x1 > x0){
+    const barY = y - 2.6;
+    enemSolidLine(doc, x0, barY, x1, 1.0, ENEM.ink);
+    const cut = x0 + (x1 - x0) * ENEM.ornBlueShare;
+    doc.setFillColor(ENEM.azul[0], ENEM.azul[1], ENEM.azul[2]);
+    doc.rect(x0, barY + 0.5, cut - x0, ENEM.ornH, "F");
+    doc.setFillColor(ENEM.ink[0], ENEM.ink[1], ENEM.ink[2]);
+    doc.rect(cut, barY + 0.5, x1 - cut, ENEM.ornH, "F");
   }
-  doc.setFont("helvetica", "bold");
-  doc.setFontSize(ENEM.qLabel);
-  doc.setTextColor(ENEM.ink[0], ENEM.ink[1], ENEM.ink[2]);
-  doc.text("Questão " + numero, sx + 3, y);
-  flow.y += ENEM.qLabel * 1.5;
+  flow.y += ENEM.qLabel + 0.76 * MM;
 }
 
-// Letra-opção circulada. No original é um glifo de fonte dingbat dedicada
-// (BundesbahnPiStd-1) no mesmo corpo do texto; aqui é traçado vetorial
-// equivalente, para não depender de fonte incorporada.
+// Letra-opção circulada. No original é um glifo da fonte dingbat
+// BundesbahnPiStd-1; aqui é traçado vetorial equivalente, para não depender de
+// fonte incorporada.
 function enemOptionMark(doc, x, yBaseline, letter){
-  const r = 5.2;
-  const cx = x + r, cy = yBaseline - 3.2;
+  const r = 4.8;
+  const cx = x + r, cy = yBaseline - 3.0;
   doc.setDrawColor(ENEM.ink[0], ENEM.ink[1], ENEM.ink[2]);
   doc.setLineWidth(0.6);
   doc.circle(cx, cy, r, "S");
-  doc.setFont("helvetica", "normal");
-  doc.setFontSize(ENEM.body * 0.82);
-  doc.setTextColor(ENEM.ink[0], ENEM.ink[1], ENEM.ink[2]);
-  doc.text(letter, cx, cy + 2.6, { align: "center" });
+  enemFont(doc, "normal", ENEM.body * 0.80);
+  enemInk(doc);
+  doc.text(letter, cx, cy + 2.5, { align: "center" });
 }
 
-// Alternativa A–E: letra circulada na margem, texto pendurado ao lado.
+// Alternativa A–E: letra circulada encostada na margem da coluna, texto
+// pendurado a 4,5 mm, entrelinha 13,4 pt, alinhado à esquerda (não justificado).
 function enemAlternative(doc, ctx, flow, letter, text){
-  const hang = 15;
-  const width = ENEM.colW - hang;
-  doc.setFont("helvetica", "normal");
-  doc.setFontSize(ENEM.body);
+  const width = flow.w - ENEM.hang;
+  enemFont(doc, "normal", ENEM.body);
   const lines = doc.splitTextToSize(pdfSanitizeText(String(text || "").trim()) || "—", width);
   lines.forEach((ln, i) => {
-    enemEnsure(doc, ctx, flow, ENEM.leading);
+    enemEnsure(doc, ctx, flow, ENEM.altLeading);
     const base = flow.y + ENEM.body;
     if(i === 0) enemOptionMark(doc, flow.x, base, letter);
-    doc.setFont("helvetica", "normal");
-    doc.setFontSize(ENEM.body);
-    doc.setTextColor(ENEM.ink[0], ENEM.ink[1], ENEM.ink[2]);
-    enemDrawJustified(doc, ln, flow.x + hang, base, width, i === lines.length - 1);
-    flow.y += ENEM.leading;
+    enemFont(doc, "normal", ENEM.body);
+    enemInk(doc);
+    doc.text(ln, flow.x + ENEM.hang, base);
+    flow.y += ENEM.altLeading;
   });
 }
 
-// Recurso visual dentro da coluna. Imagem e gráfico entram COLORIDOS (decisão do
-// professor); tabela é desenhada como tabela vetorial, em preto sobre branco.
+// Quebra o texto em trechos normais e em negrito. O título da obra vem marcado
+// com **asteriscos duplos**, convenção que o gerador de questões já usa.
+function enemRichRuns(text){
+  const out = [];
+  String(text).split(/(\*\*[^*]+\*\*)/g).forEach(part => {
+    if(!part) return;
+    const bold = /^\*\*[^*]+\*\*$/.test(part);
+    out.push({ text: bold ? part.slice(2, -2) : part, bold: bold });
+  });
+  return out.length ? out : [{ text: String(text), bold: false }];
+}
+
+// Quebra os trechos em linhas que caibam na largura, preservando o peso de cada
+// palavra. Devolve um array de linhas; cada linha é um array de { text, bold }.
+function enemWrapRuns(doc, runs, width, size){
+  const lines = [];
+  let line = [], lineW = 0;
+  runs.forEach(run => {
+    enemFont(doc, run.bold ? "bold" : "normal", size);
+    run.text.split(/(\s+)/).forEach(tok => {
+      if(!tok) return;
+      const w = doc.getTextWidth(tok);
+      if(/^\s+$/.test(tok)){
+        if(line.length){ line.push({ text: tok, bold: run.bold, w: w }); lineW += w; }
+        return;
+      }
+      if(lineW + w > width && line.length){
+        while(line.length && /^\s+$/.test(line[line.length - 1].text)) { lineW -= line.pop().w; }
+        lines.push(line); line = []; lineW = 0;
+      }
+      line.push({ text: tok, bold: run.bold, w: w });
+      lineW += w;
+    });
+  });
+  if(line.length) lines.push(line);
+  return lines;
+}
+
+// Referência / fonte bibliográfica — 8 pt, ALINHADA À DIREITA. No caderno
+// oficial o título da obra vai em NEGRITO, nunca em itálico (medido: 15 % dos
+// caracteres de referência são bold e 0 % são itálico).
+function enemCaption(doc, ctx, flow, text){
+  const clean = pdfSanitizeText(String(text || "").trim());
+  if(!clean) return;
+  const size = ENEM.caption;
+  const lines = enemWrapRuns(doc, enemRichRuns(clean), flow.w, size);
+  const lh = size * 1.2;
+  lines.forEach(parts => {
+    enemEnsure(doc, ctx, flow, lh);
+    const total = parts.reduce((a, p) => a + p.w, 0);
+    let cx = flow.x + flow.w - total;
+    const base = flow.y + size;
+    parts.forEach(p => {
+      enemFont(doc, p.bold ? "bold" : "normal", size);
+      enemInk(doc);
+      doc.text(p.text, cx, base);
+      cx += p.w;
+    });
+    flow.y += lh;
+  });
+  flow.y += 1.5;
+}
+
+// Recurso visual dentro da coluna. Imagem e gráfico entram COLORIDOS — em 2025
+// metade das figuras do caderno oficial é colorida. Tabela é desenhada como
+// tabela vetorial, com o cabeçalho preenchido em #6DCFF6.
 function enemVisual(doc, ctx, flow, visual, cardIdx){
   if(!visual || !visual.tipo) return;
 
@@ -1326,35 +1503,42 @@ function enemVisual(doc, ctx, flow, visual, cardIdx){
     const cols = visual.colunas || [];
     const rows = visual.linhas || [];
     if(!cols.length) return;
-    const cw = ENEM.colW / cols.length;
+    const cw = flow.w / cols.length;
     const pad = 3;
-    doc.setFontSize(ENEM.caption);
+    enemFont(doc, "bold", ENEM.body);
     const head = cols.map(c => doc.splitTextToSize(pdfSanitizeText(String(c)), cw - pad * 2));
+    enemFont(doc, "normal", ENEM.body);
     const body = rows.map(r => r.map(c => doc.splitTextToSize(pdfSanitizeText(String(c)), cw - pad * 2)));
-    const lh = ENEM.caption * 1.3;
+    const lh = ENEM.leading;
     const hH = Math.max.apply(null, head.map(l => l.length).concat([1])) * lh + pad * 2;
     const rH = body.map(r => Math.max.apply(null, r.map(l => l.length).concat([1])) * lh + pad * 2);
     enemEnsure(doc, ctx, flow, Math.min(hH + rH.reduce((a, b) => a + b, 0), flow.bottom - flow.top));
     let y = flow.y;
+
+    doc.setFillColor(ENEM.azulTab[0], ENEM.azulTab[1], ENEM.azulTab[2]);
+    doc.rect(flow.x, y, cw * cols.length, hH, "F");
     doc.setDrawColor(ENEM.ink[0], ENEM.ink[1], ENEM.ink[2]);
-    doc.setLineWidth(0.5);
-    doc.setFont("helvetica", "bold");
-    doc.setFontSize(ENEM.caption);
-    doc.setTextColor(ENEM.ink[0], ENEM.ink[1], ENEM.ink[2]);
+    doc.setLineWidth(1.0);
+    doc.rect(flow.x, y, cw * cols.length, hH, "S");
+    enemFont(doc, "bold", ENEM.body);
+    enemInk(doc);
     head.forEach((lines, i) => {
-      doc.rect(flow.x + i * cw, y, cw, hH, "S");
-      lines.forEach((ln, k) => doc.text(ln, flow.x + i * cw + pad, y + pad + ENEM.caption + k * lh));
+      lines.forEach((ln, k) => doc.text(ln, flow.x + i * cw + cw / 2, y + pad + ENEM.body + k * lh, { align: "center" }));
     });
     y += hH;
-    doc.setFont("helvetica", "normal");
+
+    doc.setLineWidth(0.5);
     body.forEach((row, ri) => {
       row.forEach((lines, ci) => {
+        doc.setDrawColor(ENEM.ink[0], ENEM.ink[1], ENEM.ink[2]);
         doc.rect(flow.x + ci * cw, y, cw, rH[ri], "S");
-        lines.forEach((ln, k) => doc.text(ln, flow.x + ci * cw + pad, y + pad + ENEM.caption + k * lh));
+        enemFont(doc, "normal", ENEM.body);
+        enemInk(doc);
+        lines.forEach((ln, k) => doc.text(ln, flow.x + ci * cw + cw / 2, y + pad + ENEM.body + k * lh, { align: "center" }));
       });
       y += rH[ri];
     });
-    flow.y = y + 4;
+    flow.y = y + 2.11 * MM;
     if(visual.titulo) enemCaption(doc, ctx, flow, visual.titulo);
     return;
   }
@@ -1362,93 +1546,110 @@ function enemVisual(doc, ctx, flow, visual, cardIdx){
   const info = visual.tipo === "imagem" ? pdfGetVisualImageInfo(cardIdx) : pdfGetVisualChartInfo(cardIdx);
   if(!info) return;
   const ratio = info.height / info.width;
-  let w = ENEM.colW;
+  let w = flow.w;
   let h = w * ratio;
   const maxH = flow.bottom - flow.top - 30;
   if(h > maxH){ h = maxH; w = h / ratio; }
-  enemEnsure(doc, ctx, flow, h + 6);
+  flow.y += 1.60 * MM;                       // espaço texto → figura
+  enemEnsure(doc, ctx, flow, h + 4);
   const fmtMatch = /^data:image\/(png|jpe?g|webp);base64,/i.exec(info.dataUrl);
   const fmt = fmtMatch ? fmtMatch[1].toUpperCase().replace("JPG", "JPEG") : "PNG";
-  try{ doc.addImage(info.dataUrl, fmt, flow.x, flow.y, w, h); }catch(e){ return; }
-  flow.y += h + 4;
+  try{ doc.addImage(info.dataUrl, fmt, flow.x + (flow.w - w) / 2, flow.y, w, h); }catch(e){ return; }
+  flow.y += h + 2.11 * MM;                   // espaço figura → texto
   if(visual.descricao) enemCaption(doc, ctx, flow, visual.descricao);
 }
 
-// Legenda / fonte bibliográfica — 8 pt, logo abaixo do corpo, sem recuo.
-function enemCaption(doc, ctx, flow, text){
-  const clean = pdfSanitizeText(String(text || "").trim());
-  if(!clean) return;
-  doc.setFont("helvetica", "normal");
-  doc.setFontSize(ENEM.caption);
-  const lines = doc.splitTextToSize(clean, ENEM.colW);
-  const lh = ENEM.caption * 1.28;
-  lines.forEach(ln => {
-    enemEnsure(doc, ctx, flow, lh);
-    doc.setFont("helvetica", "normal");
-    doc.setFontSize(ENEM.caption);
-    doc.setTextColor(ENEM.ink[0], ENEM.ink[1], ENEM.ink[2]);
-    doc.text(ln, flow.x, flow.y + ENEM.caption);
-    flow.y += lh;
-  });
-  flow.y += 2;
+// Filete de fechamento: sólido, 0,5 pt, largura cheia da coluna. No caderno
+// oficial ele aparece SÓ quando a questão encerra a coluna (15 das 60 colunas);
+// entre questões consecutivas quem separa é a barra da questão seguinte.
+function enemCloseQuestion(doc, ctx, flow, isLastOfColumn){
+  flow.y += 2.53 * MM;
+  if(isLastOfColumn){
+    enemSolidLine(doc, flow.x, flow.y, flow.x + flow.w, 0.5, ENEM.ink);
+    flow.y += 3;
+  }
 }
 
-// Fecha o bloco da questão com o filete pontilhado, inclusive ao fim de coluna.
-function enemCloseQuestion(doc, ctx, flow){
-  enemEnsure(doc, ctx, flow, 10);
-  flow.y += 4;
-  enemDottedLine(doc, flow.x, flow.y, flow.x + ENEM.colW);
-  flow.y += 10;
+// Uma questão só vai para o modo de coluna única quando traz uma figura larga —
+// proporção a partir de 1,8 : 1, que a 89,47 mm ficaria ilegível.
+function enemNeedsWidePage(o){
+  const d = o.q.data;
+  if(!d.visual || !d.visual.tipo || d.visual.tipo === "tabela") return false;
+  const info = d.visual.tipo === "imagem" ? pdfGetVisualImageInfo(o.idx) : pdfGetVisualChartInfo(o.idx);
+  if(!info || !info.height) return false;
+  return (info.width / info.height) >= 1.8;
 }
 
-// Monta o PDF inteiro da versão do aluno na anatomia do caderno ENEM.
+// Monta o PDF inteiro da versão do aluno na anatomia do caderno ENEM 2025.
 // Recebe as questões já filtradas por status "done".
 function enemExportPdfAluno(doneQuestions){
   const { jsPDF } = window.jspdf;
   const doc = new jsPDF({ unit: "pt", format: [ENEM.pageW, ENEM.pageH], orientation: "portrait" });
   const areaLabel = AREA_META[state.area] ? AREA_META[state.area].label : "";
-  const sigla = { linguagens: "LC", humanas: "CH", natureza: "CN", matematica: "MT" }[state.area] || "";
   const ctx = {
     areaLabel,
-    footerText: [sigla, state.disciplina || "", "Versão do aluno"].filter(Boolean).join(" · "),
+    ano: new Date().getFullYear(),
+    footerText: [String(areaLabel).toUpperCase(), state.disciplina || "", "VERSÃO DO ALUNO"].filter(Boolean).join(" | "),
     pageNo: 1,
   };
 
-  const flow = enemNewFlow(doc, ctx);
+  // O modo da primeira página já nasce certo, para não abrir página em branco
+  // quando a primeira questão traz figura larga.
+  const wideMap = doneQuestions.map(enemNeedsWidePage);
+  const flow = enemNewFlow(doc, ctx, wideMap[0] ? 1 : 2);
 
-  doneQuestions.forEach(o => {
+  // Título de área abre a primeira coluna, recuado 2 mm, 11 pt bold caixa alta.
+  if(areaLabel){
+    enemFont(doc, "bold", ENEM.areaTitle);
+    enemInk(doc);
+    doc.text(String(areaLabel).toUpperCase(), flow.x + 2 * MM, flow.y + ENEM.areaTitle, { maxWidth: flow.w - 2 * MM });
+    flow.y += ENEM.areaTitle + 4;
+  }
+
+  doneQuestions.forEach((o, i) => {
     const d = o.q.data;
+    enemSetMode(doc, ctx, flow, wideMap[i] ? 1 : 2);
+
     enemQuestionLabel(doc, ctx, flow, o.idx + 1);
     if(d.textoBase) enemParagraph(doc, ctx, flow, d.textoBase);
     if(d.visual && d.visual.tipo) enemVisual(doc, ctx, flow, d.visual, o.idx);
-    if(d.comando) enemParagraph(doc, ctx, flow, d.comando);
-    flow.y += 3;
+    if(d.comando) enemParagraph(doc, ctx, flow, d.comando, { indent: 0 });
+    flow.y += 1.51 * MM;                     // espaço corpo → 1ª alternativa
     ["A", "B", "C", "D", "E"].forEach(letter => {
       enemAlternative(doc, ctx, flow, letter, (d.alternativas && d.alternativas[letter]) || "");
     });
-    enemCloseQuestion(doc, ctx, flow);
+    // Fecha com filete só se a próxima questão não couber nesta coluna.
+    const last = i === doneQuestions.length - 1;
+    enemCloseQuestion(doc, ctx, flow, last || !enemFits(flow, 70));
   });
 
   const safeName = "Simulado_ENEM_" + (state.disciplina || "questoes").replace(/[^a-zA-Z0-9]+/g, "_") + "_aluno.pdf";
   doc.save(safeName);
 }
 
-/* ---- Anatomia ENEM no DOCX (versão do aluno) ----
-   Mesmas medidas do PDF, convertidas para TWIPs (1 pt = 20 twips; 1 mm = 56,6929 twips).
-   Word cobre 2 colunas com fio separador, formato 200×275 mm, Arial 10/12,8 pt,
-   justificado, recuo de 6 mm na primeira linha e tinta #231F20.               */
+/* ---- Anatomia ENEM 2025 no DOCX (versão do aluno) ----
+   Mesmas medidas do PDF, convertidas para TWIPs (1 pt = 20 twips; 1 mm = 56,6929).
+   No Word a fonte declarada é Calibri de verdade — não há substituição. Página
+   200 × 275 mm, duas colunas de 89,47 mm com fio separador, corpo 10 pt com
+   entrelinha exata de 12,0 pt, justificado, recuo de 6 mm e tinta #231F20.
+   As margens seguem a geometria da página ímpar (ver comentário na exportação). */
 const TW = 56.6929;                                   // 1 mm em twips
 const ENEM_DOCX = {
   pageW: Math.round(200 * TW),
   pageH: Math.round(275 * TW),
-  margTop: Math.round(25.6 * TW),
-  margBottom: Math.round(12.6 * TW),
-  margSide: Math.round(10.5 * TW),
-  gutter: Math.round(3.3 * TW),
+  margTop: Math.round(26.88 * TW),
+  margBottom: Math.round(15.0 * TW),
+  margInner: Math.round(8.00 * TW),                   // margem interna (gutter do Word)
+  margOuter: Math.round(9.67 * TW),                   // margem externa
+  gutter: Math.round(3.40 * TW),
   indent: Math.round(6 * TW),
-  line: Math.round(12.8 * 20),                        // entrelinha exata de 12,8 pt
+  hang: Math.round(4.5 * TW),
+  line: Math.round(12.0 * 20),                        // entrelinha exata de 12,0 pt
+  altLine: Math.round(13.4 * 20),                     // entrelinha das alternativas
   ink: "231F20",
-  rule: "63656A",
+  footGray: "58595B",
+  azulTab: "6DCFF6",
+  font: "Calibri",
 };
 
 // Parágrafo de corpo — 10 pt, entrelinha exata, justificado, primeira linha recuada.
@@ -1463,63 +1664,66 @@ function enemDocxParagraph(text, opts){
       alignment: o.alignment || AlignmentType.JUSTIFIED,
       indent: o.indent === false ? undefined : { firstLine: ENEM_DOCX.indent },
       spacing: { line: o.line || ENEM_DOCX.line, lineRule: LineRuleType.EXACTLY, before: 0, after: 0 },
-      children: [ new TextRun({ text: par.trim(), font: "Arial", size: Math.round(size * 2), color: o.color || ENEM_DOCX.ink, bold: !!o.bold }) ],
+      children: [ new TextRun({ text: par.trim(), font: ENEM_DOCX.font, size: Math.round(size * 2), color: o.color || ENEM_DOCX.ink, bold: !!o.bold }) ],
     }));
   });
   return out;
 }
 
-// "Questão N" — 11 pt bold, com respiro acima, como no caderno original.
+// "QUESTÃO N" — 11 pt bold, CAIXA ALTA, com respiro acima. A barra-ornamento do
+// PDF vira aqui uma borda inferior azul no próprio parágrafo do rótulo.
 function enemDocxQuestionLabel(numero){
   const { Paragraph, TextRun, LineRuleType } = window.docx;
   return [ new Paragraph({
-    spacing: { before: 200, after: 60, line: ENEM_DOCX.line, lineRule: LineRuleType.EXACTLY },
-    children: [ new TextRun({ text: "Questão " + numero, bold: true, font: "Arial", size: 22, color: ENEM_DOCX.ink }) ],
+    spacing: { before: 144, after: 43, line: ENEM_DOCX.line, lineRule: LineRuleType.EXACTLY },
+    children: [ new TextRun({ text: "QUESTÃO " + numero, bold: true, font: ENEM_DOCX.font, size: 22, color: ENEM_DOCX.ink }) ],
   }) ];
 }
 
 // Alternativa A–E. O glifo circulado do original é uma fonte dingbat que não pode
 // ser incorporada aqui; no Word usamos o caractere circulado Unicode equivalente,
-// mantendo o mesmo corpo (10 pt) e o texto pendurado ao lado.
+// mantendo o corpo de 10 pt, o texto pendurado a 4,5 mm e a entrelinha de 13,4 pt.
 const ENEM_DOCX_MARKS = { A: "Ⓐ", B: "Ⓑ", C: "Ⓒ", D: "Ⓓ", E: "Ⓔ" };
 function enemDocxAlternative(letter, text){
   const { Paragraph, TextRun, AlignmentType, LineRuleType } = window.docx;
   return [ new Paragraph({
-    alignment: AlignmentType.JUSTIFIED,
-    indent: { left: 340, hanging: 340 },
-    spacing: { line: ENEM_DOCX.line, lineRule: LineRuleType.EXACTLY, before: 0, after: 0 },
+    alignment: AlignmentType.LEFT,
+    indent: { left: ENEM_DOCX.hang, hanging: ENEM_DOCX.hang },
+    spacing: { line: ENEM_DOCX.altLine, lineRule: LineRuleType.EXACTLY, before: 0, after: 0 },
     children: [
-      new TextRun({ text: ENEM_DOCX_MARKS[letter] + "  ", font: "Arial", size: 20, color: ENEM_DOCX.ink }),
-      new TextRun({ text: String(text || "").trim() || "—", font: "Arial", size: 20, color: ENEM_DOCX.ink }),
+      new TextRun({ text: ENEM_DOCX_MARKS[letter] + "\t", font: ENEM_DOCX.font, size: 20, color: ENEM_DOCX.ink }),
+      new TextRun({ text: String(text || "").trim() || "—", font: ENEM_DOCX.font, size: 20, color: ENEM_DOCX.ink }),
     ],
   }) ];
 }
 
-// Legenda / fonte bibliográfica — 8 pt, sem recuo.
+// Referência / fonte bibliográfica — 8 pt, ALINHADA À DIREITA.
 function enemDocxCaption(text){
   const { Paragraph, TextRun, AlignmentType, LineRuleType } = window.docx;
   const clean = String(text || "").trim();
   if(!clean) return [];
   return [ new Paragraph({
-    alignment: AlignmentType.LEFT,
-    spacing: { line: Math.round(8 * 1.28 * 20), lineRule: LineRuleType.EXACTLY, before: 40, after: 80 },
-    children: [ new TextRun({ text: clean, font: "Arial", size: 16, color: ENEM_DOCX.ink }) ],
+    alignment: AlignmentType.RIGHT,
+    spacing: { line: Math.round(9.6 * 20), lineRule: LineRuleType.EXACTLY, before: 40, after: 60 },
+    children: enemRichRuns(clean).map(r => new TextRun({
+      text: r.text, bold: r.bold, font: ENEM_DOCX.font, size: 16, color: ENEM_DOCX.ink,
+    })),
   }) ];
 }
 
-// Filete pontilhado que fecha cada questão.
+// Filete SÓLIDO de fechamento de questão (em 2025 não há mais traço pontilhado).
 function enemDocxRule(){
   const { Paragraph, BorderStyle } = window.docx;
   return [ new Paragraph({
-    spacing: { before: 60, after: 160 },
-    border: { bottom: { style: BorderStyle.DOTTED, size: 6, color: ENEM_DOCX.rule, space: 1 } },
+    spacing: { before: 143, after: 143 },
+    border: { bottom: { style: BorderStyle.SINGLE, size: 4, color: ENEM_DOCX.ink, space: 1 } },
     children: [],
   }) ];
 }
 
-// Recurso visual — imagem e gráfico saem COLORIDOS (decisão do professor).
+// Recurso visual — imagem e gráfico saem COLORIDOS, como no caderno 2025.
 function enemDocxVisual(visual, cardIdx){
-  const { Paragraph, TextRun, ImageRun, AlignmentType, Table, TableRow, TableCell, WidthType, BorderStyle } = window.docx;
+  const { Paragraph, TextRun, ImageRun, AlignmentType, Table, TableRow, TableCell, WidthType, BorderStyle, ShadingType } = window.docx;
   if(!visual || !visual.tipo) return [];
   const out = [];
 
@@ -1531,7 +1735,11 @@ function enemDocxVisual(visual, cardIdx){
     const borders = { top: border, bottom: border, left: border, right: border };
     const cell = (txt, bold) => new TableCell({
       borders,
-      children: [ new Paragraph({ children: [ new TextRun({ text: String(txt), font: "Arial", size: 16, bold: !!bold, color: ENEM_DOCX.ink }) ] }) ],
+      shading: bold ? { type: ShadingType.CLEAR, fill: ENEM_DOCX.azulTab, color: "auto" } : undefined,
+      children: [ new Paragraph({
+        alignment: AlignmentType.CENTER,
+        children: [ new TextRun({ text: String(txt), font: ENEM_DOCX.font, size: 20, bold: !!bold, color: ENEM_DOCX.ink }) ],
+      }) ],
     });
     out.push(new Table({
       width: { size: 100, type: WidthType.PERCENTAGE },
@@ -1544,14 +1752,14 @@ function enemDocxVisual(visual, cardIdx){
 
   const info = visual.tipo === "imagem" ? pdfGetVisualImageInfo(cardIdx) : pdfGetVisualChartInfo(cardIdx);
   if(!info) return [];
-  // Largura da coluna do miolo: 88 mm ≈ 249 pt.
-  const maxW = 249;
+  // Largura da coluna do miolo: 89,47 mm ≈ 254 pt.
+  const maxW = 254;
   const ratio = info.height / info.width;
   const w = maxW, h = Math.round(maxW * ratio);
   try{
     out.push(new Paragraph({
       alignment: AlignmentType.CENTER,
-      spacing: { before: 80, after: 40 },
+      spacing: { before: 91, after: 120 },
       children: [ new ImageRun({
         data: docxDataUrlToUint8Array(info.dataUrl),
         transformation: { width: w, height: h },
@@ -1565,25 +1773,26 @@ function enemDocxVisual(visual, cardIdx){
 
 // Monta a seção do Word inteira da versão do aluno, em 2 colunas.
 function enemDocxSectionAluno(doneQuestions){
-  const { Paragraph, TextRun, AlignmentType, LineRuleType } = window.docx;
+  const { Paragraph, TextRun, AlignmentType, LineRuleType, BorderStyle } = window.docx;
   const areaLabel = AREA_META[state.area] ? AREA_META[state.area].label : "";
   const children = [];
 
   children.push(new Paragraph({
-    spacing: { after: 200, line: ENEM_DOCX.line, lineRule: LineRuleType.EXACTLY },
-    children: [ new TextRun({ text: String(areaLabel).toUpperCase(), bold: true, font: "Arial", size: 24, color: ENEM_DOCX.ink }) ],
+    spacing: { after: 120, line: ENEM_DOCX.line, lineRule: LineRuleType.EXACTLY },
+    indent: { left: Math.round(2 * TW) },
+    children: [ new TextRun({ text: String(areaLabel).toUpperCase(), bold: true, font: ENEM_DOCX.font, size: 22, color: ENEM_DOCX.ink }) ],
   }));
 
-  doneQuestions.forEach(o => {
+  doneQuestions.forEach((o, i) => {
     const d = o.q.data;
     children.push(...enemDocxQuestionLabel(o.idx + 1));
     if(d.textoBase) children.push(...enemDocxParagraph(d.textoBase));
     if(d.visual && d.visual.tipo) children.push(...enemDocxVisual(d.visual, o.idx));
-    if(d.comando) children.push(...enemDocxParagraph(d.comando));
+    if(d.comando) children.push(...enemDocxParagraph(d.comando, { indent: false }));
     ["A", "B", "C", "D", "E"].forEach(letter => {
       children.push(...enemDocxAlternative(letter, (d.alternativas && d.alternativas[letter]) || ""));
     });
-    children.push(...enemDocxRule());
+    if(i < doneQuestions.length - 1) children.push(...enemDocxRule());
   });
 
   return {
@@ -1592,7 +1801,7 @@ function enemDocxSectionAluno(doneQuestions){
         size: { width: ENEM_DOCX.pageW, height: ENEM_DOCX.pageH },
         margin: {
           top: ENEM_DOCX.margTop, bottom: ENEM_DOCX.margBottom,
-          left: ENEM_DOCX.margSide, right: ENEM_DOCX.margSide,
+          left: ENEM_DOCX.margInner, right: ENEM_DOCX.margOuter,
         },
       },
       column: { count: 2, space: ENEM_DOCX.gutter, separate: true },
@@ -2174,6 +2383,11 @@ async function exportDocx(){
 
     // VERSÃO DO ALUNO: mesma anatomia ENEM do PDF, em 2 colunas do Word.
     if(isAluno){
+      // As margens do caderno ENEM são espelhadas (a mancha desliza 2,5 mm conforme
+      // a paridade). O docx.js 8.5 não expõe o <w:mirrorMargins/> do Word, então
+      // aqui aplicamos a geometria da página ímpar a todas: interna 8,00 mm e
+      // externa 9,67 mm. Quem precisar do espelhamento real liga "Margens
+      // espelhadas" em Layout → Margens, no próprio Word. O PDF já espelha.
       const docAluno = new Document({ sections: [ enemDocxSectionAluno(doneQuestions) ] });
       const blobAluno = await Packer.toBlob(docAluno);
       const nomeAluno = "Simulado_ENEM_" + (state.disciplina||"questoes").replace(/[^a-zA-Z0-9]+/g,"_") + "_aluno.docx";
