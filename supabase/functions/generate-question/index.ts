@@ -232,10 +232,29 @@ function buildRegraFontesReais(disciplina: string): string {
 Se você tiver QUALQUER dúvida sobre a existência, autoria, título exato, data, conteúdo ou trecho de um texto/autor antes de usá-lo, USE A FERRAMENTA web_search para verificar em fontes confiáveis (sites de universidades, editoras, enciclopédias reconhecidas, artigos científicos/acadêmicos, acervos como Domínio Público, Fundação Biblioteca Nacional, Scielo) antes de escrever a questão — é sempre preferível pesquisar e confirmar a arriscar citar algo inexistente ou incorreto. No campo "textoBase", cite a fonte real (autor, obra, ano) no formato ENEM; é PROIBIDO usar uma citação "verossímil"/fictícia nesta disciplina. Você pode resumir, parafrasear ou adaptar um trecho real do texto (para não reproduzir excertos extensos protegidos por direitos autorais), mas a autoria e a obra citadas devem ser genuínas e o conteúdo do resumo deve corresponder fielmente ao que a obra real de fato trata.`;
 }
 
+// Posição do gabarito: o professor reserva, antes de gerar, qual letra é a
+// correta em cada questão, de modo que em cada bloco de cinco questões
+// consecutivas as cinco letras apareçam uma única vez.
+function buildGabaritoAlvo(L: string | null) {
+  if (!L) return "";
+  return `
+⛔ POSIÇÃO OBRIGATÓRIA DO GABARITO — a alternativa correta desta questão DEVE ser a letra ${L}. O campo "gabarito" do JSON tem de vir exatamente "${L}", e a alternativa ${L} tem de ser a única defensável como correta.
+
+Como cumprir sem quebrar nenhuma outra regra:
+1. Escreva a correta e os quatro distratores, cada um com o seu erro de raciocínio específico.
+2. Distribua-os de modo que a correta caia em ${L} RESPEITANDO a ordem lógica exigida pelo Guia do Inep: numéricas em ordem crescente, as demais da mais curta para a mais longa. Se a ordem lógica empurrar a correta para outra posição, REESCREVA os valores ou a redação dos distratores (nunca a correta) até que ordem lógica e posição ${L} coincidam.
+3. NUNCA troque as alternativas de lugar no fim: uma lista de números fora de ordem crescente denuncia a manipulação.
+4. A correta em ${L} continua não podendo ser mais longa, mais completa nem mais bem redigida que os distratores (regra 4.4).
+5. Se ainda assim for impossível, escolha OUTRO recorte de conteúdo para a questão em vez de entregar o gabarito em posição diferente.
+
+Motivo: gabaritos repetidos em sequência deixam o candidato acertar por padrão, não por domínio da habilidade — e destroem a validade do simulado.
+`;
+}
+
 function buildUserPrompt(opts: {
   area: string; disciplina: string; tema: string; dificuldade: string;
   recurso: string; competenciaNum: number | null; habilidadeCod: string | null;
-  instrucoesVisual?: string;
+  instrucoesVisual?: string; gabaritoAlvo?: string | null;
 }) {
   return `Elabore UMA questão inédita, original, no padrão ENEM, com os seguintes parâmetros definidos pelo professor:
 
@@ -250,7 +269,7 @@ ${RECURSO_INSTRUCOES[opts.recurso]}
 ${opts.instrucoesVisual ? `\nInstruções adicionais do professor especificamente para o recurso visual (siga-as com prioridade, desde que compatíveis com o pedido acima): ${opts.instrucoesVisual}\n` : ""}
 
 ${buildMatrizInstrucoes(opts.area, opts.competenciaNum, opts.habilidadeCod)}
-
+${buildGabaritoAlvo(opts.gabaritoAlvo || null)}
 ${JSON_SCHEMA_TXT}`;
 }
 
@@ -347,6 +366,7 @@ F7. O enunciado não apresenta problematização satisfatória, ou não explicit
 4.1 As alternativas relacionam-se com o enunciado e o texto-base, sem configurar proposições independentes.
 4.2 Há gabarito, e a indicação do gabarito é correta.
 4.3 O gabarito é ÚNICO — nenhuma outra alternativa é defensável como correta.
+4.5 Se foi exigida uma POSIÇÃO OBRIGATÓRIA do gabarito, a alternativa correta está exatamente nessa letra e a ordem lógica das alternativas continua respeitada. Se não estiver, reescreva os distratores até que as duas coisas valham ao mesmo tempo — nunca entregue o gabarito em outra posição.
 4.4 O gabarito é claro e NÃO é mais atrativo que os distratores (não é o mais completo, o mais qualificado, o mais detalhado nem o mais bem redigido).
 4.5 Os quatro distratores são PLAUSÍVEIS: cada um retrata uma hipótese de raciocínio efetivamente utilizada por um estudante na busca da solução (preferencialmente um erro comum de ensino-aprendizagem), é tecnicamente bem elaborado e não é absurdo, grosseiro nem facilmente eliminável.
 4.6 Os distratores são claros, SEM INDUÇÃO AO ERRO — nenhum é uma "pegadinha" que faz o candidato errar por desatenção a um detalhe, em vez de por não dominar a habilidade testada.
@@ -613,6 +633,9 @@ Deno.serve(async (req: Request) => {
   const dificuldade = ["Fácil", "Médio", "Difícil"].includes(body.dificuldade) ? body.dificuldade : "Médio";
   const tema = (body.tema || "").toString().trim();
   const instrucoesVisual = (body.instrucoesVisual || "").toString().trim().slice(0, 1000);
+  // Letra que o professor reservou para a resposta correta desta questão.
+  const gabaritoAlvoRaw = (body.gabaritoAlvo || "").toString().trim().toUpperCase();
+  const gabaritoAlvo = ["A", "B", "C", "D", "E"].includes(gabaritoAlvoRaw) ? gabaritoAlvoRaw : null;
 
   if (body.regenerarVisual === true) {
     const recurso = ["imagem", "grafico", "tabela"].includes(body.recurso) ? body.recurso : null;
@@ -652,7 +675,7 @@ Deno.serve(async (req: Request) => {
 
   try {
     const system = buildSystemPrompt(area);
-    const userMsg = buildUserPrompt({ area, disciplina, tema, dificuldade, recurso, competenciaNum, habilidadeCod, instrucoesVisual });
+    const userMsg = buildUserPrompt({ area, disciplina, tema, dificuldade, recurso, competenciaNum, habilidadeCod, instrucoesVisual, gabaritoAlvo });
     const webSearch = precisaFontesReais(disciplina);
     let data = await callClaudeForJSON(system, userMsg, webSearch);
 
