@@ -1,6 +1,6 @@
 # Anatomia do caderno ENEM — system design obrigatório
 
-Especificação de impresso para **PDF, DOCX e impressão** da **versão do aluno**.
+Especificação de impresso para **PDF, DOCX e impressão** — vale para as **duas versões**, aluno e professor.
 
 **Fonte da medição:** ENEM **2025**, 2º dia, Caderno 7, versão **Azul** (INEP/MEC), 32 páginas,
 90 questões (91–180). Todas as medidas abaixo foram extraídas da geometria vetorial, das
@@ -344,6 +344,7 @@ deliberadas — não erros de leitura do original.
 - [ ] Na versão do **professor**, o caderno de respostas abre em página nova, com título de área
 - [ ] Cada bloco de resposta traz gabarito, ficha pedagógica, resolução e comentários A–E
 - [ ] Rodapé identificando VERSÃO DO ALUNO / VERSÃO DO PROFESSOR
+- [ ] **A impressão entrega o mesmo documento do PDF** — nunca a tela do aplicativo
 
 ---
 
