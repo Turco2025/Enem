@@ -979,7 +979,9 @@ function setViewMode(mode){
   document.body.classList.toggle("mode-professor", mode === "professor");
 }
 
-function exportHtmlSnapshot(){
+/* "Exportar HTML" entrega o documento na anatomia do caderno ENEM 2025 — não
+   mais um retrato da tela do app. Mesma grade do PDF, expressa em CSS. */
+async function exportHtmlSnapshot(){
   if(!state.questions.length || !state.questions.some(q => q.status === "done")){
     toast("Gere ao menos uma questão antes de exportar.", "err");
     return;
@@ -989,62 +991,58 @@ function exportHtmlSnapshot(){
     return;
   }
   try{
-    const panel = document.getElementById("resultsPanel");
-    const clone = panel.cloneNode(true);
-
-    // Remove non-printable UI (toolbar with buttons) from the static export.
-    clone.querySelectorAll(".no-print").forEach(n => n.remove());
-
-    // Freeze any live <canvas> charts as static images so the exported file
-    // renders correctly without needing Chart.js / JS execution.
-    const liveCanvases = panel.querySelectorAll("canvas");
-    const cloneCanvases = clone.querySelectorAll("canvas");
-    liveCanvases.forEach((liveCanvas, i) => {
-      const cloneCanvas = cloneCanvases[i];
-      if(!cloneCanvas) return;
-      try{
-        const img = document.createElement("img");
-        img.src = liveCanvas.toDataURL("image/png");
-        img.style.cssText = liveCanvas.getAttribute("style") || "max-width:100%;";
-        cloneCanvas.replaceWith(img);
-      }catch(e){ /* canvas tainted or empty — leave as-is */ }
-    });
-
-    const styleTag = document.querySelector("style");
-    const css = styleTag ? styleTag.textContent : "";
-    const modeClass = state.viewMode === "aluno" ? "mode-aluno" : "mode-professor";
-    const titulo = `Simulado ENEM — ${AREA_META[state.area] ? AREA_META[state.area].label : ""} · ${state.disciplina || ""}`;
-
-    const doc = `<!DOCTYPE html>
-<html lang="pt-BR">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>${escapeHtml(titulo)}</title>
-<style>${css}
-body{background:#0b0f1e;}
-@media print{ body{background:#fff;} }
-</style>
-</head>
-<body class="${modeClass}">
-<div class="wrap">${clone.outerHTML}</div>
-</body>
-</html>`;
-
-    const blob = new Blob([doc], {type: "text/html"});
+    const professor = state.viewMode !== "aluno";
+    const doneQuestions = state.questions.map((q, idx) => ({ q, idx })).filter(o => o.q.status === "done");
+    const html = enemBuildPrintHTML(doneQuestions, professor);
+    const blob = new Blob([html], { type: "text/html;charset=utf-8" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
-    const rotulo = state.viewMode === "aluno" ? "aluno" : "professor";
-    const safeName = `Simulado_ENEM_${(state.disciplina||"questoes").replace(/[^a-zA-Z0-9]+/g,"_")}_${rotulo}.html`;
+    const rotulo = professor ? "professor" : "aluno";
+    const safeName = "Simulado_ENEM_" + (state.disciplina || "questoes").replace(/[^a-zA-Z0-9]+/g, "_") + "_" + rotulo + ".html";
     a.href = url;
     a.download = safeName;
     document.body.appendChild(a);
     a.click();
     a.remove();
     setTimeout(() => URL.revokeObjectURL(url), 4000);
-    toast("Arquivo HTML exportado com sucesso.", "ok");
+    toast("Arquivo HTML exportado no padrão do caderno ENEM.", "ok");
   }catch(err){
     toast("Não foi possível exportar o arquivo: " + err.message, "err");
+  }
+}
+
+/* "Imprimir" manda para a impressora o MESMO documento do botão PDF. */
+async function printExam(){
+  if(!state.questions.length || !state.questions.some(q => q.status === "done")){
+    toast("Gere ao menos uma questão antes de imprimir.", "err");
+    return;
+  }
+  if(document.getElementById("resultsPanel").querySelector(".visual-image-loading")){
+    toast("Aguarde a geração das imagens terminar antes de imprimir.", "err");
+    return;
+  }
+  if(!window.jspdf){
+    try{
+      await loadScriptOnce(CDN_URLS.jspdf);
+    }catch(e){
+      toast("Não foi possível carregar a biblioteca de impressão (verifique sua conexão) e tente novamente.", "err");
+      return;
+    }
+  }
+  const btn = document.getElementById("btnPrint");
+  const label = btn ? btn.textContent : "";
+  if(btn){ btn.disabled = true; btn.textContent = "Preparando..."; }
+  try{
+    const professor = state.viewMode !== "aluno";
+    const doneQuestions = state.questions.map((q, idx) => ({ q, idx })).filter(o => o.q.status === "done");
+    if(!doneQuestions.length) throw new Error("Nenhuma questão para imprimir.");
+    const abriu = enemPrintPdf(doneQuestions, professor);
+    toast(abriu ? "Documento aberto para impressão no padrão do caderno ENEM."
+                : "Seu navegador bloqueou a janela; o arquivo foi baixado — abra-o e imprima.", abriu ? "ok" : "err");
+  }catch(err){
+    toast("Não foi possível preparar a impressão: " + err.message, "err");
+  }finally{
+    if(btn){ btn.disabled = false; btn.textContent = label; }
   }
 }
 
@@ -1452,14 +1450,6 @@ function enemFits(flow, needed){ return flow.y + needed <= flow.bottom; }
 
 // Justificação real: distribui o espaço restante entre as palavras da linha.
 // A última linha de cada parágrafo fica alinhada à esquerda, como no original.
-function enemDrawJustified(doc, line, x, y, width, isLast){
-  const words = line.split(/\s+/).filter(Boolean);
-  if(isLast || words.length < 2){ doc.text(line, x, y); return; }
-  const wordsWidth = words.reduce((s, w) => s + doc.getTextWidth(w), 0);
-  const gap = (width - wordsWidth) / (words.length - 1);
-  let cx = x;
-  words.forEach(w => { doc.text(w, cx, y); cx += doc.getTextWidth(w) + gap; });
-}
 
 // Parágrafo de corpo: 10 pt, entrelinha 12,0 pt, justificado, primeira linha
 // recuada em 6 mm, sem linha em branco entre parágrafos.
@@ -1468,26 +1458,23 @@ function enemParagraph(doc, ctx, flow, text, opts){
   const size = o.size || ENEM.body;
   const lead = o.leading || ENEM.leading;
   const indent = o.indent != null ? o.indent : ENEM.indent;
-  const weight = o.bold ? "bold" : "normal";
   const clean = pdfSanitizeText(String(text || "").trim());
   if(!clean) return;
 
   clean.split(/\n+/).forEach(par => {
-    let remaining = par.trim();
-    let first = true;
-    while(remaining.length){
-      enemFont(doc, weight, size);
-      const width = flow.w - (first ? indent : 0);
-      const chunk = doc.splitTextToSize(remaining, width)[0];
-      const isLast = chunk.length >= remaining.length;
+    const t = par.trim();
+    if(!t) return;
+    // O corpo do caderno é 97,7 % regular, mas o negrito existe — e os marcadores
+    // **assim** do gerador NÃO podem vazar impressos na página.
+    const runs = enemRichRuns(t).map(r => ({ text: r.text, bold: r.bold || !!o.bold }));
+    const lines = enemWrapRuns(doc, runs, flow.w, size, false, indent);
+    lines.forEach((parts, i) => {
+      const off = i === 0 ? indent : 0;            // recuo só na primeira linha
       enemEnsure(doc, ctx, flow, lead);
-      enemFont(doc, weight, size);
-      enemInk(doc);
-      enemDrawJustified(doc, chunk, flow.x + (first ? indent : 0), flow.y + size, width, isLast);
+      enemDrawRichLine(doc, parts, flow.x + off, flow.y + size, flow.w - off,
+                       size, "justify", i === lines.length - 1, false);
       flow.y += lead;
-      remaining = remaining.slice(chunk.length).trim();
-      first = false;
-    }
+    });
   });
 }
 
@@ -1584,15 +1571,16 @@ function enemOptionMark(doc, x, yBaseline, letter){
 // pendurado a 4,5 mm, entrelinha 13,4 pt, alinhado à esquerda (não justificado).
 function enemAlternative(doc, ctx, flow, letter, text){
   const width = flow.w - ENEM.hang;
-  enemFont(doc, "normal", ENEM.body);
-  const lines = doc.splitTextToSize(pdfSanitizeText(String(text || "").trim()) || "—", width);
-  lines.forEach((ln, i) => {
+  const clean = pdfSanitizeText(String(text || "").trim()) || "—";
+  const lines = enemWrapRuns(doc, enemRichRuns(clean), width, ENEM.body, false);
+  lines.forEach((parts, i) => {
     enemEnsure(doc, ctx, flow, ENEM.altLeading);
     const base = flow.y + ENEM.body;
     if(i === 0) enemOptionMark(doc, flow.x, base, letter);
-    enemFont(doc, "normal", ENEM.body);
-    enemInk(doc);
-    doc.text(ln, flow.x + ENEM.hang, base);
+    // Alternativas são alinhadas à esquerda (não justificadas), com o texto
+    // pendurado a 4,5 mm da letra circulada.
+    enemDrawRichLine(doc, parts, flow.x + ENEM.hang, base, width, ENEM.body,
+                     "left", i === lines.length - 1, false);
     flow.y += ENEM.altLeading;
   });
 }
@@ -1611,9 +1599,11 @@ function enemRichRuns(text){
 
 // Quebra os trechos em linhas que caibam na largura, preservando o peso de cada
 // palavra. Devolve um array de linhas; cada linha é um array de { text, bold }.
-function enemWrapRuns(doc, runs, width, size, italic){
+function enemWrapRuns(doc, runs, width, size, italic, firstIndent){
+  const fi = firstIndent || 0;                     // recuo só da 1ª linha
   const lines = [];
   let line = [], lineW = 0;
+  const limite = () => (lines.length === 0 ? width - fi : width);
   runs.forEach(run => {
     enemFont(doc, enemStyle(run.bold, !!italic), size);
     run.text.split(/(\s+)/).forEach(tok => {
@@ -1623,7 +1613,7 @@ function enemWrapRuns(doc, runs, width, size, italic){
         if(line.length){ line.push({ text: tok, bold: run.bold, w: w }); lineW += w; }
         return;
       }
-      if(lineW + w > width && line.length){
+      if(lineW + w > limite() && line.length){
         while(line.length && /^\s+$/.test(line[line.length - 1].text)) { lineW -= line.pop().w; }
         lines.push(line); line = []; lineW = 0;
       }
@@ -1903,7 +1893,7 @@ function enemNeedsWidePage(o){
    EXATAMENTE a mesma diagramação; a do professor apenas acrescenta, DEPOIS de
    todas as questões, o caderno de respostas — gabarito, ficha pedagógica,
    resolução comentada e comentário de cada alternativa, questão por questão. */
-function enemExportPdf(doneQuestions, professor){
+function enemBuildPdfDoc(doneQuestions, professor){
   const { jsPDF } = window.jspdf;
   const doc = new jsPDF({ unit: "pt", format: [ENEM.pageW, ENEM.pageH], orientation: "portrait" });
   const areaLabel = AREA_META[state.area] ? AREA_META[state.area].label : "";
@@ -1961,7 +1951,366 @@ function enemExportPdf(doneQuestions, professor){
 
   const rotulo = professor ? "professor" : "aluno";
   const safeName = "Simulado_ENEM_" + (state.disciplina || "questoes").replace(/[^a-zA-Z0-9]+/g, "_") + "_" + rotulo + ".pdf";
-  doc.save(safeName);
+  return { doc: doc, safeName: safeName };
+}
+
+// Baixar o PDF. Construção e entrega ficam separadas para que a IMPRESSÃO possa
+// usar exatamente o mesmo documento, sem uma segunda diagramação para manter
+// em sincronia.
+function enemExportPdf(doneQuestions, professor){
+  const built = enemBuildPdfDoc(doneQuestions, professor);
+  built.doc.save(built.safeName);
+}
+
+
+/* ---- IMPRESSÃO E EXPORTAÇÃO HTML na anatomia do caderno ENEM 2025 ----
+
+   Duas saídas, uma só especificação:
+
+   • "Imprimir" monta EXATAMENTE o mesmo documento do botão PDF (as mesmas
+     funções enem*), chama doc.autoPrint() e abre o blob numa aba. A folha que
+     sai da impressora não pode divergir do PDF nem por um décimo de milímetro,
+     porque é o mesmo arquivo — inclusive fólio, margens espelhadas e cromo de
+     página. Antes este botão chamava window.print() sobre a tela do app, e o
+     que ia para a impressora eram os cartões da interface.
+
+   • "Exportar HTML" gera um documento web autocontido que reproduz a mesma
+     grade em CSS: 200 × 275 mm, duas colunas de 89,47 mm com fio sólido na
+     calha, Calibri 10/12,0 pt, tinta #231F20, barra-ornamento, letras
+     circuladas e os dois tratamentos de referência do §2.1. O cabeçalho e o
+     rodapé se repetem em cada folha por <thead>/<tfoot> — em CSS de impressão
+     o navegador só repete cromo de página desse jeito; `position: fixed` com
+     deslocamento negativo é levado para o fim da página no Chrome.           */
+
+function enemPrintEsc(s){
+  return String(s == null ? "" : s)
+    .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+
+// **negrito** vira <strong>; todo o resto é escapado.
+function enemPrintRich(text){
+  return enemRichRuns(String(text == null ? "" : text))
+    .map(r => r.bold ? "<strong>" + enemPrintEsc(r.text) + "</strong>" : enemPrintEsc(r.text))
+    .join("");
+}
+
+const ENEM_PRINT_CSS = `
+/* Formato próprio do INEP — 200 × 275 mm, menor que A4. Margens ESPELHADAS:
+   a mancha desliza 2,5 mm conforme a paridade da página, deixando a margem
+   externa maior que a interna (§1). O cabeçalho e o rodapé ficam DENTRO do
+   fluxo, no <thead>/<tfoot>, por isso a margem do @page é a do papel. */
+@page { size: 200mm 275mm; margin: 8mm 9.67mm 6mm 8mm; }
+@page :right { margin: 8mm 9.67mm 6mm 8mm; }
+@page :left  { margin: 8mm 8mm 6mm 10.5mm; }
+
+*{ box-sizing: border-box; }
+html,body{ margin:0; padding:0; }
+body{
+  font-family: Calibri, Carlito, "Segoe UI", system-ui, sans-serif;
+  font-size: 10pt;
+  line-height: 12pt;              /* entrelinha do corpo: 12,0 pt (1,20x) */
+  color: #231F20;                 /* preto quente de impressão, NÃO #000000 */
+  background: #fff;
+  letter-spacing: 0;              /* tracking nativo: medido em 0,0000 pt */
+  -webkit-print-color-adjust: exact;
+  print-color-adjust: exact;
+}
+
+/* A tabela é só o veículo do cromo repetido: <thead> reserva a faixa do
+   cabeçalho (28 − 8 = 20 mm) e <tfoot> a do rodapé (269 − 260 = 9 mm). */
+table.pg{ width:100%; border-collapse:collapse; }
+table.pg > thead td{ height:20mm; padding:0; vertical-align:top; position:relative; }
+table.pg > tfoot td{ height:9mm;  padding:0; vertical-align:bottom; }
+table.pg > tbody td{ padding:0; vertical-align:top; }
+
+.marca{ font-size:16pt; font-weight:700; color:#004B8D; line-height:1; }
+.marca .ano{ color:#939598; font-weight:400; }
+.marca-sub{ font-size:5.5pt; color:#939598; margin-top:0.8mm; }
+.cab{ display:flex; align-items:flex-start; gap:4mm; padding-top:2.3mm; }
+.quadros{ display:flex; gap:0.4mm; margin-top:0.4mm; }
+.quadros i{ width:5.5mm; height:6.6mm; background:#939598; transform:skewX(-20deg); display:block; }
+.barra-cinza{ width:48.93mm; height:2.38mm; background:#939598; margin-top:1.6mm; }
+
+/* Filete misto: um trecho azul de 49,16 mm do lado interno e um de microtexto
+   de 131,54 mm do lado externo — no rodapé a composição se inverte (§4). */
+.filete{ height:1.06mm; display:flex; align-items:flex-start; margin-top:1.5mm; }
+.filete .azul{ flex:0 0 49.16mm; height:1.06mm; background:#B9E5FA; }
+.filete .micro{
+  flex:0 0 131.54mm; min-width:0; overflow:hidden; white-space:nowrap;
+  font:700 1.5pt/1 Arial, sans-serif; color:#231F20;
+}
+.rodape{ display:flex; align-items:baseline; font-size:9pt; color:#58595B; margin-top:1.1mm; }
+
+/* Tarja da versão: 11 × 30 mm sangrando na borda externa, com o quadrado de
+   registro de 3 × 3 mm na quina interna. Vive no <thead>, e por isso se repete. */
+.tarja{ position:absolute; top:-8mm; right:-9.67mm; width:11mm; height:30mm; background:#B9E5FA; }
+.tarja i{ position:absolute; left:-1.5mm; top:31.5mm; width:3mm; height:3mm; background:#231F20; }
+
+/* Miolo: duas colunas de 89,47 mm, calha de 3,40 mm com fio vertical SÓLIDO de
+   0,5 pt. Em 2025 não existe mais traço pontilhado no caderno. */
+.miolo{ column-count:2; column-gap:3.40mm; column-rule:0.5pt solid #231F20; column-fill:auto; }
+.miolo.unica{ column-count:1; column-rule:none; }
+.quebra{ break-before:page; }
+
+/* Título de área — 11 pt bold caixa alta, recuado 2 mm, sem barra-ornamento. */
+.area{ font-size:11pt; font-weight:700; text-transform:uppercase; margin:0 0 3.2mm 2mm; }
+
+/* Rótulo QUESTÃO N + barra-ornamento: começa sempre a 24,47 mm da borda da
+   coluna, termina 0,30 mm antes da direita, altura 1,06 mm, filete escuro de
+   1 pt no topo, 79,5 % em #B9E5FA e 20,5 % em #231F20 (§5.2). */
+.rotulo{ display:flex; align-items:center; margin:0 0 0.76mm; break-after:avoid; }
+.rotulo .txt{ width:24.47mm; flex:0 0 24.47mm; font-size:11pt; font-weight:700;
+              text-transform:uppercase; white-space:nowrap; }
+.rotulo .barra{
+  flex:1; height:1.06mm; margin-right:0.30mm; border-top:1pt solid #231F20;
+  background:linear-gradient(to right,#B9E5FA 0 79.5%,#231F20 79.5% 100%);
+}
+
+/* Corpo: justificado, primeira linha recuada em 6 mm, sem espaço entre
+   parágrafos. Comando: justificado e SEM recuo. */
+.corpo{ margin:0; text-align:justify; text-indent:6mm; }
+.comando{ margin:0; text-align:justify; text-indent:0; }
+
+/* §2.1 — as duas referências, que nunca se misturam. Ambas em corpo − 2 pt. */
+.ref{ font-size:8pt; line-height:9.6pt; margin:0.5mm 0 1.5mm; }
+.ref-texto{ text-align:right; font-style:italic; }
+.ref-visual{ text-align:justify; }
+
+/* Alternativas: letra circulada na margem, texto pendurado a 4,5 mm,
+   entrelinha 13,4 pt. */
+.alts{ margin:1.51mm 0 0; }
+.alt{ margin:0; padding-left:4.5mm; text-indent:-4.5mm; line-height:13.4pt; text-align:left; }
+.alt .letra{ font-family:"Segoe UI Symbol","Apple Symbols",Calibri,sans-serif; }
+
+/* Filete sólido de fechamento, 0,5 pt, largura cheia da coluna. No caderno
+   oficial ele aparece SÓ no fim da sequência — entre questões consecutivas
+   quem separa é a barra-ornamento da questão seguinte (§5.9). */
+.fecho{ margin:2.53mm 0 0; }
+.miolo > .questao:last-child .fecho,
+.miolo > .fecho{ border-bottom:0.5pt solid #231F20; }
+.questao{ margin-bottom:2.53mm; }
+
+/* Subtítulo interno — bold 10 pt caixa alta, 1,5 mm de respiro acima (§7.4). */
+.sub{ font-size:10pt; font-weight:700; text-transform:uppercase; margin:1.5mm 0 0; break-after:avoid; }
+.ficha{ margin:0; text-align:justify; }
+
+figure{ margin:1.6mm 0 2.11mm; break-inside:avoid; }
+figure img{ display:block; max-width:100%; height:auto; margin:0 auto; }
+
+/* Tabela: moldura externa 1 pt, divisórias 0,5 pt, cabeçalho em #6DCFF6 com
+   texto bold 10 pt centralizado (§6). */
+table.dados{ width:100%; border-collapse:collapse; margin:1.6mm 0 2.11mm; break-inside:avoid; }
+table.dados th,table.dados td{ border:0.5pt solid #231F20; padding:1mm 1.5mm;
+                               text-align:center; font-size:10pt; line-height:12pt; }
+table.dados th{ background:#6DCFF6; font-weight:700; border-width:1pt; }
+
+@media screen{
+  body{ background:#e9e9ec; padding:10mm 0; }
+  table.pg{ width:200mm; margin:0 auto; background:#fff; padding:8mm 9.67mm 6mm 8mm;
+            box-shadow:0 2px 18px rgba(0,0,0,.18); }
+  .aviso{ width:200mm; margin:0 auto 8mm; font:400 13px/1.55 system-ui,sans-serif;
+          color:#333; background:#fff; border-left:3px solid #004B8D; padding:12px 16px 12px 14px; }
+}
+@media print{
+  .aviso{ display:none; }
+  /* Nota: na ÚLTIMA folha, se o conteúdo termina no meio da página, o rodapé
+     sobe junto com ele — é limitação do <tfoot> repetido, o único mecanismo de
+     cromo de página que o Chrome honra na impressão. A folha idêntica ao PDF,
+     com rodapé fixo na base e fólio, sai pelo botão Imprimir. */
+}
+`;
+
+function enemPrintChromeTop(ctx){
+  return '<thead><tr><td>' +
+    '<div class="tarja"><i></i></div>' +
+    '<div class="cab"><div>' +
+    '<div class="marca">simulado<span class="ano">' + enemPrintEsc(ctx.ano) + '</span></div>' +
+    '<div class="marca-sub">Simulado no padrão do caderno ENEM</div></div>' +
+    '<div class="quadros"><i></i><i></i><i></i><i></i></div></div>' +
+    '<div class="barra-cinza"></div>' +
+    '<div class="filete"><span class="azul"></span>' +
+    '<span class="micro">' + "SIMULADO".repeat(150) + '</span></div>' +
+    '</td></tr></thead>';
+}
+
+function enemPrintChromeBot(ctx){
+  return '<tfoot><tr><td>' +
+    '<div class="filete"><span class="micro">' + "SIMULADO".repeat(150) + '</span>' +
+    '<span class="azul"></span></div>' +
+    '<div class="rodape"><span>' + enemPrintEsc(ctx.footerText) + '</span></div>' +
+    '</td></tr></tfoot>';
+}
+
+function enemPrintRotulo(texto){
+  return '<div class="rotulo"><span class="txt">' + enemPrintEsc(texto) +
+         '</span><span class="barra"></span></div>';
+}
+
+// Texto-base: parágrafos de corpo e, no fim, a referência do TEXTO INTRODUTÓRIO
+// — itálico, à direita (§2.1). Mesma regra e mesma detecção do PDF.
+function enemPrintTextoBase(out, text, fonte){
+  const pars = String(text || "").trim().split(/\n+/).filter(p => p.trim());
+  let ref = String(fonte || "").trim();
+  if(!ref && pars.length > 1 && enemIsReference(pars[pars.length - 1])) ref = pars.pop();
+  pars.forEach(p => out.push('<p class="corpo">' + enemPrintRich(p) + '</p>'));
+  if(ref) out.push('<p class="ref ref-texto">' + enemPrintRich(ref) + '</p>');
+}
+
+// Recurso visual. A referência de imagem, tabela e gráfico é redonda e
+// JUSTIFICADA (§2.1) — nunca em itálico, nunca à direita.
+function enemPrintVisual(out, visual, cardIdx){
+  if(!visual || !visual.tipo) return;
+  if(visual.tipo === "tabela"){
+    const cols = visual.colunas || [];
+    const rows = visual.linhas || [];
+    if(!cols.length) return;
+    out.push('<table class="dados"><thead><tr>' +
+      cols.map(c => '<th>' + enemPrintEsc(c) + '</th>').join("") + '</tr></thead><tbody>' +
+      rows.map(r => '<tr>' + r.map(c => '<td>' + enemPrintEsc(c) + '</td>').join("") + '</tr>').join("") +
+      '</tbody></table>');
+    if(visual.titulo) out.push('<p class="ref ref-visual">' + enemPrintRich(visual.titulo) + '</p>');
+    return;
+  }
+  const info = visual.tipo === "imagem" ? pdfGetVisualImageInfo(cardIdx) : pdfGetVisualChartInfo(cardIdx);
+  if(!info || !info.dataUrl) return;
+  out.push('<figure><img src="' + info.dataUrl + '" alt=""></figure>');
+  if(visual.descricao) out.push('<p class="ref ref-visual">' + enemPrintRich(visual.descricao) + '</p>');
+}
+
+// Caderno de questões — IDÊNTICO nas duas versões. Nada de gabarito, resolução
+// ou comentário aparece aqui (§7.1).
+function enemPrintQuestao(o){
+  const d = o.q.data || {};
+  const out = ['<section class="questao">'];
+  out.push(enemPrintRotulo("Questão " + (o.idx + 1)));
+  if(d.textoBase) enemPrintTextoBase(out, d.textoBase, d.fonte);
+  if(d.visual && d.visual.tipo) enemPrintVisual(out, d.visual, o.idx);
+  if(d.comando) out.push('<p class="comando">' + enemPrintRich(d.comando) + '</p>');
+  out.push('<div class="alts">');
+  ["A","B","C","D","E"].forEach(L => {
+    out.push('<p class="alt"><span class="letra">' + (ENEM_DOCX_MARKS[L] || L) +
+             '</span>&nbsp;&nbsp;' + enemPrintRich((d.alternativas && d.alternativas[L]) || "") + '</p>');
+  });
+  out.push('</div><div class="fecho"></div></section>');
+  return out.join("\n");
+}
+
+// Caderno de respostas — SÓ na versão do professor (§7.3).
+function enemPrintResposta(o){
+  const d = o.q.data || {};
+  const out = ['<section class="questao">'];
+  out.push(enemPrintRotulo("Questão " + (o.idx + 1)));
+  const letra = d.gabarito || "—";
+  out.push('<p class="alt"><span class="letra">' + (ENEM_DOCX_MARKS[letra] || letra) +
+           '</span>&nbsp;&nbsp;<strong>GABARITO: ' + enemPrintEsc(letra) + '</strong></p>');
+  const resposta = (d.alternativas && d.alternativas[d.gabarito]) || "";
+  if(resposta) out.push('<p class="ficha" style="margin-left:4.5mm">' + enemPrintRich(resposta) + '</p>');
+
+  const ficha = [];
+  if(d.competencia && (d.competencia.numero || d.competencia.texto)){
+    ficha.push("**Competência " + (d.competencia.numero || "—") + ":** " + (d.competencia.texto || ""));
+  }
+  if(d.habilidade && (d.habilidade.codigo || d.habilidade.texto)){
+    ficha.push("**Habilidade " + (d.habilidade.codigo || "—") + ":** " + (d.habilidade.texto || ""));
+  }
+  if(d.objetoConhecimento) ficha.push("**Objeto de conhecimento:** " + d.objetoConhecimento);
+  const conteudo = d.tema || o.q.tema || "";
+  if(conteudo) ficha.push("**Conteúdo abordado:** " + conteudo);
+  const dif = d.dificuldade || o.q.dificuldade || "";
+  if(dif) ficha.push("**Nível de dificuldade:** " + dif);
+  if(ficha.length){
+    out.push('<p class="sub">Ficha pedagógica</p>');
+    ficha.forEach(l => out.push('<p class="ficha">' + enemPrintRich(l) + '</p>'));
+  }
+  if(d.resolucaoComentada){
+    out.push('<p class="sub">Resolução comentada</p>');
+    out.push('<p class="comando">' + enemPrintRich(d.resolucaoComentada) + '</p>');
+  }
+  const analise = d.analiseAlternativas || {};
+  if(["A","B","C","D","E"].some(L => analise[L] && analise[L].comentario)){
+    out.push('<p class="sub">Comentários das alternativas</p>');
+    ["A","B","C","D","E"].forEach(L => {
+      const info = analise[L];
+      if(!info) return;
+      const status = info.status === "correta" ? "CORRETA" : "INCORRETA";
+      out.push('<p class="alt"><span class="letra">' + (ENEM_DOCX_MARKS[L] || L) +
+               '</span>&nbsp;&nbsp;' + status + " — " + enemPrintRich(info.comentario || "") + '</p>');
+    });
+  }
+  out.push('<div class="fecho"></div></section>');
+  return out.join("\n");
+}
+
+/* Documento HTML completo. Questões em blocos contíguos por modo de coluna:
+   uma questão com figura larga põe a página inteira em coluna única (§6), então
+   ela abre um bloco .miolo.unica próprio. */
+function enemBuildPrintHTML(doneQuestions, professor){
+  const areaLabel = AREA_META[state.area] ? AREA_META[state.area].label : "";
+  const ctx = {
+    ano: new Date().getFullYear(),
+    footerText: [String(areaLabel).toUpperCase(), state.disciplina || "",
+                 professor ? "VERSÃO DO PROFESSOR" : "VERSÃO DO ALUNO"].filter(Boolean).join(" | "),
+  };
+
+  // Agrupa questões consecutivas que compartilham o mesmo modo de coluna.
+  const grupos = [];
+  doneQuestions.forEach(o => {
+    const wide = enemNeedsWidePage(o);
+    const ultimo = grupos[grupos.length - 1];
+    if(ultimo && ultimo.wide === wide) ultimo.itens.push(o);
+    else grupos.push({ wide: wide, itens: [o] });
+  });
+
+  const miolos = grupos.map(g =>
+    '<div class="miolo' + (g.wide ? " unica" : "") + '">' +
+    g.itens.map(enemPrintQuestao).join("\n") + '</div>').join("\n");
+
+  let fecho;
+  if(professor){
+    // §7.3 — caderno de respostas completo, em página nova.
+    fecho = '<h2 class="area quebra">Gabarito e resoluções</h2>' +
+            '<div class="miolo">' + doneQuestions.map(enemPrintResposta).join("\n") + '</div>';
+  }else{
+    // §7.2 — folha de gabarito: SOMENTE a letra de cada questão.
+    const linhas = doneQuestions.map(o => {
+      const letra = (o.q.data && o.q.data.gabarito) || "—";
+      return '<p class="alt"><strong>' + (o.idx + 1) + '.</strong>&nbsp;&nbsp;<span class="letra">' +
+             (ENEM_DOCX_MARKS[letra] || letra) + '</span></p>';
+    }).join("\n");
+    fecho = '<h2 class="area quebra">Gabarito</h2>' +
+            '<div class="miolo">' + linhas + '<div class="fecho"></div></div>';
+  }
+
+  const titulo = "Simulado ENEM — " + areaLabel + (state.disciplina ? " · " + state.disciplina : "") +
+                 " — versão do " + (professor ? "professor" : "aluno");
+
+  return '<!doctype html>\n<html lang="pt-BR">\n<head>\n<meta charset="utf-8">\n' +
+    '<meta name="viewport" content="width=device-width, initial-scale=1">\n' +
+    '<title>' + enemPrintEsc(titulo) + '</title>\n<style>' + ENEM_PRINT_CSS + '</style>\n</head>\n<body>\n' +
+    '<p class="aviso">Documento no padrão do caderno ENEM 2025 — 200 × 275 mm, duas colunas de 89,47 mm. ' +
+    'Ao imprimir, escolha o papel <strong>200 × 275 mm</strong> (ou A4 sem "ajustar à página") e mantenha ' +
+    'as margens do documento. Para a folha idêntica ao PDF, com fólio e margens espelhadas, use o botão ' +
+    '<strong>Imprimir</strong> do aplicativo.</p>\n' +
+    '<table class="pg">\n' + enemPrintChromeTop(ctx) + '\n' + enemPrintChromeBot(ctx) + '\n' +
+    '<tbody><tr><td>\n<h2 class="area">' + enemPrintEsc(areaLabel) + '</h2>\n' +
+    miolos + '\n' + fecho + '\n</td></tr></tbody>\n</table>\n</body>\n</html>';
+}
+
+/* Imprimir = o MESMO documento do PDF. Nada de re-renderizar em CSS e torcer
+   para bater: montamos o jsPDF idêntico ao do botão PDF, marcamos autoPrint e
+   abrimos o blob. O que sai da impressora é, literalmente, o PDF. */
+function enemPrintPdf(doneQuestions, professor){
+  const built = enemBuildPdfDoc(doneQuestions, professor);
+  const doc = built.doc;
+  doc.autoPrint();
+  const url = doc.output("bloburl");
+  const win = window.open(url, "_blank");
+  if(!win){
+    // Bloqueador de pop-up: baixa o arquivo, que imprime exatamente igual.
+    doc.save(built.safeName);
+    return false;
+  }
+  return true;
 }
 
 /* ---- Anatomia ENEM 2025 no DOCX (versão do aluno) ----
@@ -2001,7 +2350,10 @@ function enemDocxParagraph(text, opts){
       alignment: o.alignment || AlignmentType.JUSTIFIED,
       indent: o.indent === false ? undefined : { firstLine: ENEM_DOCX.indent },
       spacing: { line: o.line || ENEM_DOCX.line, lineRule: LineRuleType.EXACTLY, before: 0, after: 0 },
-      children: [ new TextRun({ text: par.trim(), font: ENEM_DOCX.font, size: Math.round(size * 2), color: o.color || ENEM_DOCX.ink, bold: !!o.bold }) ],
+      children: enemRichRuns(par.trim()).map(r => new TextRun({
+        text: r.text, font: ENEM_DOCX.font, size: Math.round(size * 2),
+        color: o.color || ENEM_DOCX.ink, bold: r.bold || !!o.bold,
+      })),
     }));
   });
   return out;
@@ -2029,7 +2381,9 @@ function enemDocxAlternative(letter, text){
     spacing: { line: ENEM_DOCX.altLine, lineRule: LineRuleType.EXACTLY, before: 0, after: 0 },
     children: [
       new TextRun({ text: ENEM_DOCX_MARKS[letter] + "\t", font: ENEM_DOCX.font, size: 20, color: ENEM_DOCX.ink }),
-      new TextRun({ text: String(text || "").trim() || "—", font: ENEM_DOCX.font, size: 20, color: ENEM_DOCX.ink }),
+      ...enemRichRuns(String(text || "").trim() || "—").map(r => new TextRun({
+        text: r.text, bold: r.bold, font: ENEM_DOCX.font, size: 20, color: ENEM_DOCX.ink,
+      })),
     ],
   }) ];
 }
@@ -3010,22 +3364,7 @@ function init(){
 
   document.getElementById("viewAluno").addEventListener("click", () => setViewMode("aluno"));
   document.getElementById("viewProfessor").addEventListener("click", () => setViewMode("professor"));
-  document.getElementById("btnPrint").addEventListener("click", () => {
-    if(!state.questions.length || !state.questions.some(q => q.status === "done")){
-      toast("Gere ao menos uma questão antes de imprimir.", "err");
-      return;
-    }
-    if(document.getElementById("resultsPanel").querySelector(".visual-image-loading")){
-      toast("Aguarde a geração das imagens terminar antes de imprimir.", "err");
-      return;
-    }
-    try{
-      if(typeof window.print !== "function") throw new Error("print indisponível");
-      window.print();
-    }catch(err){
-      toast("Seu navegador não abriu a caixa de impressão. Use \"Exportar HTML\" e imprima o arquivo baixado.", "err");
-    }
-  });
+  document.getElementById("btnPrint").addEventListener("click", printExam);
   document.getElementById("btnExport").addEventListener("click", exportHtmlSnapshot);
   document.getElementById("btnExportPdf").addEventListener("click", exportPdf);
   document.getElementById("btnExportDocx").addEventListener("click", exportDocx);
