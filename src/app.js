@@ -317,6 +317,106 @@ function buildQuestionBlock(q, idx){
 // o navegador só envia os parâmetros da questão (área, disciplina, tema, dificuldade,
 // recurso, competência/habilidade) e recebe a questão pronta. A chamada à API da
 // Anthropic e a chave usada para isso ficam só no servidor — nunca no navegador.
+/* ================= DISTRIBUIÇÃO DO GABARITO ==================================
+   Regra do professor: os gabaritos nunca podem ser sequencialmente os mesmos.
+   Dentro de cada bloco de CINCO questões consecutivas, as cinco letras aparecem
+   uma única vez — logo, com 2, 3, 4 ou 5 questões todos os gabaritos saem
+   diferentes, que é exatamente o caso pedido.
+
+   Nota matemática, para quem for mexer nisto: exigir que TODA janela de cinco
+   questões consecutivas tenha as cinco letras distintas obriga a sequência a ser
+   periódica. Se as posições i..i+4 são uma permutação e i+1..i+5 também, então
+   s[i+5] = s[i] — a mesma permutação se repetindo do começo ao fim, um padrão
+   ainda mais fácil de decorar do que o problema original. Por isso a regra vale
+   por BLOCO de cinco, com duas garantias extras: a primeira letra de um bloco
+   nunca repete a última do bloco anterior (nunca há duas iguais seguidas) e cada
+   bloco usa uma permutação diferente da anterior (não há período). O resultado
+   distribui as cinco letras por igual e não deixa padrão explorável.          */
+const GABARITO_LETRAS = ["A", "B", "C", "D", "E"];
+
+function embaralhaLetras(){
+  const a = GABARITO_LETRAS.slice();
+  for(let i = a.length - 1; i > 0; i--){
+    const j = Math.floor(Math.random() * (i + 1));
+    const t = a[i]; a[i] = a[j]; a[j] = t;
+  }
+  return a;
+}
+
+function planejaGabaritos(n){
+  const plano = [];
+  let ultimaLetra = null;
+  let blocoAnterior = "";
+  while(plano.length < n){
+    let bloco = embaralhaLetras();
+    for(let t = 0; t < 40; t++){
+      const ok = (!ultimaLetra || bloco[0] !== ultimaLetra) && bloco.join("") !== blocoAnterior;
+      if(ok) break;
+      bloco = embaralhaLetras();
+    }
+    blocoAnterior = bloco.join("");
+    ultimaLetra = bloco[bloco.length - 1];
+    plano.push.apply(plano, bloco);
+  }
+  return plano.slice(0, n);
+}
+
+// Garante que o plano existe e cobre o índice pedido (regeneração avulsa também).
+function gabaritoAlvoDe(idx){
+  if(!Array.isArray(state.gabaritoPlan) || state.gabaritoPlan.length <= idx){
+    state.gabaritoPlan = planejaGabaritos(Math.max(state.questions.length, idx + 1));
+  }
+  return state.gabaritoPlan[idx] || null;
+}
+
+// As alternativas numéricas têm de ficar em ordem crescente (Guia do Inep). Se
+// estiverem, trocar duas de lugar quebraria a regra — nesse caso não mexemos.
+function alternativasNumericasOrdenadas(alts){
+  const vals = GABARITO_LETRAS.map(L => {
+    const t = String((alts && alts[L]) || "").trim().replace(/\./g, "").replace(",", ".");
+    const m = /^-?\d+(\.\d+)?/.exec(t);
+    return m ? parseFloat(m[0]) : null;
+  });
+  if(vals.some(v => v === null)) return false;
+  for(let i = 1; i < vals.length; i++){ if(vals[i] < vals[i - 1]) return false; }
+  return true;
+}
+
+/* Reposiciona a resposta correta na letra planejada. É rede de segurança: o
+   prompt já exige a posição, e o certo é o modelo escrever os distratores de
+   modo que a correta caia lá respeitando a ordem lógica. Só usamos a troca
+   quando ela não quebra a ordem numérica das alternativas.
+   Devolve "ok" | "mantido" | "impossivel".                                    */
+function aplicaGabaritoAlvo(data, alvo){
+  if(!alvo || !data || !data.gabarito) return "mantido";
+  if(data.gabarito === alvo) return "ok";
+  const alts = data.alternativas;
+  if(!alts || !alts[data.gabarito] || !alts[alvo]) return "impossivel";
+  if(alternativasNumericasOrdenadas(alts)) return "impossivel";
+
+  const de = data.gabarito;
+  const t = alts[de]; alts[de] = alts[alvo]; alts[alvo] = t;
+  const an = data.analiseAlternativas;
+  if(an && an[de] && an[alvo]){ const t2 = an[de]; an[de] = an[alvo]; an[alvo] = t2; }
+  data.gabarito = alvo;
+  data.gabaritoReposicionado = true;
+  return "ok";
+}
+
+// Confere a distribuição final e devolve os problemas encontrados, se houver.
+function auditaGabaritos(){
+  const letras = state.questions.map(q => (q.data && q.data.gabarito) || null);
+  const problemas = [];
+  for(let i = 1; i < letras.length; i++){
+    if(letras[i] && letras[i] === letras[i - 1]) problemas.push(`questões ${i} e ${i + 1} com o mesmo gabarito (${letras[i]})`);
+  }
+  for(let b = 0; b < letras.length; b += 5){
+    const bloco = letras.slice(b, b + 5).filter(Boolean);
+    if(new Set(bloco).size !== bloco.length) problemas.push(`gabarito repetido entre as questões ${b + 1} e ${Math.min(b + 5, letras.length)}`);
+  }
+  return problemas;
+}
+
 async function generateQuestion(q){
   q.status = "generating"; q.errorMsg = ""; updateQuestionCard(q, state.questions.indexOf(q));
   try{
@@ -333,6 +433,7 @@ async function generateQuestion(q){
         competenciaNum: q.competenciaNum || null,
         habilidadeCod: q.habilidadeCod || null,
         instrucoesVisual: q.instrucoesVisual || "",
+        gabaritoAlvo: gabaritoAlvoDe(state.questions.indexOf(q)),
         validar,
       }),
     });
@@ -348,6 +449,8 @@ async function generateQuestion(q){
     }
 
     q.data = payload.question;
+    // Rede de segurança: a letra planejada tem de ser mesmo a correta.
+    q.gabaritoStatus = aplicaGabaritoAlvo(q.data, gabaritoAlvoDe(state.questions.indexOf(q)));
     q.status = "done";
   } catch(err){
     q.status = "error";
@@ -371,7 +474,11 @@ async function generateAll(){
   document.getElementById("formPanel").style.display = "none";
   document.getElementById("resultsPanel").style.display = "block";
   document.getElementById("genProgressWrap").classList.remove("hidden");
-  state.questions.forEach(q => { q.status = "idle"; q.data = null; q.errorMsg = ""; });
+  state.questions.forEach(q => { q.status = "idle"; q.data = null; q.errorMsg = ""; q.gabaritoStatus = null; });
+  // Plano de gabaritos sorteado ANTES de gerar: como as questões saem em
+  // paralelo, cada uma precisa saber de antemão qual letra é a sua, senão não há
+  // como garantir que não se repitam.
+  state.gabaritoPlan = planejaGabaritos(state.questions.length);
   renderResults();
   updateProgress();
   // Concorrência aumentada de 2 para 4: cada questão já roda inteiramente no
@@ -379,7 +486,17 @@ async function generateAll(){
   // reduz bastante o tempo total para simulados com várias questões.
   await runPool(state.questions, generateQuestion, 4);
   document.getElementById("genProgressWrap").classList.add("hidden");
-  toast("Simulado gerado! Revise, edite ou regenere questões conforme necessário.", "ok");
+
+  // Auditoria da distribuição do gabarito, com o resultado dito em voz alta.
+  const presos = state.questions.filter(q => q.gabaritoStatus === "impossivel").length;
+  const problemas = auditaGabaritos();
+  if(problemas.length){
+    toast("Simulado gerado, mas a distribuição do gabarito ficou imperfeita: " + problemas[0] + ". Regenere a questão para corrigir.", "err");
+  }else if(presos){
+    toast("Simulado gerado. " + presos + " quest" + (presos > 1 ? "ões vieram" : "ão veio") + " com o gabarito fora da posição planejada e não pôde ser reposicionada sem quebrar a ordem numérica das alternativas.", "err");
+  }else{
+    toast("Simulado gerado! Revise, edite ou regenere questões conforme necessário.", "ok");
+  }
 }
 
 function updateProgress(){
