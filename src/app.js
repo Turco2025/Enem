@@ -1374,17 +1374,49 @@ function enemParagraph(doc, ctx, flow, text, opts){
   });
 }
 
+// Parágrafo de corpo que entende **negrito** no meio da frase. Mesma métrica do
+// enemParagraph: 10 pt, entrelinha 12,0 pt, justificado.
+function enemRichParagraph(doc, ctx, flow, text, opts){
+  const o = opts || {};
+  const size = o.size || ENEM.body;
+  const lead = o.leading || ENEM.leading;
+  const indent = o.indent != null ? o.indent : 0;
+  const clean = pdfSanitizeText(String(text || "").trim());
+  if(!clean) return;
+  clean.split(/\n+/).forEach(par => {
+    if(!par.trim()) return;
+    const lines = enemWrapRuns(doc, enemRichRuns(par.trim()), flow.w - indent, size, false);
+    lines.forEach((parts, i) => {
+      enemEnsure(doc, ctx, flow, lead);
+      enemDrawRichLine(doc, parts, flow.x + indent, flow.y + size, flow.w - indent,
+                       size, "justify", i === lines.length - 1, false);
+      flow.y += lead;
+    });
+  });
+}
+
+// Subtítulo interno — Calibri-Bold 10 pt em caixa alta, o mesmo papel que
+// "TEXTO I" cumpre dentro de uma questão.
+function enemSubhead(doc, ctx, flow, texto){
+  enemEnsure(doc, ctx, flow, ENEM.leading * 2);
+  flow.y += 1.5 * MM;
+  enemFont(doc, "bold", ENEM.body);
+  enemInk(doc);
+  doc.text(String(texto).toUpperCase(), flow.x, flow.y + ENEM.body);
+  flow.y += ENEM.leading;
+}
+
 // Rótulo "QUESTÃO N" em CAIXA ALTA (11 pt bold) seguido da barra-ornamento:
 // filete escuro de 1 pt no topo e, abaixo, faixa de 1,06 mm com 79,5 % em
 // #B9E5FA e 20,5 % em #231F20. A barra começa sempre a 24,47 mm da borda da
 // coluna, qualquer que seja o comprimento do rótulo.
-function enemQuestionLabel(doc, ctx, flow, numero){
+function enemBlockLabel(doc, ctx, flow, texto){
   enemEnsure(doc, ctx, flow, ENEM.qLabel * 3);
   const y = flow.y + ENEM.qLabel;
 
   enemFont(doc, "bold", ENEM.qLabel);
   enemInk(doc);
-  doc.text("QUESTÃO " + numero, flow.x, y);
+  doc.text(String(texto).toUpperCase(), flow.x, y);
 
   const x0 = flow.x + ENEM.ornStart;
   const x1 = flow.x + flow.w - ENEM.ornEndGap;
@@ -1398,6 +1430,23 @@ function enemQuestionLabel(doc, ctx, flow, numero){
     doc.rect(cut, barY + 0.5, x1 - cut, ENEM.ornH, "F");
   }
   flow.y += ENEM.qLabel + 0.76 * MM;
+}
+
+// Título de área — Calibri-Bold 11 pt em caixa alta, recuado 2 mm da margem da
+// coluna. É o componente que abre uma seção do caderno; a barra-ornamento
+// pertence à questão e não é usada aqui.
+function enemAreaTitle(doc, ctx, flow, texto){
+  if(!texto) return;
+  enemEnsure(doc, ctx, flow, ENEM.areaTitle * 3);
+  enemFont(doc, "bold", ENEM.areaTitle);
+  enemInk(doc);
+  doc.text(String(texto).toUpperCase(), flow.x + 2 * MM, flow.y + ENEM.areaTitle,
+           { maxWidth: flow.w - 2 * MM });
+  flow.y += ENEM.areaTitle + 3.2 * MM;
+}
+
+function enemQuestionLabel(doc, ctx, flow, numero){
+  enemBlockLabel(doc, ctx, flow, "QUESTÃO " + numero);
 }
 
 // Letra-opção circulada. No original é um glifo da fonte dingbat
@@ -1630,6 +1679,66 @@ function enemCloseQuestion(doc, ctx, flow, isLastOfColumn){
   }
 }
 
+/* CADERNO DE RESPOSTAS (versão do professor) — sai DEPOIS de todas as questões,
+   na mesma anatomia: 200 × 275 mm, duas colunas de 89,47 mm, Calibri 10/12,0 pt,
+   tinta #231F20, rótulo em caixa alta com a barra-ornamento. Nenhum componente
+   novo é inventado aqui: o que muda é o conteúdo, não a forma.               */
+function enemGabaritoBlock(doc, ctx, flow, o, isLastOfColumn){
+  const d = o.q.data || {};
+  const numero = o.idx + 1;
+
+  enemQuestionLabel(doc, ctx, flow, numero);
+
+  // Gabarito: letra circulada na margem e a resposta correta ao lado.
+  const letra = d.gabarito || "—";
+  enemEnsure(doc, ctx, flow, ENEM.altLeading);
+  const base = flow.y + ENEM.body;
+  if(/^[A-E]$/.test(letra)) enemOptionMark(doc, flow.x, base, letra);
+  enemFont(doc, "bold", ENEM.body);
+  enemInk(doc);
+  doc.text("GABARITO: " + letra, flow.x + ENEM.hang, base);
+  flow.y += ENEM.altLeading;
+  const resposta = (d.alternativas && d.alternativas[d.gabarito]) || "";
+  if(resposta) enemRichParagraph(doc, ctx, flow, resposta, { indent: ENEM.hang });
+
+  // Ficha pedagógica — cada linha é "rótulo: valor", o rótulo em negrito.
+  const ficha = [];
+  if(d.competencia && (d.competencia.numero || d.competencia.texto)){
+    ficha.push("**Competência " + (d.competencia.numero || "—") + ":** " + (d.competencia.texto || ""));
+  }
+  if(d.habilidade && (d.habilidade.codigo || d.habilidade.texto)){
+    ficha.push("**Habilidade " + (d.habilidade.codigo || "—") + ":** " + (d.habilidade.texto || ""));
+  }
+  if(d.objetoConhecimento) ficha.push("**Objeto de conhecimento:** " + d.objetoConhecimento);
+  const conteudo = d.tema || o.q.tema || "";
+  if(conteudo) ficha.push("**Conteúdo abordado:** " + conteudo);
+  const dif = d.dificuldade || o.q.dificuldade || "";
+  if(dif) ficha.push("**Nível de dificuldade:** " + dif);
+  if(ficha.length){
+    enemSubhead(doc, ctx, flow, "Ficha pedagógica");
+    ficha.forEach(l => enemRichParagraph(doc, ctx, flow, l));
+  }
+
+  if(d.resolucaoComentada){
+    enemSubhead(doc, ctx, flow, "Resolução comentada");
+    enemParagraph(doc, ctx, flow, d.resolucaoComentada, { indent: 0 });
+  }
+
+  const analise = d.analiseAlternativas || {};
+  const temAnalise = ["A","B","C","D","E"].some(L => analise[L] && analise[L].comentario);
+  if(temAnalise){
+    enemSubhead(doc, ctx, flow, "Comentários das alternativas");
+    ["A","B","C","D","E"].forEach(L => {
+      const info = analise[L];
+      if(!info) return;
+      const status = info.status === "correta" ? "CORRETA" : "INCORRETA";
+      enemAlternative(doc, ctx, flow, L, status + " — " + (info.comentario || ""));
+    });
+  }
+
+  enemCloseQuestion(doc, ctx, flow, isLastOfColumn);
+}
+
 // Uma questão só vai para o modo de coluna única quando traz uma figura larga —
 // proporção a partir de 1,8 : 1, que a 89,47 mm ficaria ilegível.
 function enemNeedsWidePage(o){
@@ -1640,16 +1749,19 @@ function enemNeedsWidePage(o){
   return (info.width / info.height) >= 1.8;
 }
 
-// Monta o PDF inteiro da versão do aluno na anatomia do caderno ENEM 2025.
-// Recebe as questões já filtradas por status "done".
-function enemExportPdfAluno(doneQuestions){
+/* Monta o PDF inteiro na anatomia do caderno ENEM 2025. As duas versões usam
+   EXATAMENTE a mesma diagramação; a do professor apenas acrescenta, DEPOIS de
+   todas as questões, o caderno de respostas — gabarito, ficha pedagógica,
+   resolução comentada e comentário de cada alternativa, questão por questão. */
+function enemExportPdf(doneQuestions, professor){
   const { jsPDF } = window.jspdf;
   const doc = new jsPDF({ unit: "pt", format: [ENEM.pageW, ENEM.pageH], orientation: "portrait" });
   const areaLabel = AREA_META[state.area] ? AREA_META[state.area].label : "";
   const ctx = {
     areaLabel,
     ano: new Date().getFullYear(),
-    footerText: [String(areaLabel).toUpperCase(), state.disciplina || "", "VERSÃO DO ALUNO"].filter(Boolean).join(" | "),
+    footerText: [String(areaLabel).toUpperCase(), state.disciplina || "",
+                 professor ? "VERSÃO DO PROFESSOR" : "VERSÃO DO ALUNO"].filter(Boolean).join(" | "),
     pageNo: 1,
   };
 
@@ -1659,12 +1771,7 @@ function enemExportPdfAluno(doneQuestions){
   const flow = enemNewFlow(doc, ctx, wideMap[0] ? 1 : 2);
 
   // Título de área abre a primeira coluna, recuado 2 mm, 11 pt bold caixa alta.
-  if(areaLabel){
-    enemFont(doc, "bold", ENEM.areaTitle);
-    enemInk(doc);
-    doc.text(String(areaLabel).toUpperCase(), flow.x + 2 * MM, flow.y + ENEM.areaTitle, { maxWidth: flow.w - 2 * MM });
-    flow.y += ENEM.areaTitle + 4;
-  }
+  enemAreaTitle(doc, ctx, flow, areaLabel);
 
   doneQuestions.forEach((o, i) => {
     const d = o.q.data;
@@ -1683,7 +1790,23 @@ function enemExportPdfAluno(doneQuestions){
     enemCloseQuestion(doc, ctx, flow, last || !enemFits(flow, 70));
   });
 
-  const safeName = "Simulado_ENEM_" + (state.disciplina || "questoes").replace(/[^a-zA-Z0-9]+/g, "_") + "_aluno.pdf";
+  // ---- Caderno de respostas: só na versão do professor, e só no fim de tudo.
+  if(professor){
+    enemSetMode(doc, ctx, flow, 2);
+    if(flow.y > flow.top){
+      doc.addPage([ENEM.pageW, ENEM.pageH], "portrait");
+      ctx.pageNo += 1;
+      enemStartPage(doc, ctx, flow, 2);
+    }
+    enemAreaTitle(doc, ctx, flow, "Gabarito e resoluções");
+    doneQuestions.forEach((o, i) => {
+      const last = i === doneQuestions.length - 1;
+      enemGabaritoBlock(doc, ctx, flow, o, last || !enemFits(flow, 70));
+    });
+  }
+
+  const rotulo = professor ? "professor" : "aluno";
+  const safeName = "Simulado_ENEM_" + (state.disciplina || "questoes").replace(/[^a-zA-Z0-9]+/g, "_") + "_" + rotulo + ".pdf";
   doc.save(safeName);
 }
 
@@ -1848,9 +1971,93 @@ function enemDocxVisual(visual, cardIdx){
   return out;
 }
 
-// Monta a seção do Word inteira da versão do aluno, em 2 colunas.
-function enemDocxSectionAluno(doneQuestions){
-  const { Paragraph, TextRun, AlignmentType, LineRuleType, BorderStyle } = window.docx;
+// Parágrafo de corpo que entende **negrito** no meio da frase.
+function enemDocxRichParagraph(text, opts){
+  const { Paragraph, TextRun, AlignmentType, LineRuleType } = window.docx;
+  const o = opts || {};
+  const out = [];
+  String(text || "").trim().split(/\n+/).forEach(par => {
+    if(!par.trim()) return;
+    out.push(new Paragraph({
+      alignment: AlignmentType.JUSTIFIED,
+      indent: o.indent ? { left: o.indent } : undefined,
+      spacing: { line: ENEM_DOCX.line, lineRule: LineRuleType.EXACTLY, before: 0, after: 0 },
+      children: enemRichRuns(par.trim()).map(r => new TextRun({
+        text: r.text, bold: r.bold, font: ENEM_DOCX.font, size: 20, color: ENEM_DOCX.ink,
+      })),
+    }));
+  });
+  return out;
+}
+
+// Subtítulo interno — bold 10 pt caixa alta, mesmo papel de "TEXTO I".
+function enemDocxSubhead(texto){
+  const { Paragraph, TextRun, LineRuleType } = window.docx;
+  return [ new Paragraph({
+    spacing: { before: 85, after: 0, line: ENEM_DOCX.line, lineRule: LineRuleType.EXACTLY },
+    children: [ new TextRun({ text: String(texto).toUpperCase(), bold: true, font: ENEM_DOCX.font, size: 20, color: ENEM_DOCX.ink }) ],
+  }) ];
+}
+
+// Um bloco do caderno de respostas, na mesma anatomia das questões.
+function enemDocxGabaritoBlock(o){
+  const { Paragraph, TextRun, LineRuleType } = window.docx;
+  const d = o.q.data || {};
+  const out = [];
+  out.push(...enemDocxQuestionLabel(o.idx + 1));
+
+  const letra = d.gabarito || "—";
+  out.push(new Paragraph({
+    spacing: { line: ENEM_DOCX.altLine, lineRule: LineRuleType.EXACTLY, before: 0, after: 0 },
+    indent: { left: ENEM_DOCX.hang, hanging: ENEM_DOCX.hang },
+    children: [
+      new TextRun({ text: (ENEM_DOCX_MARKS[letra] || "○") + "\t", font: ENEM_DOCX.font, size: 20, color: ENEM_DOCX.ink }),
+      new TextRun({ text: "GABARITO: " + letra, bold: true, font: ENEM_DOCX.font, size: 20, color: ENEM_DOCX.ink }),
+    ],
+  }));
+  const resposta = (d.alternativas && d.alternativas[d.gabarito]) || "";
+  if(resposta) out.push(...enemDocxRichParagraph(resposta, { indent: ENEM_DOCX.hang }));
+
+  const ficha = [];
+  if(d.competencia && (d.competencia.numero || d.competencia.texto)){
+    ficha.push("**Competência " + (d.competencia.numero || "—") + ":** " + (d.competencia.texto || ""));
+  }
+  if(d.habilidade && (d.habilidade.codigo || d.habilidade.texto)){
+    ficha.push("**Habilidade " + (d.habilidade.codigo || "—") + ":** " + (d.habilidade.texto || ""));
+  }
+  if(d.objetoConhecimento) ficha.push("**Objeto de conhecimento:** " + d.objetoConhecimento);
+  const conteudo = d.tema || o.q.tema || "";
+  if(conteudo) ficha.push("**Conteúdo abordado:** " + conteudo);
+  const dif = d.dificuldade || o.q.dificuldade || "";
+  if(dif) ficha.push("**Nível de dificuldade:** " + dif);
+  if(ficha.length){
+    out.push(...enemDocxSubhead("Ficha pedagógica"));
+    ficha.forEach(l => out.push(...enemDocxRichParagraph(l)));
+  }
+
+  if(d.resolucaoComentada){
+    out.push(...enemDocxSubhead("Resolução comentada"));
+    out.push(...enemDocxParagraph(d.resolucaoComentada, { indent: false }));
+  }
+
+  const analise = d.analiseAlternativas || {};
+  if(["A","B","C","D","E"].some(L => analise[L] && analise[L].comentario)){
+    out.push(...enemDocxSubhead("Comentários das alternativas"));
+    ["A","B","C","D","E"].forEach(L => {
+      const info = analise[L];
+      if(!info) return;
+      const status = info.status === "correta" ? "CORRETA" : "INCORRETA";
+      out.push(...enemDocxAlternative(L, status + " — " + (info.comentario || "")));
+    });
+  }
+  out.push(...enemDocxRule());
+  return out;
+}
+
+/* Monta a seção do Word inteira, em 2 colunas. As duas versões usam a mesma
+   diagramação; a do professor acrescenta o caderno de respostas ao fim.      */
+function enemDocxSection(doneQuestions, professor){
+  const { Paragraph, TextRun, AlignmentType, LineRuleType, BorderStyle, PageBreak } = window.docx;
   const areaLabel = AREA_META[state.area] ? AREA_META[state.area].label : "";
   const children = [];
 
@@ -1871,6 +2078,16 @@ function enemDocxSectionAluno(doneQuestions){
     });
     if(i < doneQuestions.length - 1) children.push(...enemDocxRule());
   });
+
+  // ---- Caderno de respostas: só na versão do professor, e só no fim de tudo.
+  if(professor){
+    children.push(new Paragraph({ children: [ new PageBreak() ] }));
+    children.push(new Paragraph({
+      spacing: { after: 85, line: ENEM_DOCX.line, lineRule: LineRuleType.EXACTLY },
+      children: [ new TextRun({ text: "GABARITO E RESOLUÇÕES", bold: true, font: ENEM_DOCX.font, size: 22, color: ENEM_DOCX.ink }) ],
+    }));
+    doneQuestions.forEach(o => children.push(...enemDocxGabaritoBlock(o)));
+  }
 
   return {
     properties: {
@@ -2148,14 +2365,14 @@ async function exportPdf(){
     const doneQuestions = state.questions.map((q, idx) => ({ q, idx })).filter(o => o.q.status === "done");
     if(!doneQuestions.length){ throw new Error("Nenhuma questão para exportar."); }
 
-    // VERSÃO DO ALUNO: sai na anatomia do caderno ENEM (200×275 mm, 2 colunas,
-    // Arial 10/12,8 pt, #231F20, letras circuladas, fio pontilhado). A versão do
-    // professor segue pelo caminho antigo, sem nenhuma alteração.
-    if(isAluno){
-      enemExportPdfAluno(doneQuestions);
-      toast("PDF exportado com sucesso.", "ok");
-      return;
-    }
+    // AS DUAS VERSÕES saem na anatomia do caderno ENEM 2025 (200×275 mm, duas
+    // colunas de 89,47 mm, Calibri 10/12,0 pt, tinta #231F20, letras circuladas,
+    // barra-ornamento). A do professor é idêntica à do aluno e acrescenta, DEPOIS
+    // de todas as questões, o caderno de respostas — gabarito, ficha pedagógica,
+    // resolução comentada e comentário de cada alternativa.
+    enemExportPdf(doneQuestions, !isAluno);
+    toast("PDF exportado com sucesso.", "ok");
+    return;
 
     doneQuestions.forEach((o, i) => {
       const { q, idx } = o;
@@ -2458,24 +2675,23 @@ async function exportDocx(){
     const doneQuestions = state.questions.map((q, idx) => ({ q, idx })).filter(o => o.q.status === "done");
     if(!doneQuestions.length){ throw new Error("Nenhuma questão para exportar."); }
 
-    // VERSÃO DO ALUNO: mesma anatomia ENEM do PDF, em 2 colunas do Word.
-    if(isAluno){
-      // As margens do caderno ENEM são espelhadas (a mancha desliza 2,5 mm conforme
-      // a paridade). O docx.js 8.5 não expõe o <w:mirrorMargins/> do Word, então
-      // aqui aplicamos a geometria da página ímpar a todas: interna 8,00 mm e
-      // externa 9,67 mm. Quem precisar do espelhamento real liga "Margens
-      // espelhadas" em Layout → Margens, no próprio Word. O PDF já espelha.
-      const docAluno = new Document({ sections: [ enemDocxSectionAluno(doneQuestions) ] });
-      const blobAluno = await Packer.toBlob(docAluno);
-      const nomeAluno = "Simulado_ENEM_" + (state.disciplina||"questoes").replace(/[^a-zA-Z0-9]+/g,"_") + "_aluno.docx";
-      const urlAluno = URL.createObjectURL(blobAluno);
-      const aAluno = document.createElement("a");
-      aAluno.href = urlAluno; aAluno.download = nomeAluno;
-      document.body.appendChild(aAluno); aAluno.click(); document.body.removeChild(aAluno);
-      setTimeout(() => URL.revokeObjectURL(urlAluno), 4000);
-      toast("DOCX exportado com sucesso.", "ok");
-      return;
-    }
+    // AS DUAS VERSÕES saem na mesma anatomia ENEM do PDF, em 2 colunas do Word.
+    // As margens do caderno ENEM são espelhadas (a mancha desliza 2,5 mm conforme
+    // a paridade). O docx.js 8.5 não expõe o <w:mirrorMargins/> do Word, então
+    // aqui aplicamos a geometria da página ímpar a todas: interna 8,00 mm e
+    // externa 9,67 mm. Quem precisar do espelhamento real liga "Margens
+    // espelhadas" em Layout → Margens, no próprio Word. O PDF já espelha.
+    const docEnem = new Document({ sections: [ enemDocxSection(doneQuestions, !isAluno) ] });
+    const blobEnem = await Packer.toBlob(docEnem);
+    const rotuloEnem = isAluno ? "aluno" : "professor";
+    const nomeEnem = "Simulado_ENEM_" + (state.disciplina||"questoes").replace(/[^a-zA-Z0-9]+/g,"_") + "_" + rotuloEnem + ".docx";
+    const urlEnem = URL.createObjectURL(blobEnem);
+    const aEnem = document.createElement("a");
+    aEnem.href = urlEnem; aEnem.download = nomeEnem;
+    document.body.appendChild(aEnem); aEnem.click(); document.body.removeChild(aEnem);
+    setTimeout(() => URL.revokeObjectURL(urlEnem), 4000);
+    toast("DOCX exportado com sucesso.", "ok");
+    return;
 
     const children = [];
     children.push(new Paragraph({
