@@ -6,10 +6,11 @@ Especificação de impresso para **PDF, DOCX e impressão** da **versão do alun
 90 questões (91–180). Todas as medidas abaixo foram extraídas da geometria vetorial, das
 fontes incorporadas e da amostragem de pixels do PDF oficial — nenhuma foi estimada a olho.
 
-> **Escopo.** Vale para as **duas versões**. A do professor é **idêntica** à do aluno
-> na diagramação das questões e acrescenta, **depois de todas as questões**, o
-> caderno de respostas (§7). Nada de gabarito, resolução ou comentário aparece
-> junto das questões — nem na versão do professor.
+> **Escopo.** Vale para as **duas versões**. A diagramação das questões é idêntica
+> nas duas. Depois de todas as questões, cada versão fecha de um jeito: a do aluno
+> com a **folha de gabarito** (só as letras) e a do professor com o **caderno de
+> respostas** completo (§7). Nada de gabarito, resolução ou comentário aparece
+> junto das questões — em nenhuma das duas.
 
 > ⚠️ **Esta é a revisão 2025.** A versão anterior deste arquivo descrevia o caderno de
 > **2019**. O INEP redesenhou a prova: a família tipográfica, a entrelinha, os filetes, o
@@ -255,7 +256,22 @@ alternativas, competência, habilidade, objeto de conhecimento. Nada que entregu
 resposta pode aparecer ao lado da questão — nem no caderno do professor. O professor
 lê a questão exatamente como o aluno a lê.
 
-### 7.2 Caderno de respostas — só na versão do professor
+### 7.2 Folha de gabarito — versão do aluno
+
+Abre em **página nova**, com o **título de área** `GABARITO`, e segue no fluxo de duas
+colunas. Traz **somente a letra de cada questão**, uma por linha:
+
+- número da questão em **bold 10 pt**, encostado na margem da coluna;
+- **letra circulada** a 8 mm — o mesmo glifo usado nas alternativas, para o aluno
+  reconhecer de imediato;
+- entrelinha de 13,4 pt, a mesma das alternativas;
+- **filete sólido** de fechamento ao fim da lista.
+
+**Não entra nada além disso.** Sem resolução, sem comentário de alternativa, sem
+competência, habilidade, objeto de conhecimento, conteúdo ou nível de dificuldade —
+tudo isso é exclusivo da versão do professor.
+
+### 7.3 Caderno de respostas — só na versão do professor
 
 Abre em **página nova**, com o **título de área** `GABARITO E RESOLUÇÕES` (11 pt bold
 caixa alta, recuado 2 mm), e segue no mesmo fluxo de duas colunas. Nenhum componente
@@ -277,7 +293,7 @@ Para **cada questão**, nesta ordem:
 
 O rodapé corrido identifica a versão: `… | VERSÃO DO ALUNO` ou `… | VERSÃO DO PROFESSOR`.
 
-### 7.3 Subtítulo interno
+### 7.4 Subtítulo interno
 
 Componente novo do sistema, com o mesmo papel que `TEXTO I` cumpre dentro de uma
 questão: **Calibri Bold 10 pt, caixa alta**, alinhado à margem da coluna, com 1,5 mm
@@ -324,7 +340,8 @@ deliberadas — não erros de leitura do original.
 - [ ] Cabeçalho com logotipo, quadrados #939598, código de barras e filete misto
 - [ ] **Figuras coloridas** quando o original for colorido
 - [ ] Caderno de questões **idêntico** nas duas versões, sem gabarito ao lado da questão
-- [ ] Na versão do professor, o caderno de respostas abre em página nova, com título de área
+- [ ] Na versão do **aluno**, a folha de gabarito ao fim traz **somente as letras**
+- [ ] Na versão do **professor**, o caderno de respostas abre em página nova, com título de área
 - [ ] Cada bloco de resposta traz gabarito, ficha pedagógica, resolução e comentários A–E
 - [ ] Rodapé identificando VERSÃO DO ALUNO / VERSÃO DO PROFESSOR
 
