@@ -6,9 +6,10 @@ Especificação de impresso para **PDF, DOCX e impressão** da **versão do alun
 90 questões (91–180). Todas as medidas abaixo foram extraídas da geometria vetorial, das
 fontes incorporadas e da amostragem de pixels do PDF oficial — nenhuma foi estimada a olho.
 
-> **Escopo.** Vale para a **versão do aluno**. A **versão do professor** — com gabarito,
-> resolução comentada e comentários das alternativas — permanece como sempre foi e
-> **não é afetada por nada deste documento**.
+> **Escopo.** Vale para as **duas versões**. A do professor é **idêntica** à do aluno
+> na diagramação das questões e acrescenta, **depois de todas as questões**, o
+> caderno de respostas (§7). Nada de gabarito, resolução ou comentário aparece
+> junto das questões — nem na versão do professor.
 
 > ⚠️ **Esta é a revisão 2025.** A versão anterior deste arquivo descrevia o caderno de
 > **2019**. O INEP redesenhou a prova: a família tipográfica, a entrelinha, os filetes, o
@@ -61,6 +62,7 @@ segurança, §4).
 | **Rótulo "QUESTÃO N"** | Calibri Bold | **11 pt** | — | caixa alta, margem da coluna | #231F20 |
 | **Título de área** | Calibri Bold | **11 pt** | — | caixa alta, recuado 2 mm | #231F20 |
 | **Rótulo "TEXTO I / II"** | Calibri Bold | **10 pt** | 12,0 pt | à esquerda | #231F20 |
+| **Subtítulo interno** (ficha, resolução, comentários) | Calibri Bold | **10 pt** caixa alta | 12,0 pt | à esquerda | #231F20 |
 | **Referência do texto introdutório** | Calibri ***Italic*** | **8 pt** (corpo − 2) | 9,6 pt | **à direita** (bandeira à esquerda) | #231F20 |
 | **Referência de imagem, tabela e gráfico** | Calibri Regular | **8 pt** (corpo − 2) | 9,6 pt | **justificada** | #231F20 |
 | **Título da obra na referência** | Calibri **Bold** (bold-itálico no texto introdutório) | 8 pt | — | — | #231F20 |
@@ -240,14 +242,47 @@ Na ordem em que entra no fluxo da coluna:
 
 ---
 
-## 7. Conteúdo da versão do aluno
+## 7. As duas versões
+
+### 7.1 Caderno de questões — igual nas duas versões
 
 **Entra:** rótulo da questão, barra-ornamento, rótulos de texto, texto-base, recurso
 visual (colorido), referência, comando, alternativas A–E, filete de fechamento quando
 for o caso.
 
-**Não entra:** gabarito, resolução comentada, comentários das alternativas, competência,
-habilidade, objeto de conhecimento. Nada que entregue a resposta.
+**Não entra, em nenhuma das duas:** gabarito, resolução comentada, comentários das
+alternativas, competência, habilidade, objeto de conhecimento. Nada que entregue a
+resposta pode aparecer ao lado da questão — nem no caderno do professor. O professor
+lê a questão exatamente como o aluno a lê.
+
+### 7.2 Caderno de respostas — só na versão do professor
+
+Abre em **página nova**, com o **título de área** `GABARITO E RESOLUÇÕES` (11 pt bold
+caixa alta, recuado 2 mm), e segue no mesmo fluxo de duas colunas. Nenhum componente
+novo é criado: o que muda é o conteúdo, não a forma.
+
+Para **cada questão**, nesta ordem:
+
+1. **`QUESTÃO N`** — o mesmo rótulo com barra-ornamento das questões
+2. **Gabarito** — letra circulada na margem e `GABARITO: X` em negrito ao lado, com o
+   texto da alternativa correta pendurado a 4,5 mm
+3. **`FICHA PEDAGÓGICA`** — subtítulo em bold 10 pt caixa alta, seguido de uma linha
+   por item, com o rótulo em negrito: **Competência**, **Habilidade**,
+   **Objeto de conhecimento**, **Conteúdo abordado**, **Nível de dificuldade**
+4. **`RESOLUÇÃO COMENTADA`** — subtítulo e o texto em corpo 10/12,0 pt justificado
+5. **`COMENTÁRIOS DAS ALTERNATIVAS`** — subtítulo e, para cada letra A–E, a letra
+   circulada com `CORRETA` / `INCORRETA` e o comentário, no mesmo recuo pendurado das
+   alternativas
+6. **Filete de fechamento** quando o bloco encerra a coluna
+
+O rodapé corrido identifica a versão: `… | VERSÃO DO ALUNO` ou `… | VERSÃO DO PROFESSOR`.
+
+### 7.3 Subtítulo interno
+
+Componente novo do sistema, com o mesmo papel que `TEXTO I` cumpre dentro de uma
+questão: **Calibri Bold 10 pt, caixa alta**, alinhado à margem da coluna, com 1,5 mm
+de respiro acima. É o que abre `FICHA PEDAGÓGICA`, `RESOLUÇÃO COMENTADA` e
+`COMENTÁRIOS DAS ALTERNATIVAS`.
 
 ---
 
@@ -288,7 +323,10 @@ deliberadas — não erros de leitura do original.
 - [ ] Tarja #B9E5FA de 11 × 30 mm na borda externa, no topo ou na base conforme a área
 - [ ] Cabeçalho com logotipo, quadrados #939598, código de barras e filete misto
 - [ ] **Figuras coloridas** quando o original for colorido
-- [ ] Nenhum gabarito, resolução ou comentário na versão do aluno
+- [ ] Caderno de questões **idêntico** nas duas versões, sem gabarito ao lado da questão
+- [ ] Na versão do professor, o caderno de respostas abre em página nova, com título de área
+- [ ] Cada bloco de resposta traz gabarito, ficha pedagógica, resolução e comentários A–E
+- [ ] Rodapé identificando VERSÃO DO ALUNO / VERSÃO DO PROFESSOR
 
 ---
 
