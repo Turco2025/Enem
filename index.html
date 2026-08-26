@@ -1553,7 +1553,8 @@ const ENEM = {
   altLeading: 13.4,                         // entrelinha das alternativas (1,34×)
   qLabel: 11,                               // "QUESTÃO N" — bold, caixa alta
   areaTitle: 11,                            // título de área — bold, caixa alta
-  caption: 8,                               // referência / fonte bibliográfica
+  caption: 8,                               // referência / fonte = corpo − 2 pt
+  captionLead: 9.6,                         // entrelinha da referência (1,20×)
   footer: 9,                                // rodapé corrido e fólio
   micro: 1.5,                               // microtexto de segurança
 
@@ -1862,11 +1863,11 @@ function enemRichRuns(text){
 
 // Quebra os trechos em linhas que caibam na largura, preservando o peso de cada
 // palavra. Devolve um array de linhas; cada linha é um array de { text, bold }.
-function enemWrapRuns(doc, runs, width, size){
+function enemWrapRuns(doc, runs, width, size, italic){
   const lines = [];
   let line = [], lineW = 0;
   runs.forEach(run => {
-    enemFont(doc, run.bold ? "bold" : "normal", size);
+    enemFont(doc, enemStyle(run.bold, !!italic), size);
     run.text.split(/(\s+)/).forEach(tok => {
       if(!tok) return;
       const w = doc.getTextWidth(tok);
@@ -1886,29 +1887,88 @@ function enemWrapRuns(doc, runs, width, size){
   return lines;
 }
 
-// Referência / fonte bibliográfica — 8 pt, ALINHADA À DIREITA. No caderno
-// oficial o título da obra vai em NEGRITO, nunca em itálico (medido: 15 % dos
-// caracteres de referência são bold e 0 % são itálico).
-function enemCaption(doc, ctx, flow, text){
+// Estilo da fonte na substituição Helvetica → Calibri.
+function enemStyle(bold, italic){
+  return bold ? (italic ? "bolditalic" : "bold") : (italic ? "italic" : "normal");
+}
+
+// Desenha uma linha de trechos com peso/inclinação mistos.
+//   align "right"   → bandeira à esquerda (referência do texto introdutório)
+//   align "justify" → justificada nas duas margens (referência de recurso visual);
+//                     a última linha do bloco nunca é esticada
+function enemDrawRichLine(doc, parts, x, y, width, size, align, isLast, italic){
+  const total = parts.reduce((a, p) => a + p.w, 0);
+  let extra = 0;
+  let cx = x;
+  if(align === "right"){
+    cx = x + width - total;
+  }else if(align === "justify" && !isLast){
+    const gaps = parts.filter(p => /^\s+$/.test(p.text)).length;
+    if(gaps > 0) extra = (width - total) / gaps;
+  }
+  parts.forEach(p => {
+    const isGap = /^\s+$/.test(p.text);
+    if(!isGap){
+      enemFont(doc, enemStyle(p.bold, italic), size);
+      enemInk(doc);
+      doc.text(p.text, cx, y);
+    }
+    cx += p.w + (isGap ? extra : 0);
+  });
+}
+
+/* Referência / fonte bibliográfica — sempre no CORPO MENOS DOIS PONTOS (8 pt
+   para um corpo de 10 pt). Há dois tratamentos, e eles não se misturam:
+
+   ▸ REFERÊNCIA DO TEXTO INTRODUTÓRIO (o texto-base da questão): em ITÁLICO,
+     alinhada à direita, com o título da obra em negrito-itálico.
+
+   ▸ REFERÊNCIA DE IMAGEM, TABELA E GRÁFICO: JUSTIFICADA nas duas margens, em
+     redondo, com o título da obra em negrito.
+
+   Divergência autorizada pelo professor: o caderno oficial de 2025 não usa
+   itálico em nenhum dos 3.484 caracteres de referência e alinha tudo à direita.
+   O itálico no texto introdutório e a justificação nas legendas de recurso
+   visual são decisão deste sistema, registradas no design system.            */
+function enemCaption(doc, ctx, flow, text, opts){
+  const o = opts || {};
+  const align = o.align || "right";
+  const italic = !!o.italic;
   const clean = pdfSanitizeText(String(text || "").trim());
   if(!clean) return;
   const size = ENEM.caption;
-  const lines = enemWrapRuns(doc, enemRichRuns(clean), flow.w, size);
-  const lh = size * 1.2;
-  lines.forEach(parts => {
+  const runs = enemRichRuns(clean);
+  // A medição precisa usar a mesma inclinação com que a linha será desenhada.
+  const lines = enemWrapRuns(doc, runs, flow.w, size, italic);
+  const lh = ENEM.captionLead;
+  lines.forEach((parts, i) => {
     enemEnsure(doc, ctx, flow, lh);
-    const total = parts.reduce((a, p) => a + p.w, 0);
-    let cx = flow.x + flow.w - total;
-    const base = flow.y + size;
-    parts.forEach(p => {
-      enemFont(doc, p.bold ? "bold" : "normal", size);
-      enemInk(doc);
-      doc.text(p.text, cx, base);
-      cx += p.w;
-    });
+    enemDrawRichLine(doc, parts, flow.x, flow.y + size, flow.w, size, align,
+                     i === lines.length - 1, italic);
     flow.y += lh;
   });
   flow.y += 1.5;
+}
+
+// Reconhece a linha de referência bibliográfica ao fim do texto-base. O gerador
+// de questões emite a fonte como último parágrafo, no padrão ABNT.
+function enemIsReference(par){
+  const t = String(par || "").trim();
+  if(!t || t.length > 340) return false;
+  if(/(Dispon[ií]vel em|Acesso em|adaptado\)|fragmento\)|adaptada\))/i.test(t)) return true;
+  // SOBRENOME, N. ... com ano no fim — assinatura típica de referência ABNT.
+  if(/^[A-ZÁÉÍÓÚÂÊÔÃÕÇ][A-ZÁÉÍÓÚÂÊÔÃÕÇ'\-]{1,}\s*,/.test(t) && /\d{4}/.test(t)) return true;
+  return false;
+}
+
+// Texto-base: parágrafos de corpo e, se o último for a fonte bibliográfica,
+// ela sai no tratamento de referência do texto introdutório.
+function enemTextoBase(doc, ctx, flow, text, fonte){
+  const pars = String(text || "").trim().split(/\n+/).filter(p => p.trim());
+  let ref = String(fonte || "").trim();
+  if(!ref && pars.length > 1 && enemIsReference(pars[pars.length - 1])) ref = pars.pop();
+  pars.forEach(par => enemParagraph(doc, ctx, flow, par));
+  if(ref) enemCaption(doc, ctx, flow, ref, { align: "right", italic: true });
 }
 
 // Recurso visual dentro da coluna. Imagem e gráfico entram COLORIDOS — em 2025
@@ -1957,7 +2017,7 @@ function enemVisual(doc, ctx, flow, visual, cardIdx){
       y += rH[ri];
     });
     flow.y = y + 2.11 * MM;
-    if(visual.titulo) enemCaption(doc, ctx, flow, visual.titulo);
+    if(visual.titulo) enemCaption(doc, ctx, flow, visual.titulo, { align: "justify" });
     return;
   }
 
@@ -1974,7 +2034,7 @@ function enemVisual(doc, ctx, flow, visual, cardIdx){
   const fmt = fmtMatch ? fmtMatch[1].toUpperCase().replace("JPG", "JPEG") : "PNG";
   try{ doc.addImage(info.dataUrl, fmt, flow.x + (flow.w - w) / 2, flow.y, w, h); }catch(e){ return; }
   flow.y += h + 2.11 * MM;                   // espaço figura → texto
-  if(visual.descricao) enemCaption(doc, ctx, flow, visual.descricao);
+  if(visual.descricao) enemCaption(doc, ctx, flow, visual.descricao, { align: "justify" });
 }
 
 // Filete de fechamento: sólido, 0,5 pt, largura cheia da coluna. No caderno
@@ -2029,7 +2089,7 @@ function enemExportPdfAluno(doneQuestions){
     enemSetMode(doc, ctx, flow, wideMap[i] ? 1 : 2);
 
     enemQuestionLabel(doc, ctx, flow, o.idx + 1);
-    if(d.textoBase) enemParagraph(doc, ctx, flow, d.textoBase);
+    if(d.textoBase) enemTextoBase(doc, ctx, flow, d.textoBase, d.fonte);
     if(d.visual && d.visual.tipo) enemVisual(doc, ctx, flow, d.visual, o.idx);
     if(d.comando) enemParagraph(doc, ctx, flow, d.comando, { indent: 0 });
     flow.y += 1.51 * MM;                     // espaço corpo → 1ª alternativa
@@ -2115,18 +2175,35 @@ function enemDocxAlternative(letter, text){
   }) ];
 }
 
-// Referência / fonte bibliográfica — 8 pt, ALINHADA À DIREITA.
-function enemDocxCaption(text){
+/* Referência / fonte bibliográfica — corpo menos dois pontos (8 pt), em dois
+   tratamentos distintos:
+     ▸ texto introdutório  → ITÁLICO, alinhado à direita, título em negrito-itálico
+     ▸ imagem/tabela/gráfico → JUSTIFICADO, redondo, título em negrito          */
+function enemDocxCaption(text, opts){
   const { Paragraph, TextRun, AlignmentType, LineRuleType } = window.docx;
+  const o = opts || {};
   const clean = String(text || "").trim();
   if(!clean) return [];
   return [ new Paragraph({
-    alignment: AlignmentType.RIGHT,
+    alignment: o.justify ? AlignmentType.JUSTIFIED : AlignmentType.RIGHT,
     spacing: { line: Math.round(9.6 * 20), lineRule: LineRuleType.EXACTLY, before: 40, after: 60 },
     children: enemRichRuns(clean).map(r => new TextRun({
-      text: r.text, bold: r.bold, font: ENEM_DOCX.font, size: 16, color: ENEM_DOCX.ink,
+      text: r.text, bold: r.bold, italics: !!o.italic,
+      font: ENEM_DOCX.font, size: 16, color: ENEM_DOCX.ink,
     })),
   }) ];
+}
+
+// Texto-base no Word: parágrafos de corpo e, ao fim, a fonte bibliográfica no
+// tratamento de referência do texto introdutório.
+function enemDocxTextoBase(text, fonte){
+  const pars = String(text || "").trim().split(/\n+/).filter(x => x.trim());
+  let ref = String(fonte || "").trim();
+  if(!ref && pars.length > 1 && enemIsReference(pars[pars.length - 1])) ref = pars.pop();
+  const out = [];
+  pars.forEach(par => out.push(...enemDocxParagraph(par)));
+  if(ref) out.push(...enemDocxCaption(ref, { italic: true }));
+  return out;
 }
 
 // Filete SÓLIDO de fechamento de questão (em 2025 não há mais traço pontilhado).
@@ -2164,7 +2241,7 @@ function enemDocxVisual(visual, cardIdx){
       rows: [ new TableRow({ children: cols.map(c => cell(c, true)) }) ]
         .concat(rows.map(r => new TableRow({ children: r.map(c => cell(c, false)) }))),
     }));
-    out.push(...enemDocxCaption(visual.titulo));
+    out.push(...enemDocxCaption(visual.titulo, { justify: true }));
     return out;
   }
 
@@ -2185,7 +2262,7 @@ function enemDocxVisual(visual, cardIdx){
       }) ],
     }));
   }catch(e){ return out; }
-  out.push(...enemDocxCaption(visual.descricao));
+  out.push(...enemDocxCaption(visual.descricao, { justify: true }));
   return out;
 }
 
@@ -2204,7 +2281,7 @@ function enemDocxSectionAluno(doneQuestions){
   doneQuestions.forEach((o, i) => {
     const d = o.q.data;
     children.push(...enemDocxQuestionLabel(o.idx + 1));
-    if(d.textoBase) children.push(...enemDocxParagraph(d.textoBase));
+    if(d.textoBase) children.push(...enemDocxTextoBase(d.textoBase, d.fonte));
     if(d.visual && d.visual.tipo) children.push(...enemDocxVisual(d.visual, o.idx));
     if(d.comando) children.push(...enemDocxParagraph(d.comando, { indent: false }));
     ["A", "B", "C", "D", "E"].forEach(letter => {
