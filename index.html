@@ -2214,6 +2214,39 @@ function enemCloseQuestion(doc, ctx, flow, isLastOfColumn){
   }
 }
 
+/* FOLHA DE GABARITO (versão do aluno) — sai DEPOIS de todas as questões e traz
+   SOMENTE a letra de cada questão. Nada de resolução, comentário, competência,
+   habilidade ou dificuldade: isso é exclusivo da versão do professor.
+   Mesma anatomia: página nova, título de área, fluxo de duas colunas.        */
+function enemGabaritoAluno(doc, ctx, flow, doneQuestions){
+  enemSetMode(doc, ctx, flow, 2);
+  doc.addPage([ENEM.pageW, ENEM.pageH], "portrait");
+  ctx.pageNo += 1;
+  enemStartPage(doc, ctx, flow, 2);
+  enemAreaTitle(doc, ctx, flow, "Gabarito");
+
+  doneQuestions.forEach(o => {
+    const letra = (o.q.data && o.q.data.gabarito) || "—";
+    enemEnsure(doc, ctx, flow, ENEM.altLeading);
+    const base = flow.y + ENEM.body;
+    // Número da questão à esquerda, letra circulada logo depois — a mesma
+    // letra-opção usada nas alternativas, para o aluno reconhecer de imediato.
+    enemFont(doc, "bold", ENEM.body);
+    enemInk(doc);
+    const rotulo = String(o.idx + 1) + ".";
+    doc.text(rotulo, flow.x, base);
+    if(/^[A-E]$/.test(letra)){
+      enemOptionMark(doc, flow.x + 8 * MM, base, letra);
+    }else{
+      enemFont(doc, "normal", ENEM.body);
+      doc.text(letra, flow.x + 8 * MM, base);
+    }
+    flow.y += ENEM.altLeading;
+  });
+  flow.y += 2.53 * MM;
+  enemSolidLine(doc, flow.x, flow.y, flow.x + flow.w, 0.5, ENEM.ink);
+}
+
 /* CADERNO DE RESPOSTAS (versão do professor) — sai DEPOIS de todas as questões,
    na mesma anatomia: 200 × 275 mm, duas colunas de 89,47 mm, Calibri 10/12,0 pt,
    tinta #231F20, rótulo em caixa alta com a barra-ornamento. Nenhum componente
@@ -2325,7 +2358,11 @@ function enemExportPdf(doneQuestions, professor){
     enemCloseQuestion(doc, ctx, flow, last || !enemFits(flow, 70));
   });
 
-  // ---- Caderno de respostas: só na versão do professor, e só no fim de tudo.
+  // ---- Fim do caderno de questões. O que vem depois depende da versão:
+  //      aluno → só as letras do gabarito;  professor → o caderno de respostas.
+  if(!professor){
+    enemGabaritoAluno(doc, ctx, flow, doneQuestions);
+  }
   if(professor){
     enemSetMode(doc, ctx, flow, 2);
     if(flow.y > flow.top){
@@ -2534,6 +2571,29 @@ function enemDocxSubhead(texto){
   }) ];
 }
 
+/* Folha de gabarito do aluno no Word — SOMENTE a letra de cada questão. */
+function enemDocxGabaritoAluno(doneQuestions){
+  const { Paragraph, TextRun, LineRuleType, PageBreak } = window.docx;
+  const out = [];
+  out.push(new Paragraph({ children: [ new PageBreak() ] }));
+  out.push(new Paragraph({
+    spacing: { after: 181, line: ENEM_DOCX.line, lineRule: LineRuleType.EXACTLY },
+    indent: { left: Math.round(2 * TW) },
+    children: [ new TextRun({ text: "GABARITO", bold: true, font: ENEM_DOCX.font, size: 22, color: ENEM_DOCX.ink }) ],
+  }));
+  doneQuestions.forEach(o => {
+    const letra = (o.q.data && o.q.data.gabarito) || "\u2014";
+    out.push(new Paragraph({
+      spacing: { line: ENEM_DOCX.altLine, lineRule: LineRuleType.EXACTLY, before: 0, after: 0 },
+      children: [
+        new TextRun({ text: (o.idx + 1) + ".\t", bold: true, font: ENEM_DOCX.font, size: 20, color: ENEM_DOCX.ink }),
+        new TextRun({ text: ENEM_DOCX_MARKS[letra] || letra, font: ENEM_DOCX.font, size: 20, color: ENEM_DOCX.ink }),
+      ],
+    }));
+  });
+  return out;
+}
+
 // Um bloco do caderno de respostas, na mesma anatomia das questões.
 function enemDocxGabaritoBlock(o){
   const { Paragraph, TextRun, LineRuleType } = window.docx;
@@ -2614,7 +2674,11 @@ function enemDocxSection(doneQuestions, professor){
     if(i < doneQuestions.length - 1) children.push(...enemDocxRule());
   });
 
-  // ---- Caderno de respostas: só na versão do professor, e só no fim de tudo.
+  // ---- Fim do caderno de questões. O que vem depois depende da versão:
+  //      aluno → só as letras do gabarito;  professor → o caderno de respostas.
+  if(!professor){
+    children.push(...enemDocxGabaritoAluno(doneQuestions));
+  }
   if(professor){
     children.push(new Paragraph({ children: [ new PageBreak() ] }));
     children.push(new Paragraph({
