@@ -1,6 +1,12 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "jsr:@supabase/supabase-js@2";
-import APP_DATA_JSON from "./app_data.json" with { type: "json" };
+/* Os dados pedagógicos (Matriz de Referência, contexto por área, modelo universal
+   e objetos de conhecimento) vivem no repositório e entram no pacote no momento da
+   implantação — não são copiados à mão para dentro da função. O conteúdo é embutido
+   pelo empacotador do Deno na hora do deploy, então em produção não há nenhuma
+   chamada de rede ao GitHub: o que roda é uma cópia congelada. A conferência de
+   integridade (GET ?selftest=1) diz exatamente qual cópia foi carregada. */
+import APP_DATA_JSON from "https://raw.githubusercontent.com/Turco2025/Enem/main/supabase/functions/generate-question/app_data.json" with { type: "json" };
 const APP_DATA: any = APP_DATA_JSON;
 
 
@@ -683,9 +689,69 @@ async function logGeneration(area: string, disciplina: string, tema: string) {
   }
 }
 
+/* Verificação de integridade da implantação.
+
+   Esta função é implantada enviando o CONTEÚDO dos arquivos pela API, e não
+   copiando bytes de um disco para outro. Um caractere trocado dentro do
+   app_data.json — 54 KB numa única linha minificada — não quebraria o boot:
+   passaria despercebido e sairia como uma questão sutilmente errada.
+
+   Por isso a função sabe dizer o que carregou. GET ou POST com {selftest:true}
+   devolve o tamanho e a impressão digital (FNV-1a) do APP_DATA efetivamente
+   carregado, calculados sobre a forma canônica JSON.stringify. Basta comparar
+   com o valor calculado no arquivo de origem: batendo, os dados chegaram
+   inteiros; não batendo, a implantação é refeita. Nada de segredo é exposto —
+   só um número e um hash.                                                     */
+function fnv1a(texto: string): string {
+  let h = 0x811c9dc5;
+  for (let i = 0; i < texto.length; i++) {
+    h ^= texto.charCodeAt(i);
+    h = Math.imul(h, 0x01000193) >>> 0;
+  }
+  return h.toString(16).padStart(8, "0");
+}
+
+function selfTestResponse() {
+  const canonico = JSON.stringify(APP_DATA);
+  /* O mesmo cuidado vale para o código: um caractere trocado dentro de um
+     texto de prompt não quebraria o boot. Function.prototype.toString()
+     devolve o corpo realmente carregado pelo runtime, então a impressão
+     digital abaixo cobre as partes do index.ts que decidem o conteúdo. */
+  const codigo = [
+    NOTACAO_QUIMICA,
+    JSON_SCHEMA_TXT,
+    buildSystemPrompt.toString(),
+    buildUserPrompt.toString(),
+    buildValidationChecklist.toString(),
+    buildGabaritoAlvo.toString(),
+    buildVisualRedoPrompt.toString(),
+    buildRegraFontesReais.toString(),
+    buildCalibracaoExtensao.toString(),
+    buildMatrizInstrucoes.toString(),
+    buildObjetosConhecimento.toString(),
+  ].join("\u0000");
+  return jsonResponse({
+    selftest: true,
+    appDataChars: canonico.length,
+    appDataHash: fnv1a(canonico),
+    chaves: Object.keys(APP_DATA).sort(),
+    codigoChars: codigo.length,
+    codigoHash: fnv1a(codigo),
+    notacaoChars: NOTACAO_QUIMICA.length,
+    notacaoHash: fnv1a(NOTACAO_QUIMICA),
+    schemaChars: JSON_SCHEMA_TXT.length,
+    schemaHash: fnv1a(JSON_SCHEMA_TXT),
+    temNotacaoQuimica: typeof NOTACAO_QUIMICA === "string" && NOTACAO_QUIMICA.length > 0,
+    temGabaritoAlvo: typeof buildGabaritoAlvo === "function",
+  });
+}
+
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: CORS_HEADERS });
+  }
+  if (req.method === "GET" && new URL(req.url).searchParams.get("selftest") === "1") {
+    return selfTestResponse();
   }
   if (req.method !== "POST") {
     return jsonResponse({ error: "Método não suportado. Use POST." }, 405);
@@ -698,6 +764,7 @@ Deno.serve(async (req: Request) => {
 
   let body: any;
   try { body = await req.json(); } catch { return jsonResponse({ error: "JSON inválido." }, 400); }
+  if (body?.selftest === true) return selfTestResponse();
 
   const area = (body.area || "").toString();
   if (!AREA_LABELS[area]) {
