@@ -143,9 +143,18 @@ NUNCA: Ca+2, Ca2+, SO4-2, SO₄-2, SO²⁻₄, ⁺².
 COEFICIENTES são números comuns ANTES da fórmula: 2 H₂(g) + O₂(g) → 2 H₂O(l).
 Coeficiente nunca vira índice; para balancear não se altera a fórmula (2 H₂O, nunca H₄O₂).
 
-EQUAÇÕES com setas Unicode: → reação direta, ⇌ equilíbrio, · hidratos (CuSO₄·5H₂O).
-Nunca sinal de igualdade no lugar da seta. Estados físicos logo após a fórmula:
-(s) (l) (g) (aq). Ex.: AgNO₃(aq) + NaCl(aq) → AgCl(s) + NaNO₃(aq).
+SETAS: → é UM ÚNICO CARACTERE (U+2192). É PROIBIDO montar seta com hífen, sinal de
+maior, de menor ou de igual. Nunca escreva -> --> => ==> <- <-> <=> <==> como seta.
+Nunca use imagem, emoji ou ícone no lugar do símbolo. Cada seta tem um significado:
+→ reação da esquerda para a direita · ← sentido inverso · ⇌ EQUILÍBRIO QUÍMICO ·
+↔ ressonância · ↑ desprendimento de gás · ↓ formação de precipitado.
+↔ NÃO substitui ⇌. Reagentes antes da seta, produtos depois. Nunca sinal de
+igualdade no lugar da seta. Ligação química (–, =, ≡) NÃO é seta de reação.
+Estados físicos logo após a fórmula: (s) (l) (g) (aq).
+Ex.: AgNO₃(aq) + NaCl(aq) → AgCl(s) + NaNO₃(aq).
+Condição de reação (temperatura, pressão, luz, catalisador) vai em frase junto à
+equação — não fragmente a seta para encaixá-la, e não trate catalisador como
+reagente consumido.
 
 BALANCEAMENTO: toda equação apresentada como completa está balanceada (salvo quando
 a própria questão pedir que o estudante balanceie). Conte os átomos dos dois lados,
@@ -165,7 +174,15 @@ GRANDEZAS não viram índice nem expoente: 25 °C · 2 mol · 0,5 mol/L · 1,0 a
 antes do número (10⁻³); na carga, depois (Ca²⁺).
 
 CONSISTÊNCIA: a mesma substância mantém a MESMA grafia no texto-base, no comando,
-nos dados, na tabela, nas alternativas, no gabarito e na resolução.
+nos dados, na tabela, nas alternativas, no gabarito e na resolução. Maiúscula e
+minúscula são significado: Co (cobalto) ≠ CO (monóxido de carbono).
+
+CASOS DE TESTE — a notação de saída tem de sair exatamente assim:
+H₂SO₄ · Al₂(SO₄)₃ · SO₄²⁻ · NH₄⁺ · [Fe(CN)₆]⁴⁻ · CuSO₄·5H₂O
+2 H₂(g) + O₂(g) → 2 H₂O(l)
+N₂(g) + 3 H₂(g) ⇌ 2 NH₃(g)
+Ag⁺(aq) + Cl⁻(aq) → AgCl(s)
+Zn(s) → Zn²⁺(aq) + 2 e⁻
 
 JSON: as fórmulas ficam como caracteres Unicode normais, em UTF-8, nunca como
 código ou sequência de escape.
@@ -448,7 +465,8 @@ F7. O enunciado não apresenta problematização satisfatória, ou não explicit
 5.10 A resposta exige interpretação, análise, comparação, aplicação, inferência ou resolução de problema — nunca memorização direta de um fato isolado.
 5.11 TEXTO-BASE NEUTRO E SEM ECO LEXICAL: o texto-base apenas apresenta material para o candidato interpretar; em nenhum momento formula, parafraseia antecipadamente ou sinaliza a conclusão que o comando pede como resposta, nem repete o vocabulário/palavras-chave que aparecem só na alternativa correta (pista por associação lexical). Se entregar a inferência que deveria ser o objeto do raciocínio, ou ecoar vocabulário exclusivo do gabarito, reescreva-o mantendo apenas o material bruto necessário para que a ponte até a resposta seja construída pelo próprio candidato.
 5.12 COMANDO NÃO REVELA A ESTRATÉGIA DE RESOLUÇÃO: o comando apresenta a tarefa cognitiva a ser realizada, mas não indica qual conceito, fórmula, dado ou caminho de raciocínio conduz diretamente ao gabarito. Se estiver entregando a estratégia (não apenas o que se pede, mas como chegar lá), reescreva-o de forma mais neutra, preservando a clareza sobre o que está sendo pedido.
-5.9 NOTAÇÃO QUÍMICA: toda fórmula, íon, equação, isótopo e unidade aparece pronta em Unicode — índices em ₀₁₂₃₄₅₆₇₈₉, cargas em ⁰¹²³⁴⁵⁶⁷⁸⁹⁺⁻ com o número ANTES do sinal (Ca²⁺, SO₄²⁻, jamais Ca2+ ou Ca+2), coeficientes como número comum antes da fórmula, setas → e ⇌, estados físicos (s)(l)(g)(aq), equações balanceadas com massa e carga conservadas, e a MESMA grafia da substância no texto-base, nas alternativas, no gabarito e na resolução. Nenhum LaTeX, tag, cifrão, chave, barra invertida ou bloco de código. Se encontrar H2O, CO2, Ca2+, \\ce{} ou similar, REESCREVA a questão inteira com a notação correta antes de devolver.
+5.9 NOTAÇÃO QUÍMICA: toda fórmula, íon, equação, isótopo e unidade aparece pronta em Unicode — índices em ₀₁₂₃₄₅₆₇₈₉, cargas em ⁰¹²³⁴⁵⁶⁷⁸⁹⁺⁻ com o número ANTES do sinal (Ca²⁺, SO₄²⁻, jamais Ca2+ ou Ca+2), coeficientes como número comum antes da fórmula, estados físicos (s)(l)(g)(aq), equações balanceadas com massa e carga conservadas, e a MESMA grafia da substância no texto-base, nas alternativas, no gabarito e na resolução. Nenhum LaTeX, tag, cifrão, chave, barra invertida ou bloco de código. Se encontrar H2O, CO2, Ca2+, \\ce{} ou similar, REESCREVA a questão inteira com a notação correta antes de devolver.
+5.9.1 SETAS QUÍMICAS: cada seta é um caractere Unicode único e com significado próprio — → reação, ← sentido inverso, ⇌ equilíbrio, ↔ ressonância, ↑ gás, ↓ precipitado. Se encontrar QUALQUER seta montada com caracteres separados (-> --> => ==> <- <-> <=> <==>), substitua pelo símbolo correto do processo. Se encontrar ↔ funcionando como equilíbrio entre espécies com estado físico, troque por ⇌. Ligações químicas (–, =, ≡) permanecem ligações e nunca viram setas.
 5.13 PARIDADE TÉCNICA E DE ELABORAÇÃO: as 5 alternativas têm nível de elaboração e precisão técnica equivalentes — a correta não é a mais longa, mais detalhada ou mais bem redigida, nem os distratores parecem rasos, genéricos ou mal elaborados em comparação com ela. Havendo desequilíbrio, reescreva as mais fracas com o mesmo cuidado técnico da mais forte, sem torná-las corretas.
 
 ═══════ ETAPA 3 — SÍNTESE DA REVISÃO ═══════
