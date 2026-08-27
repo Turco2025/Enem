@@ -79,8 +79,34 @@ fórmulas unitárias ou mols; o índice conta átomos dentro da substância.
 | Dissociação iônica | `CaCl₂(aq) → Ca²⁺(aq) + 2 Cl⁻(aq)` |
 | Hidrato | `CuSO₄·5H₂O` |
 
-`→` reação direta · `⇌` equilíbrio · `+` separa reagentes ou produtos ·
-`·` hidratos e associações. **Nunca sinal de igualdade no lugar da seta.**
+### A seta é um caractere, não um desenho
+
+`→` é **um único caractere**, U+2192. É proibido montar uma seta com hífen, sinal
+de maior, sinal de menor ou sinal de igualdade. Estas sequências, quando estiverem
+funcionando como seta numa expressão química, são erro e precisam ser corrigidas:
+
+`->` · `-->` · `=>` · `==>` · `<-` · `<->` · `<=>` · `<==>`
+
+Não acrescente hífen antes da seta. Não substitua o símbolo por imagem, emoji ou
+ícone: qualquer um deles muda a aparência e pode mudar o significado.
+
+### Cada seta tem um significado
+
+| Símbolo | Significado |
+|---|---|
+| `→` | reação no sentido indicado, da esquerda para a direita |
+| `←` | reação no sentido indicado, da direita para a esquerda |
+| `⇌` | equilíbrio químico |
+| `↔` | relação entre estruturas de ressonância |
+| `↑` | desprendimento de gás |
+| `↓` | formação de precipitado |
+
+**Não troque todas as setas pelo mesmo símbolo.** `↔` não substitui `⇌`: uma diz
+ressonância, a outra diz equilíbrio. Nas reações escritas da esquerda para a
+direita, os reagentes ficam antes de `→` e os produtos depois.
+
+`+` separa reagentes ou produtos · `·` hidratos e associações.
+**Nunca sinal de igualdade no lugar da seta.**
 
 ## 7. Balanceamento obrigatório
 
@@ -93,6 +119,17 @@ conservação da carga, use os menores coeficientes inteiros.
 
 Em equação iônica, a soma das cargas dos reagentes é igual à dos produtos. Nunca
 declare uma equação balanceada sem conferir cada elemento e a carga total.
+Conferir o balanceamento não substitui verificar se a reação é **cientificamente
+adequada** às condições apresentadas.
+
+**Exceções pedagógicas — não "conserte" o que é proposital:**
+
+- não balanceie a equação quando o objetivo da questão for pedir o balanceamento;
+- não transforme em correta uma alternativa intencionalmente incorreta;
+- não elimine erros apresentados de propósito para análise do estudante.
+
+Distinga **erro acidental de formatação** de **erro conceitual intencional de um
+distrator**. Se não for possível distinguir, encaminhe para revisão.
 
 ## 8. Estados físicos
 
@@ -100,7 +137,13 @@ declare uma equação balanceada sem conferir cada elemento e a carga total.
 
 `AgNO₃(aq) + NaCl(aq) → AgCl(s) + NaNO₃(aq)`
 
-Os índices continuam inferiores mesmo acompanhados do estado físico.
+Os índices continuam inferiores mesmo acompanhados do estado físico. Não invente
+estado físico quando as condições não permitirem determiná-lo com segurança.
+
+Havendo temperatura, pressão, luz ou catalisador, descreva a condição numa frase
+junto à equação quando não for possível posicioná-la sobre a seta. **Não fragmente
+a seta** para inserir condições, e não apresente catalisador como reagente
+consumido na equação global.
 
 ## 9. Fórmulas orgânicas
 
@@ -109,7 +152,10 @@ metano CH₄ · etano CH₃–CH₃ · eteno CH₂=CH₂ · etino HC≡CH · eta
 
 `–` ligação simples · `=` dupla · `≡` tripla.
 
-Não altere número de hidrogênios, posição de grupo funcional ou tipo de ligação.
+**Ligação não é seta.** Não converta o traço de uma ligação química em seta de
+reação. Não altere número de hidrogênios, posição de grupo funcional ou tipo de
+ligação. Não substitua uma estrutura necessária por uma fórmula molecular que
+elimine informação exigida para resolver a questão.
 Quando a estrutura for complexa demais para representação linear segura, sinalize
 a necessidade de **fórmula estrutural em imagem** — não invente a estrutura.
 
@@ -119,7 +165,9 @@ carbono-14 ¹⁴₆C · sódio-23 ²³₁₁Na · urânio-238 ²³⁸₉₂U · 
 nêutron n⁰ · partícula alfa ⁴₂He · partícula beta β⁻
 
 Número de massa **acima**, antes do símbolo; número atômico **abaixo**, antes do
-símbolo. Não inverta os dois.
+símbolo. Não inverta os dois. Quando a notação nuclear exigir alinhamento vertical
+preciso, não presuma que caracteres Unicode isolados o garantam — use uma
+representação visual validada, sem expor comando ao estudante.
 
 ## 11. Grandezas e unidades
 
@@ -141,6 +189,11 @@ dados, tabelas, alternativas, gabarito, justificativa e resolução comentada.
 Se o texto traz H₂SO₄, essa é a grafia em toda a questão. Não são aceitas variações
 como H2SO4, H₂SO4, H ₂ SO ₄ ou caracteres separados.
 
+**Maiúsculas e minúsculas são significado**, não estilo: `Co` (cobalto) e `CO`
+(monóxido de carbono) são coisas diferentes. E **não converta números em massa**:
+identifique antes a função de cada número — índice, coeficiente, carga, expoente,
+valor ou unidade.
+
 ## 13. Correção de questões já produzidas
 
 Ao receber uma questão com fórmulas incorretas: identifique as substâncias,
@@ -149,8 +202,15 @@ converta cargas em superiores com número antes do sinal, corrija parênteses,
 estados físicos e setas, balanceie o que for necessário, compare as alternativas
 com o gabarito e substitua integralmente as versões defeituosas.
 
+Ao revisar, identifique também **setas montadas com caracteres separados** e troque
+cada uma pelo símbolo Unicode do significado correspondente — `→`, `←`, `⇌`, `↔`,
+`↑` ou `↓`, conforme o processo. Confira a coerência entre enunciado, alternativas,
+gabarito e resolução, e **preserve as incorreções intencionais dos distratores**.
+
 Não faça apenas correção visual: verifique também se a fórmula está
-**cientificamente** correta.
+**cientificamente** correta. Não corrija fórmula ambígua por adivinhação, e não
+altere registros existentes em massa sem delimitar os itens afetados e preservar
+uma versão recuperável.
 
 ## 14. Saída em JSON
 
@@ -168,7 +228,54 @@ As fórmulas permanecem como caracteres Unicode normais:
 Nada de códigos, comandos ou sequências de escape. Aplicação, banco de dados, API
 e arquivo em **UTF-8**.
 
-## 15. Teste visual antes de entregar
+## 15. Preservação no aplicativo e nas exportações
+
+A notação correta tem de sobreviver ao percurso inteiro: geração, armazenamento,
+recuperação, exibição, cópia e exportação. **UTF-8 sozinho não garante a
+apresentação** — a fonte, o layout e o processo de exportação também contam.
+
+- UTF-8 na comunicação e nos arquivos de texto;
+- fonte com suporte a índices, expoentes e setas — conferir a fonte usada na
+  exportação para PDF;
+- nenhuma conversão que transforme `→` em seta feita de caracteres separados;
+- nenhuma rotina que remova "caracteres especiais";
+- nenhuma transformação que converta índice ou expoente em número comum;
+- **fórmula é unidade visual**: não pode ser partida entre duas linhas;
+- equação longa acomodada sem cortar seta nem carga.
+
+Se o transporte for JSON, o texto decodificado precisa preservar exatamente as
+fórmulas e os símbolos, sem comando visível ao estudante.
+
+## 16. Casos de teste obrigatórios
+
+Use estas dez expressões como teste:
+
+```
+H₂SO₄
+Al₂(SO₄)₃
+SO₄²⁻
+NH₄⁺
+[Fe(CN)₆]⁴⁻
+CuSO₄·5H₂O
+2 H₂(g) + O₂(g) → 2 H₂O(l)
+N₂(g) + 3 H₂(g) ⇌ 2 NH₃(g)
+Ag⁺(aq) + Cl⁻(aq) → AgCl(s)
+Zn(s) → Zn²⁺(aq) + 2 e⁻
+```
+
+Confirme que os índices continuam inferiores; as cargas, superiores; os
+coeficientes, na linha normal; que `→` continua sendo **um único caractere**; que
+`⇌` mantém o sentido de equilíbrio; que nenhum símbolo desaparece; que nenhuma
+fórmula é cortada; que nenhuma sequência de código aparece; que o conteúdo
+permanece correto depois de salvar e reabrir; e que a exportação preserva a mesma
+notação.
+
+**Teste é teste.** Com acesso ao aplicativo, execute na tela e nas exportações
+reais. Conferência mental não é teste visual realizado. Sem acesso à interface ou à
+exportação, declare a limitação no relatório — não afirme que a apresentação foi
+verificada.
+
+## 17. Teste visual antes de entregar
 
 - [ ] Os índices estão abaixo da linha?
 - [ ] As cargas estão acima da linha?
@@ -182,7 +289,7 @@ e arquivo em **UTF-8**.
 - [ ] A fórmula permanece legível no celular?
 - [ ] A fórmula é igual no texto, nas alternativas e no gabarito?
 
-## 16. Lista final de auditoria
+## 18. Lista final de auditoria
 
 Fórmulas cientificamente corretas · índices inferiores bem posicionados · cargas
 superiores bem posicionadas · coeficientes bem posicionados · parênteses corretos ·
@@ -192,7 +299,7 @@ toda a questão · ausência completa de LaTeX e códigos de renderização · a
 caracteres separados · compatibilidade com UTF-8 · alternativas e gabarito
 conferidos.
 
-## 17. Regra de bloqueio
+## 19. Regra de bloqueio
 
 Se uma fórmula não puder ser confirmada com segurança, **não invente e não entregue
 a questão como concluída**. Apresente o aviso:
@@ -201,6 +308,22 @@ a questão como concluída**. Apresente o aviso:
 > segurança.
 
 Precisão química, apresentação visual e legibilidade são requisitos obrigatórios.
+
+## 20. Critério final de aprovação
+
+Uma questão só está pronta quando a notação estiver correta **e** a revisão
+científica tiver sido concluída. A aprovação exige fórmulas corretas e legíveis;
+índices e cargas nas posições adequadas; setas químicas reais, completas e com o
+significado certo; ausência de comando de formatação visível; preservação da
+proposta pedagógica; e coerência entre enunciado, alternativas e gabarito.
+
+Havendo dúvida científica, encaminhe para revisão antes de publicar. Havendo falha
+de exibição, **não substitua a fórmula ou a seta por uma aproximação improvisada —
+corrija a causa da falha.**
+
+Resultado visual obrigatório:
+
+> 2 H₂(g) + O₂(g) → 2 H₂O(l)
 
 ---
 
@@ -215,7 +338,18 @@ O gerador de simulados aplica esta regra em código, não por confiança:
 - **`auditaQuimica()`** varre texto-base, fonte, comando, tabela, as cinco
   alternativas, o gabarito, a resolução e o comentário de cada alternativa
   procurando: LaTeX, tags, blocos de código, fórmula com índice em algarismo comum
-  (H2O), carga fora do padrão (Ca2+, Ca+2, ⁺²), índice solto, grafias divergentes
-  da mesma substância e caractere sem glifo na fonte.
+  (H2O), carga fora do padrão (Ca2+, Ca+2, ⁺²), índice solto, **seta montada com
+  caracteres separados** (`->`, `-->`, `=>`, `==>`, `<-`, `<->`, `<=>`), **`↔` usado
+  como equilíbrio** no lugar de `⇌`, grafias divergentes da mesma substância e
+  caractere sem glifo na fonte.
+- **O mapa de emergência não monta seta falsa.** Até a v29 ele trocava `→` por
+  `->` e `⇌` por `<=>` quando a fonte falhava. Isso era exatamente o que o §6
+  proíbe, e foi removido: sem a fonte, a exportação é barrada — não se entrega uma
+  seta improvisada.
+- **A fórmula não quebra entre linhas** (§15). O traço de ligação e o ponto de
+  hidrato continuam sendo `–` e `·`, e ganham depois de si um **juntador de palavra**
+  (U+2060), invisível, que impede a quebra; a seta é colada ao que vem depois por um
+  espaço inseparável, de modo que a equação longa quebra **antes** da seta e nunca
+  deixa uma seta órfã no fim da linha.
 - **Nenhuma exportação sai com fórmula quebrada**: PDF, Word, HTML e impressão
-  passam pela mesma porta e param com o aviso do §17.
+  passam pela mesma porta e param com o aviso do §19.
