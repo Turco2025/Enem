@@ -505,7 +505,7 @@ function backoffDelay(attempt: number) {
   return Math.min(800 * 2 ** (attempt - 1), 8000) + Math.random() * 400;
 }
 
-async function callClaude(system: string, userMsg: string, maxTokens: number, enableWebSearch = false): Promise<{ text: string; truncated: boolean }> {
+async function callClaude(system: string, userMsg: string, maxTokens: number, enableWebSearch = false): Promise<{ text: string; truncated: boolean; usage: any }> {
   let lastErr: any;
   for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
     const controller = new AbortController();
@@ -521,7 +521,15 @@ async function callClaude(system: string, userMsg: string, maxTokens: number, en
         body: JSON.stringify({
           model: MODEL,
           max_tokens: maxTokens,
-          system,
+          /* CACHE DE PROMPT. O prompt do sistema (modelo universal + contexto da
+             área + objetos de conhecimento + notação química) passa de 25 mil
+             caracteres e é IDÊNTICO em todas as questões da mesma área — e ainda
+             se repete na chamada de revisão. Marcado assim, a Anthropic guarda o
+             processamento dele por alguns minutos: da segunda chamada em diante
+             ele é lido do cache, a uma fração do preço e sem ser reprocessado.
+             A resposta devolve os números de cache no campo "uso", para que dê
+             para conferir que está valendo em vez de supor. */
+          system: [{ type: "text", text: system, cache_control: { type: "ephemeral" } }],
           messages: [{ role: "user", content: userMsg }],
           thinking: { type: "disabled" },
           stream: true,
@@ -556,6 +564,7 @@ async function callClaude(system: string, userMsg: string, maxTokens: number, en
       let text = "";
       let stopReason: string | null = null;
       let streamErrorMsg: string | null = null;
+      let usage: any = null;
       while (true) {
         const { value, done } = await reader.read();
         if (done) break;
@@ -569,10 +578,13 @@ async function callClaude(system: string, userMsg: string, maxTokens: number, en
           if (!jsonStr || jsonStr === "[DONE]") continue;
           let evt: any;
           try { evt = JSON.parse(jsonStr); } catch { continue; }
-          if (evt.type === "content_block_delta" && evt.delta?.type === "text_delta") {
+          if (evt.type === "message_start") {
+            usage = { ...(evt.message?.usage || {}) };
+          } else if (evt.type === "content_block_delta" && evt.delta?.type === "text_delta") {
             text += evt.delta.text || "";
-          } else if (evt.type === "message_delta" && evt.delta?.stop_reason) {
-            stopReason = evt.delta.stop_reason;
+          } else if (evt.type === "message_delta") {
+            if (evt.delta?.stop_reason) stopReason = evt.delta.stop_reason;
+            if (evt.usage) usage = { ...(usage || {}), ...evt.usage };
           } else if (evt.type === "error") {
             streamErrorMsg = evt.error?.message || "Erro reportado pelo streaming da Anthropic.";
           }
@@ -580,7 +592,7 @@ async function callClaude(system: string, userMsg: string, maxTokens: number, en
       }
       clearTimeout(watchdog);
       if (streamErrorMsg) throw new Error(streamErrorMsg);
-      return { text, truncated: stopReason === "max_tokens" };
+      return { text, truncated: stopReason === "max_tokens", usage };
     } catch (err: any) {
       clearTimeout(watchdog);
       const isAbort = err?.name === "AbortError";
@@ -646,17 +658,33 @@ function parseJSONLoose(text: string) {
   throw new Error(`Não foi possível interpretar a resposta do modelo como JSON (${detail}). Início da resposta recebida: "${preview}${raw.length > 220 ? "..." : ""}"`);
 }
 
-async function callClaudeForJSON(system: string, userMsg: string, enableWebSearch = false) {
-  const { text, truncated } = await callClaude(system, userMsg, 8000, enableWebSearch);
+async function callClaudeForJSON(system: string, userMsg: string, enableWebSearch = false, usos?: any[]) {
+  const { text, truncated, usage } = await callClaude(system, userMsg, 8000, enableWebSearch);
+  if (usos && usage) usos.push(usage);
   try {
     return parseJSONLoose(text);
   } catch (err) {
     if (truncated) {
       const retry = await callClaude(system, userMsg, 12000, enableWebSearch);
+      if (usos && retry.usage) usos.push(retry.usage);
       return parseJSONLoose(retry.text);
     }
     throw err;
   }
+}
+
+/* Resumo do consumo desta requisição, para que o cache seja verificável e não
+   apenas prometido. "cacheLido" maior que zero significa que o prompt do
+   sistema veio do cache — é o que se espera da segunda chamada em diante. */
+function resumoUso(usos: any[]) {
+  const soma = (chave: string) => usos.reduce((t, u) => t + (Number(u?.[chave]) || 0), 0);
+  return {
+    chamadas: usos.length,
+    entradaNova: soma("input_tokens"),
+    cacheEscrito: soma("cache_creation_input_tokens"),
+    cacheLido: soma("cache_read_input_tokens"),
+    saida: soma("output_tokens"),
+  };
 }
 
 /* ---------------- HTTP handler ---------------- */
@@ -795,15 +823,16 @@ Deno.serve(async (req: Request) => {
     const capResponse = await checkDailyCap();
     if (capResponse) return capResponse;
 
+    const usos: any[] = [];
     try {
       const system = buildSystemPrompt(area);
       const userMsg = buildVisualRedoPrompt({ tema, recurso, textoBase, comando, alternativas, gabarito, resolucaoComentada, instrucoesVisual });
-      const data = await callClaudeForJSON(system, userMsg);
+      const data = await callClaudeForJSON(system, userMsg, false, usos);
       if (!data || !data.visual) {
         return jsonResponse({ error: "O modelo não retornou um novo recurso visual válido." }, 502);
       }
       await logGeneration(area, disciplina, `[refazer visual] ${tema}`);
-      return jsonResponse({ visual: data.visual });
+      return jsonResponse({ visual: data.visual, uso: resumoUso(usos) });
     } catch (err) {
       return jsonResponse({ error: `Erro ao refazer o recurso visual: ${String((err as any)?.message || err)}` }, 502);
     }
@@ -817,20 +846,21 @@ Deno.serve(async (req: Request) => {
   const capResponse = await checkDailyCap();
   if (capResponse) return capResponse;
 
+  const usos: any[] = [];
   try {
     const system = buildSystemPrompt(area);
     const userMsg = buildUserPrompt({ area, disciplina, tema, dificuldade, recurso, competenciaNum, habilidadeCod, instrucoesVisual, gabaritoAlvo });
     const webSearch = precisaFontesReais(disciplina);
-    let data = await callClaudeForJSON(system, userMsg, webSearch);
+    let data = await callClaudeForJSON(system, userMsg, webSearch, usos);
 
     if (validar) {
       const valPrompt = buildValidationChecklist(disciplina, dificuldade).replace("__DRAFT_JSON__", JSON.stringify(data));
-      data = await callClaudeForJSON(system, valPrompt, webSearch);
+      data = await callClaudeForJSON(system, valPrompt, webSearch, usos);
     }
 
     await logGeneration(area, disciplina, tema);
 
-    return jsonResponse({ question: data });
+    return jsonResponse({ question: data, uso: resumoUso(usos) });
   } catch (err) {
     return jsonResponse({ error: `Erro ao gerar questão: ${String((err as any)?.message || err)}` }, 502);
   }
