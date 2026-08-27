@@ -2731,32 +2731,231 @@ function enemPrintPdf(doneQuestions, professor){
   return true;
 }
 
-/* ---- Anatomia ENEM 2025 no DOCX (versão do aluno) ----
-   Mesmas medidas do PDF, convertidas para TWIPs (1 pt = 20 twips; 1 mm = 56,6929).
-   No Word a fonte declarada é Calibri de verdade — não há substituição. Página
-   200 × 275 mm, duas colunas de 89,47 mm com fio separador, corpo 10 pt com
-   entrelinha exata de 12,0 pt, justificado, recuo de 6 mm e tinta #231F20.
-   As margens seguem a geometria da página ímpar (ver comentário na exportação). */
+/* ---- Anatomia ENEM 2025 no DOCX — a MESMA página do PDF ----
+   O Word não redesenha: ele declara. Mas declara exatamente a mesma geometria
+   que o jsPDF desenha — página 200 × 275 mm, mancha de 182,33 mm, duas colunas
+   de 89,47 mm com fio separador, corpo Calibri 10 pt com entrelinha exata de
+   12,0 pt, tinta #231F20 — e carrega o mesmo cromo de página: marca, quadrados,
+   barra cinza, filete misto (azul + microtexto), tarja da versão, rodapé
+   corrido e fólio. Cabeçalho e rodapé se espelham pela paridade da página,
+   como no caderno oficial.
+
+   Onde as duas saídas ainda divergem, e por quê:
+   • margens do CORPO espelhadas — o docx.js 8.5 não expõe o <w:mirrorMargins/>
+     do Word; aplicamos a geometria da página ímpar (interna 8,00 / externa
+     9,67 mm) a todas. Cabeçalho e rodapé espelham normalmente.
+   • os quadrados do cabeçalho saem retos; no original são girados 20°.        */
 const TW = 56.6929;                                   // 1 mm em twips
+const docxMM = v => Math.round(v * TW);                   // mm → twips
 const ENEM_DOCX = {
-  pageW: Math.round(200 * TW),
-  pageH: Math.round(275 * TW),
-  margTop: Math.round(26.88 * TW),
-  margBottom: Math.round(15.0 * TW),
-  margInner: Math.round(8.00 * TW),                   // margem interna (gutter do Word)
-  margOuter: Math.round(9.67 * TW),                   // margem externa
-  gutter: Math.round(3.40 * TW),
-  indent: Math.round(6 * TW),
-  hang: Math.round(4.5 * TW),
+  pageW: docxMM(200), pageH: docxMM(275),
+  margTop: docxMM(28.00), margBottom: docxMM(15.0),   // topo do fluxo das colunas, como no PDF
+  margInner: docxMM(8.00), margOuter: docxMM(9.67),
+  header: docxMM(10.3), footer: docxMM(6.7),   // filete em 25,00 mm e 263,00 mm
+  mancha: docxMM(182.33), colW: docxMM(89.47), gutter: docxMM(3.40),
+  indent: docxMM(6), hang: docxMM(4.5),
   line: Math.round(12.0 * 20),                        // entrelinha exata de 12,0 pt
   altLine: Math.round(13.4 * 20),                     // entrelinha das alternativas
-  ink: "231F20",
-  footGray: "58595B",
-  azulTab: "6DCFF6",
-  font: "Calibri",
+  capLine: Math.round(9.6 * 20),                      // entrelinha da referência
+  segBlue: docxMM(49.16), segMicro: docxMM(131.54),
+  ornStart: docxMM(24.47), ornGap: docxMM(0.30), ornBlueShare: 0.795,
+  barraCinza: docxMM(48.93),
+  ink: "231F20", footGray: "58595B", ornGray: "939598",
+  azul: "B9E5FA", azulTab: "6DCFF6", azulLogo: "004B8D",
+  font: "Calibri", fontLight: "Calibri Light",
 };
 
-// Parágrafo de corpo — 10 pt, entrelinha exata, justificado, primeira linha recuada.
+// Espessuras de borda em OITAVOS de ponto — é assim que o Word mede filete.
+const DOCX_LINHA = {
+  fina: 4,        // 0,5 pt — filete de fechamento e divisórias de tabela
+  cheia: 8,       // 1,0 pt — filete de cabeçalho/rodapé e topo do ornamento
+  orn: 24,        // 1,06 mm ≈ 3,0 pt — a faixa da barra-ornamento
+  barra: 54,      // 2,38 mm ≈ 6,75 pt — a barra cinza do cabeçalho
+};
+
+// Parágrafo de altura mínima: só existe para carregar uma borda.
+function docxFilamento(borders){
+  const { Paragraph, LineRuleType } = window.docx;
+  return new Paragraph({
+    spacing: { before: 0, after: 0, line: 20, lineRule: LineRuleType.EXACTLY },
+    border: borders,
+    children: [],
+  });
+}
+
+function docxCelula(widthTw, children, opts){
+  const { TableCell, WidthType, BorderStyle, VerticalAlign } = window.docx;
+  const o = opts || {};
+  const nada = { style: BorderStyle.NONE, size: 0, color: "FFFFFF" };
+  return new TableCell({
+    width: { size: widthTw, type: WidthType.DXA },
+    borders: o.borders || { top: nada, bottom: nada, left: nada, right: nada },
+    shading: o.fill ? { type: window.docx.ShadingType.CLEAR, fill: o.fill, color: "auto" } : undefined,
+    verticalAlign: o.valign || VerticalAlign.BOTTOM,
+    margins: { top: 0, bottom: 0, left: 0, right: 0 },
+    children: children,
+  });
+}
+
+function docxLinhaTabela(cells, alturaTw){
+  const { TableRow, HeightRule } = window.docx;
+  return new TableRow({
+    height: alturaTw ? { value: alturaTw, rule: HeightRule.EXACT } : undefined,
+    children: cells,
+  });
+}
+
+function docxTabelaLimpa(rows, widths, float){
+  const { Table, WidthType, BorderStyle, TableLayoutType } = window.docx;
+  const nada = { style: BorderStyle.NONE, size: 0, color: "FFFFFF" };
+  const cols = Array.isArray(widths) ? widths : [widths];
+  return new Table({
+    width: { size: cols.reduce((a, b) => a + b, 0), type: WidthType.DXA },
+    columnWidths: cols,                 // vira <w:tblGrid> — sem isso a largura escorre
+    layout: TableLayoutType.FIXED,
+    borders: { top: nada, bottom: nada, left: nada, right: nada,
+               insideHorizontal: nada, insideVertical: nada },
+    float: float,
+    rows: rows,
+  });
+}
+
+/* Filete misto do §4: um trecho azul de 49,16 mm e um de microtexto de
+   131,54 mm. No cabeçalho o azul fica do lado INTERNO; no rodapé, do EXTERNO —
+   sempre cruzado. `azulPrimeiro` diz de que lado ele entra nesta folha.      */
+function docxFilete(azulPrimeiro){
+  const { Paragraph, TextRun, BorderStyle, LineRuleType } = window.docx;
+  const azul = docxCelula(ENEM_DOCX.segBlue, [ docxFilamento({}) ], { fill: ENEM_DOCX.azul });
+  // O "fio pontilhado" do caderno é, na verdade, a palavra repetida em
+  // Arial-Bold 1,5 pt. É recurso antifraude, não ornamento.
+  const micro = docxCelula(ENEM_DOCX.segMicro, [ new Paragraph({
+    spacing: { before: 0, after: 0, line: 40, lineRule: LineRuleType.EXACTLY },
+    children: [ new TextRun({ text: "SIMULADO".repeat(60), font: "Arial", size: 3, bold: true, color: ENEM_DOCX.ink }) ],
+  }) ]);
+  return docxTabelaLimpa(
+    [ docxLinhaTabela(azulPrimeiro ? [azul, micro] : [micro, azul], docxMM(1.06)) ],
+    azulPrimeiro ? [ENEM_DOCX.segBlue, ENEM_DOCX.segMicro] : [ENEM_DOCX.segMicro, ENEM_DOCX.segBlue]);
+}
+
+// Tarja da versão + quadrado de registro, ancorados à FOLHA na borda externa.
+// São quadros de parágrafo (w:framePr), não tabelas flutuantes: é o mecanismo
+// que o Word e o LibreOffice posicionam de forma previsível dentro do cabeçalho.
+function docxTarja(outerIsRight){
+  const { Paragraph, TextRun, ShadingType, FrameAnchorType, FrameWrap, HeightRule, LineRuleType } = window.docx;
+  const larg = outerIsRight ? docxMM(11) : docxMM(6);   // na folha par ela sangra
+  const x    = outerIsRight ? docxMM(194) : 0;
+  const reg  = outerIsRight ? docxMM(192.5) : docxMM(4.5);
+  const quadro = (w, h, px, py, cor) => new Paragraph({
+    frame: {
+      type: "absolute", width: w, height: h, rule: HeightRule.EXACT,
+      anchor: { horizontal: FrameAnchorType.PAGE, vertical: FrameAnchorType.PAGE },
+      position: { x: px, y: py },
+      space: { horizontal: 0, vertical: 0 },
+      wrap: FrameWrap.NONE,
+    },
+    shading: { type: ShadingType.CLEAR, fill: cor, color: "auto" },
+    // O w:shd pinta a CAIXA DE LINHA do parágrafo, não o quadro — então a
+    // entrelinha exata é que dá altura à tarja.
+    spacing: { before: 0, after: 0, line: h, lineRule: LineRuleType.EXACTLY },
+    children: [ new TextRun({ text: " ", size: 2, color: cor }) ],
+  });
+  // Só o PRIMEIRO parágrafo com quadro de um cabeçalho/rodapé sobrevive: os
+  // seguintes são fundidos nele. Por isso a tarja mora no cabeçalho e o quadrado
+  // de registro no rodapé — ambos ancorados à FOLHA, então cada um cai no seu
+  // lugar independentemente de onde foi declarado.
+  return {
+    tarja:    quadro(larg, docxMM(25), x, 0, ENEM_DOCX.azul),  // 11 × 30 mm sangrando: 25 visíveis
+    registro: quadro(docxMM(3), docxMM(3), reg, docxMM(23.5), ENEM_DOCX.ink),
+  };
+}
+
+/* Marca do caderno. NÃO reproduzimos o logotipo do INEP: isto é um simulado, e
+   passar-se por caderno oficial seria falsificação. Copia-se a diagramação, não
+   a identidade da instituição.                                               */
+function docxMarca(ano, outerIsRight){
+  const { Paragraph, TextRun, AlignmentType, LineRuleType, VerticalAlign } = window.docx;
+  const alinha = outerIsRight ? AlignmentType.LEFT : AlignmentType.RIGHT;
+  const marca = new Paragraph({
+    alignment: alinha,
+    spacing: { before: 0, after: 0, line: Math.round(17 * 20), lineRule: LineRuleType.EXACTLY },
+    children: [
+      new TextRun({ text: "simulado", bold: true, font: ENEM_DOCX.font, size: 32, color: ENEM_DOCX.azulLogo }),
+      new TextRun({ text: String(ano), font: ENEM_DOCX.font, size: 32, color: ENEM_DOCX.ornGray }),
+    ],
+  });
+  const sub = new Paragraph({
+    alignment: alinha,
+    spacing: { before: 0, after: 0, line: Math.round(7 * 20), lineRule: LineRuleType.EXACTLY },
+    children: [ new TextRun({ text: "Simulado no padrão do caderno ENEM", font: ENEM_DOCX.font, size: 11, color: ENEM_DOCX.ornGray }) ],
+  });
+  // Quatro quadrados de 5,5 × 6,6 mm em #939598, encostados na marca.
+  const quad = () => docxCelula(docxMM(5.5), [ new Paragraph({ children: [] }) ], { fill: ENEM_DOCX.ornGray });
+  const vao  = () => docxCelula(docxMM(0.4), [ new Paragraph({ children: [] }) ]);
+  const bloco = [ quad(), vao(), quad(), vao(), quad(), vao(), quad() ];
+  const wMarca = docxMM(52), wBloco = docxMM(23.2);
+  const wResto = ENEM_DOCX.mancha - wMarca - wBloco;
+  const marcaCel = docxCelula(wMarca, [ marca ], { valign: VerticalAlign.BOTTOM });
+  const resto = docxCelula(wResto, [ new Paragraph({ children: [] }) ]);
+  const larguras = [docxMM(5.5), docxMM(0.4), docxMM(5.5), docxMM(0.4), docxMM(5.5), docxMM(0.4), docxMM(5.5)];
+  const cells = outerIsRight ? [marcaCel].concat(bloco, [resto])
+                             : [resto].concat(bloco, [marcaCel]);
+  const grade = outerIsRight ? [wMarca].concat(larguras, [wResto])
+                             : [wResto].concat(larguras, [wMarca]);
+  return [
+    docxTabelaLimpa([ docxLinhaTabela(cells, docxMM(6.6)) ], grade),
+    sub,
+  ];
+}
+
+// Barra cinza de 48,93 × 2,38 mm sob a marca, do lado interno.
+function docxBarraCinza(outerIsRight){
+  const { BorderStyle } = window.docx;
+  const barra = docxCelula(ENEM_DOCX.barraCinza, [ docxFilamento({}) ], { fill: ENEM_DOCX.ornGray });
+  const vazio = docxCelula(ENEM_DOCX.mancha - ENEM_DOCX.barraCinza, [ docxFilamento({}) ]);
+  const wResto = ENEM_DOCX.mancha - ENEM_DOCX.barraCinza;
+  return docxTabelaLimpa(
+    [ docxLinhaTabela(outerIsRight ? [barra, vazio] : [vazio, barra], docxMM(2.38)) ],
+    outerIsRight ? [ENEM_DOCX.barraCinza, wResto] : [wResto, ENEM_DOCX.barraCinza]);
+}
+
+function enemDocxHeader(ctx, outerIsRight){
+  const { Header } = window.docx;
+  // A tarja entra POR ÚLTIMO: mesmo flutuando, uma tabela ocupa posição no
+  // fluxo, e no começo ela empurraria todo o cabeçalho folha abaixo.
+  const { Paragraph, LineRuleType } = window.docx;
+  // 2,4 mm entre a barra cinza (19,29–21,67 mm) e o filete de 25,00 mm.
+  const respiro = new Paragraph({
+    spacing: { before: 0, after: 0, line: 136, lineRule: LineRuleType.EXACTLY }, children: [] });
+  const filhos = [ docxTarja(outerIsRight).tarja ]
+    .concat(docxMarca(ctx.ano, outerIsRight))
+    .concat([ docxBarraCinza(outerIsRight), respiro, docxFilete(outerIsRight) ]);
+  return new Header({ children: filhos });
+}
+
+function enemDocxFooter(ctx, outerIsRight){
+  const { Footer, Paragraph, TextRun, AlignmentType, LineRuleType, PageNumber } = window.docx;
+  // Rodapé: texto corrido na margem INTERNA, fólio na EXTERNA.
+  const corrido = docxCelula(ENEM_DOCX.mancha - docxMM(12), [ new Paragraph({
+    alignment: outerIsRight ? AlignmentType.LEFT : AlignmentType.RIGHT,
+    spacing: { before: 0, after: 0, line: Math.round(11 * 20), lineRule: LineRuleType.EXACTLY },
+    children: [ new TextRun({ text: ctx.footerText, font: ENEM_DOCX.fontLight, size: 18, color: ENEM_DOCX.footGray }) ],
+  }) ]);
+  const folio = docxCelula(docxMM(12), [ new Paragraph({
+    alignment: outerIsRight ? AlignmentType.RIGHT : AlignmentType.LEFT,
+    spacing: { before: 0, after: 0, line: Math.round(11 * 20), lineRule: LineRuleType.EXACTLY },
+    children: [ new TextRun({ children: [ PageNumber.CURRENT ], bold: true, font: ENEM_DOCX.font, size: 18, color: ENEM_DOCX.ink }) ],
+  }) ]);
+  const wCorrido = ENEM_DOCX.mancha - docxMM(12);
+  const linha = docxTabelaLimpa(
+    [ docxLinhaTabela(outerIsRight ? [corrido, folio] : [folio, corrido]) ],
+    outerIsRight ? [wCorrido, docxMM(12)] : [docxMM(12), wCorrido]);
+  // No rodapé o azul fica do lado EXTERNO — a composição inverte a do cabeçalho.
+  return new Footer({ children: [ docxTarja(outerIsRight).registro,
+                                  docxFilete(!outerIsRight), linha ] });
+}
+
+/* ---------------- conteúdo: as mesmas regras que o PDF desenha ------------- */
+
 function enemDocxParagraph(text, opts){
   const { Paragraph, TextRun, AlignmentType, LineRuleType } = window.docx;
   const o = opts || {};
@@ -2777,127 +2976,6 @@ function enemDocxParagraph(text, opts){
   return out;
 }
 
-// "QUESTÃO N" — 11 pt bold, CAIXA ALTA, com respiro acima. A barra-ornamento do
-// PDF vira aqui uma borda inferior azul no próprio parágrafo do rótulo.
-function enemDocxQuestionLabel(numero){
-  const { Paragraph, TextRun, LineRuleType } = window.docx;
-  return [ new Paragraph({
-    spacing: { before: 144, after: 43, line: ENEM_DOCX.line, lineRule: LineRuleType.EXACTLY },
-    children: [ new TextRun({ text: "QUESTÃO " + numero, bold: true, font: ENEM_DOCX.font, size: 22, color: ENEM_DOCX.ink }) ],
-  }) ];
-}
-
-// Alternativa A–E. O glifo circulado do original é uma fonte dingbat que não pode
-// ser incorporada aqui; no Word usamos o caractere circulado Unicode equivalente,
-// mantendo o corpo de 10 pt, o texto pendurado a 4,5 mm e a entrelinha de 13,4 pt.
-const ENEM_DOCX_MARKS = { A: "Ⓐ", B: "Ⓑ", C: "Ⓒ", D: "Ⓓ", E: "Ⓔ" };
-function enemDocxAlternative(letter, text){
-  const { Paragraph, TextRun, AlignmentType, LineRuleType } = window.docx;
-  return [ new Paragraph({
-    alignment: AlignmentType.LEFT,
-    indent: { left: ENEM_DOCX.hang, hanging: ENEM_DOCX.hang },
-    spacing: { line: ENEM_DOCX.altLine, lineRule: LineRuleType.EXACTLY, before: 0, after: 0 },
-    children: [
-      new TextRun({ text: ENEM_DOCX_MARKS[letter] + "\t", font: ENEM_DOCX.font, size: 20, color: ENEM_DOCX.ink }),
-      ...enemRichRuns(String(text || "").trim() || "—").map(r => new TextRun({
-        text: r.text, bold: r.bold, font: ENEM_DOCX.font, size: 20, color: ENEM_DOCX.ink,
-      })),
-    ],
-  }) ];
-}
-
-/* Referência / fonte bibliográfica — corpo menos dois pontos (8 pt), em dois
-   tratamentos distintos:
-     ▸ texto introdutório  → ITÁLICO, alinhado à direita, título em negrito-itálico
-     ▸ imagem/tabela/gráfico → JUSTIFICADO, redondo, título em negrito          */
-function enemDocxCaption(text, opts){
-  const { Paragraph, TextRun, AlignmentType, LineRuleType } = window.docx;
-  const o = opts || {};
-  const clean = String(text || "").trim();
-  if(!clean) return [];
-  return [ new Paragraph({
-    alignment: o.justify ? AlignmentType.JUSTIFIED : AlignmentType.RIGHT,
-    spacing: { line: Math.round(9.6 * 20), lineRule: LineRuleType.EXACTLY, before: 40, after: 60 },
-    children: enemRichRuns(clean).map(r => new TextRun({
-      text: r.text, bold: r.bold, italics: !!o.italic,
-      font: ENEM_DOCX.font, size: 16, color: ENEM_DOCX.ink,
-    })),
-  }) ];
-}
-
-// Texto-base no Word: parágrafos de corpo e, ao fim, a fonte bibliográfica no
-// tratamento de referência do texto introdutório.
-function enemDocxTextoBase(text, fonte){
-  const pars = String(text || "").trim().split(/\n+/).filter(x => x.trim());
-  let ref = String(fonte || "").trim();
-  if(!ref && pars.length > 1 && enemIsReference(pars[pars.length - 1])) ref = pars.pop();
-  const out = [];
-  pars.forEach(par => out.push(...enemDocxParagraph(par)));
-  if(ref) out.push(...enemDocxCaption(ref, { italic: true }));
-  return out;
-}
-
-// Filete SÓLIDO de fechamento de questão (em 2025 não há mais traço pontilhado).
-function enemDocxRule(){
-  const { Paragraph, BorderStyle } = window.docx;
-  return [ new Paragraph({
-    spacing: { before: 143, after: 143 },
-    border: { bottom: { style: BorderStyle.SINGLE, size: 4, color: ENEM_DOCX.ink, space: 1 } },
-    children: [],
-  }) ];
-}
-
-// Recurso visual — imagem e gráfico saem COLORIDOS, como no caderno 2025.
-function enemDocxVisual(visual, cardIdx){
-  const { Paragraph, TextRun, ImageRun, AlignmentType, Table, TableRow, TableCell, WidthType, BorderStyle, ShadingType } = window.docx;
-  if(!visual || !visual.tipo) return [];
-  const out = [];
-
-  if(visual.tipo === "tabela"){
-    const cols = visual.colunas || [];
-    const rows = visual.linhas || [];
-    if(!cols.length) return [];
-    const border = { style: BorderStyle.SINGLE, size: 4, color: ENEM_DOCX.ink };
-    const borders = { top: border, bottom: border, left: border, right: border };
-    const cell = (txt, bold) => new TableCell({
-      borders,
-      shading: bold ? { type: ShadingType.CLEAR, fill: ENEM_DOCX.azulTab, color: "auto" } : undefined,
-      children: [ new Paragraph({
-        alignment: AlignmentType.CENTER,
-        children: [ new TextRun({ text: String(txt), font: ENEM_DOCX.font, size: 20, bold: !!bold, color: ENEM_DOCX.ink }) ],
-      }) ],
-    });
-    out.push(new Table({
-      width: { size: 100, type: WidthType.PERCENTAGE },
-      rows: [ new TableRow({ children: cols.map(c => cell(c, true)) }) ]
-        .concat(rows.map(r => new TableRow({ children: r.map(c => cell(c, false)) }))),
-    }));
-    out.push(...enemDocxCaption(visual.titulo, { justify: true }));
-    return out;
-  }
-
-  const info = visual.tipo === "imagem" ? pdfGetVisualImageInfo(cardIdx) : pdfGetVisualChartInfo(cardIdx);
-  if(!info) return [];
-  // Largura da coluna do miolo: 89,47 mm ≈ 254 pt.
-  const maxW = 254;
-  const ratio = info.height / info.width;
-  const w = maxW, h = Math.round(maxW * ratio);
-  try{
-    out.push(new Paragraph({
-      alignment: AlignmentType.CENTER,
-      spacing: { before: 91, after: 120 },
-      children: [ new ImageRun({
-        data: docxDataUrlToUint8Array(info.dataUrl),
-        transformation: { width: w, height: h },
-        type: docxImageType(info.dataUrl),
-      }) ],
-    }));
-  }catch(e){ return out; }
-  out.push(...enemDocxCaption(visual.descricao, { justify: true }));
-  return out;
-}
-
-// Parágrafo de corpo que entende **negrito** no meio da frase.
 function enemDocxRichParagraph(text, opts){
   const { Paragraph, TextRun, AlignmentType, LineRuleType } = window.docx;
   const o = opts || {};
@@ -2916,7 +2994,147 @@ function enemDocxRichParagraph(text, opts){
   return out;
 }
 
-// Subtítulo interno — bold 10 pt caixa alta, mesmo papel de "TEXTO I".
+/* Rótulo QUESTÃO N com a barra-ornamento à direita: começa sempre a 24,47 mm
+   da borda da coluna, termina 0,30 mm antes da direita, filete escuro de 1 pt
+   no topo e faixa de 1,06 mm com 79,5 % em #B9E5FA e 20,5 % em #231F20.     */
+function enemDocxQuestionLabel(numero, colTw, primeiro){
+  const { Paragraph, TextRun, BorderStyle, LineRuleType, VerticalAlign } = window.docx;
+  const larg = colTw || ENEM_DOCX.colW;
+  const barra = larg - ENEM_DOCX.ornStart - ENEM_DOCX.ornGap;
+  const azulW = Math.round(barra * ENEM_DOCX.ornBlueShare);
+  const escuroW = barra - azulW;
+  const topo = { style: BorderStyle.SINGLE, size: DOCX_LINHA.cheia, color: ENEM_DOCX.ink, space: 0 };
+  const faixa = cor => docxFilamento({
+    top: topo,
+    bottom: { style: BorderStyle.SINGLE, size: DOCX_LINHA.orn, color: cor, space: 0 },
+  });
+  const rotulo = new Paragraph({
+    spacing: { before: 0, after: 0, line: Math.round(12 * 20), lineRule: LineRuleType.EXACTLY },
+    children: [ new TextRun({ text: "QUESTÃO " + numero, bold: true, font: ENEM_DOCX.font, size: 22, color: ENEM_DOCX.ink }) ],
+  });
+  const respiro = primeiro ? [] : [
+    // 2,53 mm entre a última alternativa da questão anterior e este rótulo.
+    new Paragraph({ spacing: { before: 0, after: 143, line: 20, lineRule: LineRuleType.EXACTLY }, children: [] }),
+  ];
+  return respiro.concat([
+    docxTabelaLimpa([ docxLinhaTabela([
+      docxCelula(ENEM_DOCX.ornStart, [ rotulo ], { valign: VerticalAlign.BOTTOM }),
+      docxCelula(azulW,   [ faixa(ENEM_DOCX.azul) ]),
+      docxCelula(escuroW, [ faixa(ENEM_DOCX.ink) ]),
+      docxCelula(ENEM_DOCX.ornGap, [ docxFilamento({}) ]),
+    ]) ], [ENEM_DOCX.ornStart, azulW, escuroW, ENEM_DOCX.ornGap]),
+    // 0,76 mm entre o rótulo e a primeira linha do texto-base.
+    new Paragraph({ spacing: { before: 0, after: 43, line: 20, lineRule: LineRuleType.EXACTLY }, children: [] }),
+  ]);
+}
+
+const ENEM_DOCX_MARKS = { A: "Ⓐ", B: "Ⓑ", C: "Ⓒ", D: "Ⓓ", E: "Ⓔ" };
+
+function enemDocxAlternative(letter, text){
+  const { Paragraph, TextRun, AlignmentType, LineRuleType } = window.docx;
+  return [ new Paragraph({
+    alignment: AlignmentType.LEFT,
+    indent: { left: ENEM_DOCX.hang, hanging: ENEM_DOCX.hang },
+    spacing: { line: ENEM_DOCX.altLine, lineRule: LineRuleType.EXACTLY, before: 0, after: 0 },
+    children: [
+      new TextRun({ text: ENEM_DOCX_MARKS[letter] + "\t", font: ENEM_DOCX.font, size: 20, color: ENEM_DOCX.ink }),
+      ...enemRichRuns(String(text || "").trim() || "—").map(r => new TextRun({
+        text: r.text, bold: r.bold, font: ENEM_DOCX.font, size: 20, color: ENEM_DOCX.ink,
+      })),
+    ],
+  }) ];
+}
+
+/* §2.1 — as duas referências. Do texto introdutório: itálico, à direita. De
+   imagem, tabela ou gráfico: redonda, justificada. Ambas em corpo − 2 pt.   */
+function enemDocxCaption(text, opts){
+  const { Paragraph, TextRun, AlignmentType, LineRuleType } = window.docx;
+  const o = opts || {};
+  const clean = String(text || "").trim();
+  if(!clean) return [];
+  return [ new Paragraph({
+    alignment: o.justify ? AlignmentType.JUSTIFIED : AlignmentType.RIGHT,
+    spacing: { line: ENEM_DOCX.capLine, lineRule: LineRuleType.EXACTLY, before: 40, after: 60 },
+    children: enemRichRuns(clean).map(r => new TextRun({
+      text: r.text, bold: r.bold, italics: !!o.italic,
+      font: ENEM_DOCX.font, size: 16, color: ENEM_DOCX.ink,
+    })),
+  }) ];
+}
+
+function enemDocxTextoBase(text, fonte){
+  const pars = String(text || "").trim().split(/\n+/).filter(x => x.trim());
+  let ref = String(fonte || "").trim();
+  if(!ref && pars.length > 1 && enemIsReference(pars[pars.length - 1])) ref = pars.pop();
+  const out = [];
+  pars.forEach(par => out.push(...enemDocxParagraph(par)));
+  if(ref) out.push(...enemDocxCaption(ref, { italic: true }));
+  return out;
+}
+
+// Filete de fechamento: sólido, 0,5 pt, largura cheia da coluna. No caderno
+// oficial ele NÃO separa questões consecutivas — quem separa é a barra da
+// questão seguinte (§5.9).
+function enemDocxRule(){
+  const { Paragraph, BorderStyle, LineRuleType } = window.docx;
+  return [ new Paragraph({
+    spacing: { before: 143, after: 60, line: 20, lineRule: LineRuleType.EXACTLY },
+    border: { bottom: { style: BorderStyle.SINGLE, size: DOCX_LINHA.fina, color: ENEM_DOCX.ink, space: 1 } },
+    children: [],
+  }) ];
+}
+
+function enemDocxVisual(visual, cardIdx, colTw){
+  const { Paragraph, TextRun, ImageRun, AlignmentType, Table, TableRow, TableCell,
+          WidthType, BorderStyle, ShadingType } = window.docx;
+  if(!visual || !visual.tipo) return [];
+  const out = [];
+  const larg = colTw || ENEM_DOCX.colW;
+
+  if(visual.tipo === "tabela"){
+    const cols = visual.colunas || [];
+    const rows = visual.linhas || [];
+    if(!cols.length) return [];
+    const moldura = { style: BorderStyle.SINGLE, size: DOCX_LINHA.cheia, color: ENEM_DOCX.ink };
+    const divisa  = { style: BorderStyle.SINGLE, size: DOCX_LINHA.fina, color: ENEM_DOCX.ink };
+    const cell = (txt, cab) => new TableCell({
+      borders: cab ? { top: moldura, bottom: moldura, left: moldura, right: moldura }
+                   : { top: divisa, bottom: divisa, left: divisa, right: divisa },
+      shading: cab ? { type: ShadingType.CLEAR, fill: ENEM_DOCX.azulTab, color: "auto" } : undefined,
+      children: [ new Paragraph({
+        alignment: AlignmentType.CENTER,
+        children: [ new TextRun({ text: String(txt == null ? "" : txt), font: ENEM_DOCX.font, size: 20, bold: !!cab, color: ENEM_DOCX.ink }) ],
+      }) ],
+    });
+    out.push(new Table({
+      width: { size: 100, type: WidthType.PERCENTAGE },
+      rows: [ new TableRow({ children: cols.map(c => cell(c, true)) }) ]
+        .concat(rows.map(r => new TableRow({ children: r.map(c => cell(c, false)) }))),
+    }));
+    out.push(...enemDocxCaption(visual.titulo, { justify: true }));
+    return out;
+  }
+
+  const info = visual.tipo === "imagem" ? pdfGetVisualImageInfo(cardIdx) : pdfGetVisualChartInfo(cardIdx);
+  if(!info) return [];
+  const maxW = Math.round(larg / TW * 72 / 25.4);      // twips → mm → pontos
+  const ratio = info.height / info.width;
+  const w = maxW, h = Math.round(maxW * ratio);
+  try{
+    out.push(new Paragraph({
+      alignment: AlignmentType.CENTER,
+      spacing: { before: 91, after: 120 },              // 1,60 mm antes · 2,11 mm depois
+      children: [ new ImageRun({
+        data: docxDataUrlToUint8Array(info.dataUrl),
+        transformation: { width: w, height: h },
+        type: docxImageType(info.dataUrl),
+      }) ],
+    }));
+  }catch(e){ return out; }
+  out.push(...enemDocxCaption(visual.descricao, { justify: true }));
+  return out;
+}
+
 function enemDocxSubhead(texto){
   const { Paragraph, TextRun, LineRuleType } = window.docx;
   return [ new Paragraph({
@@ -2925,18 +3143,22 @@ function enemDocxSubhead(texto){
   }) ];
 }
 
-/* Folha de gabarito do aluno no Word — SOMENTE a letra de cada questão. */
-function enemDocxGabaritoAluno(doneQuestions){
-  const { Paragraph, TextRun, LineRuleType, PageBreak } = window.docx;
-  const out = [];
-  out.push(new Paragraph({ children: [ new PageBreak() ] }));
-  out.push(new Paragraph({
+function enemDocxAreaTitle(texto){
+  const { Paragraph, TextRun, LineRuleType } = window.docx;
+  return [ new Paragraph({
     spacing: { after: 181, line: ENEM_DOCX.line, lineRule: LineRuleType.EXACTLY },
-    indent: { left: Math.round(2 * TW) },
-    children: [ new TextRun({ text: "GABARITO", bold: true, font: ENEM_DOCX.font, size: 22, color: ENEM_DOCX.ink }) ],
-  }));
+    indent: { left: docxMM(2) },
+    children: [ new TextRun({ text: String(texto).toUpperCase(), bold: true, font: ENEM_DOCX.font, size: 22, color: ENEM_DOCX.ink }) ],
+  }) ];
+}
+
+/* §7.2 — folha de gabarito do ALUNO: somente a letra de cada questão. */
+function enemDocxGabaritoAluno(doneQuestions){
+  const { Paragraph, TextRun, LineRuleType } = window.docx;
+  const out = [];
+  out.push(...enemDocxAreaTitle("Gabarito"));
   doneQuestions.forEach(o => {
-    const letra = (o.q.data && o.q.data.gabarito) || "\u2014";
+    const letra = (o.q.data && o.q.data.gabarito) || "—";
     out.push(new Paragraph({
       spacing: { line: ENEM_DOCX.altLine, lineRule: LineRuleType.EXACTLY, before: 0, after: 0 },
       children: [
@@ -2945,15 +3167,16 @@ function enemDocxGabaritoAluno(doneQuestions){
       ],
     }));
   });
+  out.push(...enemDocxRule());
   return out;
 }
 
-// Um bloco do caderno de respostas, na mesma anatomia das questões.
+/* §7.3 — caderno de respostas do PROFESSOR. */
 function enemDocxGabaritoBlock(o){
   const { Paragraph, TextRun, LineRuleType } = window.docx;
   const d = o.q.data || {};
   const out = [];
-  out.push(...enemDocxQuestionLabel(o.idx + 1));
+  out.push(...enemDocxQuestionLabel(o.idx + 1, ENEM_DOCX.colW, o.primeiroDoCaderno));
 
   const letra = d.gabarito || "—";
   out.push(new Paragraph({
@@ -2999,62 +3222,86 @@ function enemDocxGabaritoBlock(o){
       out.push(...enemDocxAlternative(L, status + " — " + (info.comentario || "")));
     });
   }
-  out.push(...enemDocxRule());
   return out;
 }
 
-/* Monta a seção do Word inteira, em 2 colunas. As duas versões usam a mesma
-   diagramação; a do professor acrescenta o caderno de respostas ao fim.      */
-function enemDocxSection(doneQuestions, professor){
-  const { Paragraph, TextRun, AlignmentType, LineRuleType, BorderStyle, PageBreak } = window.docx;
+/* Uma SEÇÃO do Word por bloco de questões que compartilha o modo de coluna —
+   é assim que a página inteira vira coluna única quando entra figura larga
+   (§6), do mesmo jeito que o PDF faz. Cabeçalho e rodapé são reconstruídos em
+   cada seção, espelhados por paridade.                                       */
+function enemDocxSections(doneQuestions, professor){
+  const { SectionType } = window.docx;
   const areaLabel = AREA_META[state.area] ? AREA_META[state.area].label : "";
-  const children = [];
+  const ctx = {
+    ano: new Date().getFullYear(),
+    footerText: [String(areaLabel).toUpperCase(), state.disciplina || "",
+                 professor ? "VERSÃO DO PROFESSOR" : "VERSÃO DO ALUNO"].filter(Boolean).join(" | "),
+  };
 
-  children.push(new Paragraph({
-    spacing: { after: 120, line: ENEM_DOCX.line, lineRule: LineRuleType.EXACTLY },
-    indent: { left: Math.round(2 * TW) },
-    children: [ new TextRun({ text: String(areaLabel).toUpperCase(), bold: true, font: ENEM_DOCX.font, size: 22, color: ENEM_DOCX.ink }) ],
-  }));
-
-  doneQuestions.forEach((o, i) => {
-    const d = o.q.data;
-    children.push(...enemDocxQuestionLabel(o.idx + 1));
-    if(d.textoBase) children.push(...enemDocxTextoBase(d.textoBase, d.fonte));
-    if(d.visual && d.visual.tipo) children.push(...enemDocxVisual(d.visual, o.idx));
-    if(d.comando) children.push(...enemDocxParagraph(d.comando, { indent: false }));
-    ["A", "B", "C", "D", "E"].forEach(letter => {
-      children.push(...enemDocxAlternative(letter, (d.alternativas && d.alternativas[letter]) || ""));
-    });
-    if(i < doneQuestions.length - 1) children.push(...enemDocxRule());
+  const props = cols => ({
+    page: {
+      size: { width: ENEM_DOCX.pageW, height: ENEM_DOCX.pageH },
+      margin: {
+        top: ENEM_DOCX.margTop, bottom: ENEM_DOCX.margBottom,
+        left: ENEM_DOCX.margInner, right: ENEM_DOCX.margOuter,
+        header: ENEM_DOCX.header, footer: ENEM_DOCX.footer,
+      },
+    },
+    column: cols === 1 ? { count: 1 }
+                       : { count: 2, space: ENEM_DOCX.gutter, separate: true },
+    type: SectionType.NEXT_PAGE,
+  });
+  const secao = (cols, children) => ({
+    properties: props(cols),
+    headers: { default: enemDocxHeader(ctx, true), even: enemDocxHeader(ctx, false) },
+    footers: { default: enemDocxFooter(ctx, true), even: enemDocxFooter(ctx, false) },
+    children: children,
   });
 
-  // ---- Fim do caderno de questões. O que vem depois depende da versão:
-  //      aluno → só as letras do gabarito;  professor → o caderno de respostas.
-  if(!professor){
-    children.push(...enemDocxGabaritoAluno(doneQuestions));
-  }
-  if(professor){
-    children.push(new Paragraph({ children: [ new PageBreak() ] }));
-    children.push(new Paragraph({
-      spacing: { after: 85, line: ENEM_DOCX.line, lineRule: LineRuleType.EXACTLY },
-      children: [ new TextRun({ text: "GABARITO E RESOLUÇÕES", bold: true, font: ENEM_DOCX.font, size: 22, color: ENEM_DOCX.ink }) ],
-    }));
-    doneQuestions.forEach(o => children.push(...enemDocxGabaritoBlock(o)));
-  }
+  // Agrupa questões consecutivas que compartilham o mesmo modo de coluna.
+  const grupos = [];
+  doneQuestions.forEach(o => {
+    const wide = enemNeedsWidePage(o);
+    const ultimo = grupos[grupos.length - 1];
+    if(ultimo && ultimo.wide === wide) ultimo.itens.push(o);
+    else grupos.push({ wide: wide, itens: [o] });
+  });
 
-  return {
-    properties: {
-      page: {
-        size: { width: ENEM_DOCX.pageW, height: ENEM_DOCX.pageH },
-        margin: {
-          top: ENEM_DOCX.margTop, bottom: ENEM_DOCX.margBottom,
-          left: ENEM_DOCX.margInner, right: ENEM_DOCX.margOuter,
-        },
-      },
-      column: { count: 2, space: ENEM_DOCX.gutter, separate: true },
-    },
-    children,
-  };
+  const sections = [];
+  grupos.forEach((g, gi) => {
+    const colTw = g.wide ? ENEM_DOCX.mancha : ENEM_DOCX.colW;
+    const children = [];
+    if(gi === 0) children.push(...enemDocxAreaTitle(areaLabel));
+    g.itens.forEach((o, i) => {
+      const d = o.q.data;
+      children.push(...enemDocxQuestionLabel(o.idx + 1, colTw, gi === 0 && i === 0));
+      if(d.textoBase) children.push(...enemDocxTextoBase(d.textoBase, d.fonte));
+      if(d.visual && d.visual.tipo) children.push(...enemDocxVisual(d.visual, o.idx, colTw));
+      if(d.comando) children.push(...enemDocxParagraph(d.comando, { indent: false }));
+      ["A","B","C","D","E"].forEach(L => {
+        children.push(...enemDocxAlternative(L, (d.alternativas && d.alternativas[L]) || ""));
+      });
+      // Filete de fechamento só ao fim da sequência — nunca entre questões.
+      const ultimoDeTudo = gi === grupos.length - 1 && i === g.itens.length - 1;
+      if(ultimoDeTudo) children.push(...enemDocxRule());
+    });
+    sections.push(secao(g.wide ? 1 : 2, children));
+  });
+
+  // Fecho: aluno → folha de gabarito; professor → caderno de respostas.
+  const fecho = [];
+  if(professor){
+    fecho.push(...enemDocxAreaTitle("Gabarito e resoluções"));
+    doneQuestions.forEach((o, i) => {
+      fecho.push(...enemDocxGabaritoBlock(Object.assign({}, o, { primeiroDoCaderno: i === 0 })));
+      if(i === doneQuestions.length - 1) fecho.push(...enemDocxRule());
+    });
+  }else{
+    fecho.push(...enemDocxGabaritoAluno(doneQuestions));
+  }
+  sections.push(secao(2, fecho));
+
+  return sections;
 }
 
 function pdfGetVisualImageInfo(cardIdx){
@@ -3628,13 +3875,15 @@ async function exportDocx(){
     const doneQuestions = state.questions.map((q, idx) => ({ q, idx })).filter(o => o.q.status === "done");
     if(!doneQuestions.length){ throw new Error("Nenhuma questão para exportar."); }
 
-    // AS DUAS VERSÕES saem na mesma anatomia ENEM do PDF, em 2 colunas do Word.
-    // As margens do caderno ENEM são espelhadas (a mancha desliza 2,5 mm conforme
-    // a paridade). O docx.js 8.5 não expõe o <w:mirrorMargins/> do Word, então
-    // aqui aplicamos a geometria da página ímpar a todas: interna 8,00 mm e
-    // externa 9,67 mm. Quem precisar do espelhamento real liga "Margens
-    // espelhadas" em Layout → Margens, no próprio Word. O PDF já espelha.
-    const docEnem = new Document({ sections: [ enemDocxSection(doneQuestions, !isAluno) ] });
+    // AS DUAS VERSÕES saem na mesma anatomia do PDF: página 200 × 275 mm, duas
+    // colunas de 89,47 mm com fio separador, Calibri 10/12,0 pt, tinta #231F20,
+    // e o mesmo cromo de página — marca, quadrados, barra cinza, filete misto,
+    // tarja, rodapé corrido e fólio. `evenAndOddHeaderAndFooters` faz cabeçalho
+    // e rodapé espelharem pela paridade, como no caderno oficial.
+    const docEnem = new Document({
+      evenAndOddHeaderAndFooters: true,
+      sections: enemDocxSections(doneQuestions, !isAluno),
+    });
     const blobEnem = await Packer.toBlob(docEnem);
     const rotuloEnem = isAluno ? "aluno" : "professor";
     const nomeEnem = "Simulado_ENEM_" + (state.disciplina||"questoes").replace(/[^a-zA-Z0-9]+/g,"_") + "_" + rotuloEnem + ".docx";
