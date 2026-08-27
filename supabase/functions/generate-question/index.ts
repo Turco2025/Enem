@@ -116,8 +116,66 @@ function buildObjetosConhecimento(area: string): string {
   return `\n\n📚 OBJETOS DE CONHECIMENTO OFICIAIS DESTA ÁREA (Anexo da Matriz de Referência do ENEM) — a questão DEVE declarar exatamente UM deles, no campo "objetoConhecimento", escolhido por ser o recorte de conteúdo que ela efetivamente mobiliza (não por afinidade temática de superfície). Copie literalmente, no campo "objetoConhecimento", um dos títulos da lista abaixo — sem abreviar, parafrasear ou combinar dois deles. É PROIBIDO declarar um objeto de conhecimento que não esteja nesta lista:\n${itens}`;
 }
 
+/* Notação química — a fórmula chega ao estudante pronta, nunca como comando.
+   O PDF, o Word e o HTML do aplicativo imprimem Unicode direto; LaTeX ou "H2O"
+   chegariam ao papel exatamente assim, e a auditoria do app barra a exportação. */
+const NOTACAO_QUIMICA = `
+
+═══════ NOTAÇÃO QUÍMICA — REGRA ABSOLUTA DE FORMATAÇÃO ═══════
+Toda fórmula, íon, equação, isótopo ou unidade científica sai PRONTA, em caracteres
+Unicode, diretamente legível. Vale para texto-base, comando, tabelas, alternativas,
+gabarito, resolução comentada, comentário de cada alternativa e prompt de imagem.
+
+PROIBIDO SEM EXCEÇÃO: LaTeX, KaTeX, MathJax, \\ce{}, \\frac, $...$, _{ }, ^{ },
+tags HTML (<sub>, <sup>), entidades HTML, blocos de código, crases, barras
+invertidas, chaves de formatação, delimitadores matemáticos, Markdown matemático.
+A fórmula aparece como H₂SO₄ — nunca como um comando a ser renderizado depois.
+
+ÍNDICES (quantidade de átomos) em algarismo INFERIOR ₀₁₂₃₄₅₆₇₈₉:
+H₂O · CO₂ · NH₃ · CH₄ · H₂SO₄ · H₃PO₄ · Ca(OH)₂ · Al₂O₃ · Fe₂(SO₄)₃ · C₆H₁₂O₆ · C₁₂H₂₂O₁₁
+NUNCA: H2O, H 2 O, H²O, Al2(SO4)3. O símbolo do elemento fica no nível da linha.
+
+CARGAS no canto superior direito, NÚMERO ANTES DO SINAL, com ⁰¹²³⁴⁵⁶⁷⁸⁹⁺⁻:
+Na⁺ · Ca²⁺ · Fe³⁺ · Al³⁺ · Cl⁻ · OH⁻ · NH₄⁺ · NO₃⁻ · SO₄²⁻ · CO₃²⁻ · PO₄³⁻ ·
+MnO₄⁻ · Cr₂O₇²⁻ · [Fe(CN)₆]⁴⁻
+NUNCA: Ca+2, Ca2+, SO4-2, SO₄-2, SO²⁻₄, ⁺².
+
+COEFICIENTES são números comuns ANTES da fórmula: 2 H₂(g) + O₂(g) → 2 H₂O(l).
+Coeficiente nunca vira índice; para balancear não se altera a fórmula (2 H₂O, nunca H₄O₂).
+
+EQUAÇÕES com setas Unicode: → reação direta, ⇌ equilíbrio, · hidratos (CuSO₄·5H₂O).
+Nunca sinal de igualdade no lugar da seta. Estados físicos logo após a fórmula:
+(s) (l) (g) (aq). Ex.: AgNO₃(aq) + NaCl(aq) → AgCl(s) + NaNO₃(aq).
+
+BALANCEAMENTO: toda equação apresentada como completa está balanceada (salvo quando
+a própria questão pedir que o estudante balanceie). Conte os átomos dos dois lados,
+confira a conservação da massa E da carga, use os menores coeficientes inteiros.
+Ex.: 4 Fe(s) + 3 O₂(g) → 2 Fe₂O₃(s).
+
+ORGÂNICA: – ligação simples, = dupla, ≡ tripla. CH₃–CH₃ · CH₂=CH₂ · HC≡CH ·
+CH₃–CH₂–OH · CH₃–COOH · CH₃–CO–CH₃. Não altere hidrogênios, grupos ou ligações.
+Se a estrutura for complexa demais para representação linear segura, peça fórmula
+estrutural em IMAGEM — não invente a estrutura.
+
+ISÓTOPOS: número de massa acima e número atômico abaixo, antes do símbolo —
+¹⁴₆C · ²³₁₁Na · ²³⁸₉₂U · ⁴₂He · e⁻ · p⁺ · n⁰ · β⁻. Não inverta os dois.
+
+GRANDEZAS não viram índice nem expoente: 25 °C · 2 mol · 0,5 mol/L · 1,0 atm ·
+250 mL · pH 7 · 6,02 × 10²³ · 1,5 × 10⁻³ mol/L. No expoente matemático o sinal vem
+antes do número (10⁻³); na carga, depois (Ca²⁺).
+
+CONSISTÊNCIA: a mesma substância mantém a MESMA grafia no texto-base, no comando,
+nos dados, na tabela, nas alternativas, no gabarito e na resolução.
+
+JSON: as fórmulas ficam como caracteres Unicode normais, em UTF-8, nunca como
+código ou sequência de escape.
+
+BLOQUEIO: se uma fórmula não puder ser confirmada com segurança, não invente. Deixe
+no campo correspondente o aviso "REVISÃO QUÍMICA NECESSÁRIA: a fórmula ou equação
+não pôde ser validada com segurança."`;
+
 function buildSystemPrompt(area: string) {
-  return APP_DATA.universalModel + "\n\n" + APP_DATA.areaContext[area] + buildObjetosConhecimento(area);
+  return APP_DATA.universalModel + "\n\n" + APP_DATA.areaContext[area] + buildObjetosConhecimento(area) + NOTACAO_QUIMICA;
 }
 
 const RECURSO_INSTRUCOES: Record<string, string> = {
@@ -390,6 +448,7 @@ F7. O enunciado não apresenta problematização satisfatória, ou não explicit
 5.10 A resposta exige interpretação, análise, comparação, aplicação, inferência ou resolução de problema — nunca memorização direta de um fato isolado.
 5.11 TEXTO-BASE NEUTRO E SEM ECO LEXICAL: o texto-base apenas apresenta material para o candidato interpretar; em nenhum momento formula, parafraseia antecipadamente ou sinaliza a conclusão que o comando pede como resposta, nem repete o vocabulário/palavras-chave que aparecem só na alternativa correta (pista por associação lexical). Se entregar a inferência que deveria ser o objeto do raciocínio, ou ecoar vocabulário exclusivo do gabarito, reescreva-o mantendo apenas o material bruto necessário para que a ponte até a resposta seja construída pelo próprio candidato.
 5.12 COMANDO NÃO REVELA A ESTRATÉGIA DE RESOLUÇÃO: o comando apresenta a tarefa cognitiva a ser realizada, mas não indica qual conceito, fórmula, dado ou caminho de raciocínio conduz diretamente ao gabarito. Se estiver entregando a estratégia (não apenas o que se pede, mas como chegar lá), reescreva-o de forma mais neutra, preservando a clareza sobre o que está sendo pedido.
+5.9 NOTAÇÃO QUÍMICA: toda fórmula, íon, equação, isótopo e unidade aparece pronta em Unicode — índices em ₀₁₂₃₄₅₆₇₈₉, cargas em ⁰¹²³⁴⁵⁶⁷⁸⁹⁺⁻ com o número ANTES do sinal (Ca²⁺, SO₄²⁻, jamais Ca2+ ou Ca+2), coeficientes como número comum antes da fórmula, setas → e ⇌, estados físicos (s)(l)(g)(aq), equações balanceadas com massa e carga conservadas, e a MESMA grafia da substância no texto-base, nas alternativas, no gabarito e na resolução. Nenhum LaTeX, tag, cifrão, chave, barra invertida ou bloco de código. Se encontrar H2O, CO2, Ca2+, \\ce{} ou similar, REESCREVA a questão inteira com a notação correta antes de devolver.
 5.13 PARIDADE TÉCNICA E DE ELABORAÇÃO: as 5 alternativas têm nível de elaboração e precisão técnica equivalentes — a correta não é a mais longa, mais detalhada ou mais bem redigida, nem os distratores parecem rasos, genéricos ou mal elaborados em comparação com ela. Havendo desequilíbrio, reescreva as mais fracas com o mesmo cuidado técnico da mais forte, sem torná-las corretas.
 
 ═══════ ETAPA 3 — SÍNTESE DA REVISÃO ═══════
