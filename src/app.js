@@ -489,14 +489,171 @@ async function generateAll(){
 
   // Auditoria da distribuição do gabarito, com o resultado dito em voz alta.
   const presos = state.questions.filter(q => q.gabaritoStatus === "impossivel").length;
+  const quimica = auditaQuimica();
   const problemas = auditaGabaritos();
-  if(problemas.length){
+  if(quimica.length){
+    toast(avisoQuimica(quimica) + " Edite a questão antes de exportar.", "err");
+  }else if(problemas.length){
     toast("Simulado gerado, mas a distribuição do gabarito ficou imperfeita: " + problemas[0] + ". Regenere a questão para corrigir.", "err");
   }else if(presos){
     toast("Simulado gerado. " + presos + " quest" + (presos > 1 ? "ões vieram" : "ão veio") + " com o gabarito fora da posição planejada e não pôde ser reposicionada sem quebrar a ordem numérica das alternativas.", "err");
   }else{
     toast("Simulado gerado! Revise, edite ou regenere questões conforme necessário.", "ok");
   }
+}
+
+
+/* ---- AUDITORIA DE NOTAÇÃO QUÍMICA ----
+
+   A fórmula tem de chegar ao estudante pronta: H₂SO₄, SO₄²⁻,
+   2 H₂(g) + O₂(g) → 2 H₂O(l). Nunca um comando a ser interpretado depois —
+   nada de LaTeX, tag, cifrão, chave ou barra invertida —, e nunca a versão
+   mutilada em algarismo comum (H2O, Ca2+, SO4-2).
+
+   Esta auditoria varre TUDO que sai impresso: texto-base, fonte, comando,
+   recurso visual, as cinco alternativas, o gabarito, a ficha, a resolução e o
+   comentário de cada alternativa. Se algo não passar, o simulado não é
+   entregue como concluído (§17 da regra).                                   */
+
+const QUI_INF = "₀₁₂₃₄₅₆₇₈₉";
+const QUI_SUP = "⁰¹²³⁴⁵⁶⁷⁸⁹⁺⁻";
+
+// 1) Códigos de renderização — proibidos sem exceção.
+const QUI_CODIGOS = [
+  { re: /\\(?:ce|frac|text|mathrm|cdot|rightarrow|leftarrow|times|pm|sqrt|begin|end)\b/, o: "comando LaTeX" },
+  { re: /\$\$?[^$\n]*\$\$?/,                     o: "cifrão de fórmula matemática" },
+  { re: /\\\(|\\\)|\\\[|\\\]/,                   o: "delimitador matemático" },
+  { re: /[_^]\{[^}]*\}/,                          o: "índice ou expoente em chaves" },
+  { re: /<\/?(?:sub|sup|span|i|b|em|strong|math|mi|mn|msub|msup)\b[^>]*>/i, o: "tag HTML" },
+  { re: /&(?:nbsp|amp|lt|gt|#\d+);/,             o: "entidade HTML" },
+  { re: /```|~~~/,                                o: "bloco de código" },
+];
+
+// 2) Fórmula com índice em algarismo comum: H2O, Fe2O3, Al2(SO4)3.
+const QUI_INDICE_ASCII = /(?:[A-Z][a-z]?\d{1,3}|\)\d{1,3}|\]\d{1,3})(?:[A-Z][a-z]?\d{0,3}|[()\[\]])*/g;
+// 3) Carga escrita fora do padrão: Ca2+, Ca+2, SO4-2, SO₄2-.
+const QUI_CARGA_ERRADA = [
+  // Ancoradas em forma de espécie química — símbolo de elemento, parêntese ou
+  // colchete de fecho — para não confundir "carbono-14" ou "Fase-2" com carga.
+  { re: /(?:\b[A-Z][a-z]?|\)|\]|[₀-₉])\d{1,2}[+\-](?![\d\-])/, o: "carga em algarismo comum (use Ca²⁺, não Ca2+)" },
+  { re: /(?:\b[A-Z][a-z]?|\)|\]|[₀-₉])[+\-]\d{1,2}(?![\d])/,    o: "sinal antes do número da carga (use Ca²⁺, não Ca+2)" },
+  // Só vale para CARGA (o sinal vem depois de uma espécie química). Expoente
+  // matemático — 1,5 × 10⁻³ — tem o sinal antes do número e está certo assim.
+  { re: /[A-Za-z\)\]₀-₉][⁺⁻][⁰¹²³⁴⁵⁶⁷⁸⁹]/,                        o: "sinal antes do número da carga (use ²⁺, não ⁺²)" },
+];
+// 4) Caractere solto: índice ou expoente separado da fórmula por espaço.
+const QUI_SOLTO = new RegExp("[A-Za-z\\)\\]]\\s+[" + QUI_INF + QUI_SUP + "]");
+
+// Normaliza a fórmula para comparar grafias: índices e expoentes viram
+// algarismo comum, para que "H₂SO₄" e "H2SO4" colidam e a inconsistência apareça.
+function quiNormaliza(t){
+  let s = String(t);
+  for(let i = 0; i < 10; i++){
+    s = s.split(QUI_INF[i]).join(String(i)).split(QUI_SUP[i]).join(String(i));
+  }
+  return s.split("⁺").join("+").split("⁻").join("-");
+}
+
+function quiEhFormula(tok){
+  // Precisa ter cara de substância: pelo menos um símbolo de elemento e um
+  // dígito colado. Descarta "2025", "Caderno 7" e afins.
+  if(!/[A-Z]/.test(tok) || !/\d/.test(tok)) return false;
+  if(/^[A-Z]\d{4,}$/.test(tok)) return false;              // código, não fórmula
+  return /[A-Z][a-z]?\d|\)\d|\]\d/.test(tok);
+}
+
+function quiCamposDaQuestao(q, idx){
+  const d = (q && q.data) || {};
+  const campos = [];
+  const add = (rotulo, valor) => { if(valor) campos.push({ rotulo, texto: String(valor) }); };
+  add("texto-base", d.textoBase);
+  add("referência", d.fonte);
+  add("comando", d.comando);
+  if(d.visual){
+    add("título do recurso visual", d.visual.titulo);
+    add("descrição do recurso visual", d.visual.descricao);
+    (d.visual.colunas || []).forEach((c, i) => add("cabeçalho da tabela (coluna " + (i + 1) + ")", c));
+    (d.visual.linhas || []).forEach(l => (l || []).forEach(c => add("célula da tabela", c)));
+    add("prompt da imagem", d.visual.prompt);
+  }
+  ["A","B","C","D","E"].forEach(L => add("alternativa " + L, d.alternativas && d.alternativas[L]));
+  add("objeto de conhecimento", d.objetoConhecimento);
+  add("resolução comentada", d.resolucaoComentada);
+  const an = d.analiseAlternativas || {};
+  ["A","B","C","D","E"].forEach(L => add("comentário da alternativa " + L, an[L] && an[L].comentario));
+  return campos.map(c => Object.assign(c, { questao: idx + 1 }));
+}
+
+function auditaQuimica(questoes){
+  const lista = questoes || state.questions;
+  const problemas = [];
+  const grafias = new Map();                 // fórmula normalizada → grafias vistas
+  const registra = (c, o) => problemas.push({
+    questao: c.questao, campo: c.rotulo, ocorrencia: o,
+  });
+
+  lista.forEach((q, idx) => {
+    if(!q || !q.data) return;
+    quiCamposDaQuestao(q, idx).forEach(campo => {
+      const t = campo.texto;
+
+      QUI_CODIGOS.forEach(r => { if(r.re.test(t)) registra(campo, r.o); });
+      QUI_CARGA_ERRADA.forEach(r => { if(r.re.test(t)) registra(campo, r.o); });
+      if(QUI_SOLTO.test(t)) registra(campo, "índice ou carga separado da fórmula");
+
+      const achados = t.match(QUI_INDICE_ASCII) || [];
+      achados.filter(quiEhFormula).forEach(f => {
+        registra(campo, "fórmula com índice em algarismo comum: " + f);
+      });
+
+      // Consistência (§12): a mesma substância em duas grafias na mesma prova.
+      const corretas = t.match(new RegExp("[A-Z][A-Za-z()\\[\\]·" + QUI_INF + QUI_SUP + "]*[" + QUI_INF + QUI_SUP + "][A-Za-z()\\[\\]·" + QUI_INF + QUI_SUP + "]*", "g")) || [];
+      corretas.concat(achados.filter(quiEhFormula)).forEach(f => {
+        const chave = quiNormaliza(f);
+        if(!grafias.has(chave)) grafias.set(chave, new Set());
+        grafias.get(chave).add(f);
+      });
+    });
+  });
+
+  grafias.forEach((formas, chave) => {
+    if(formas.size > 1){
+      problemas.push({ questao: null, campo: "consistência",
+        ocorrencia: "a mesma substância aparece como " + Array.from(formas).join(" e ") });
+    }
+  });
+
+  // Caracteres que o PDF não conseguiria imprimir com a fonte embarcada.
+  if(typeof CARLITO_COBERTURA === "string"){
+    const cobertura = new Set(Array.from(CARLITO_COBERTURA).concat(["\n","\t","\r"]));
+    lista.forEach((q, idx) => {
+      if(!q || !q.data) return;
+      quiCamposDaQuestao(q, idx).forEach(campo => {
+        const fora = Array.from(new Set(Array.from(campo.texto).filter(ch => !cobertura.has(ch))));
+        if(fora.length) problemas.push({ questao: campo.questao, campo: campo.rotulo,
+          ocorrencia: "caractere sem glifo na fonte do PDF: " + fora.join(" ") });
+      });
+    });
+  }
+  return problemas;
+}
+
+// Mensagem única, no formato que a regra manda (§17).
+function avisoQuimica(problemas){
+  if(!problemas.length) return "";
+  const p = problemas[0];
+  const onde = p.questao ? ("questão " + p.questao + ", " + p.campo) : p.campo;
+  const resto = problemas.length > 1 ? (" (+" + (problemas.length - 1) + " ocorrência" + (problemas.length > 2 ? "s" : "") + ")") : "";
+  return "REVISÃO QUÍMICA NECESSÁRIA: " + onde + " — " + p.ocorrencia + "." + resto;
+}
+
+// Porta de saída: nenhum PDF, DOCX, HTML ou impressão sai com fórmula quebrada.
+function bloqueiaSeQuimicaInvalida(doneQuestions){
+  const problemas = auditaQuimica(doneQuestions.map(o => o.q));
+  if(!problemas.length) return false;
+  toast(avisoQuimica(problemas) + " Corrija a questão e exporte de novo.", "err");
+  try{ console.warn("[química] problemas encontrados:", problemas); }catch(e){}
+  return true;
 }
 
 function updateProgress(){
@@ -993,6 +1150,7 @@ async function exportHtmlSnapshot(){
   try{
     const professor = state.viewMode !== "aluno";
     const doneQuestions = state.questions.map((q, idx) => ({ q, idx })).filter(o => o.q.status === "done");
+    if(bloqueiaSeQuimicaInvalida(doneQuestions)) return;
     const html = enemBuildPrintHTML(doneQuestions, professor);
     const blob = new Blob([html], { type: "text/html;charset=utf-8" });
     const url = URL.createObjectURL(blob);
@@ -1036,6 +1194,7 @@ async function printExam(){
     const professor = state.viewMode !== "aluno";
     const doneQuestions = state.questions.map((q, idx) => ({ q, idx })).filter(o => o.q.status === "done");
     if(!doneQuestions.length) throw new Error("Nenhuma questão para imprimir.");
+    if(bloqueiaSeQuimicaInvalida(doneQuestions)) return;
     const abriu = enemPrintPdf(doneQuestions, professor);
     toast(abriu ? "Documento aberto para impressão no padrão do caderno ENEM."
                 : "Seu navegador bloqueou a janela; o arquivo foi baixado — abra-o e imprima.", abriu ? "ok" : "err");
@@ -1061,30 +1220,57 @@ const PDF_PALETTE = {
   comentario:  { fill: [253, 242, 248], accent: [219, 39, 119], text: [131, 24, 67] },    // rosa
 };
 
-// A fonte padrão "helvetica" do jsPDF (Type1/AFM, WinAnsi) não possui glifos para
-// vários símbolos matemáticos/científicos comuns em questões de Física, Química e
-// Matemática (expoentes como m², s³, letras gregas, ≤ ≥ ≠ ≈, µ, √, etc.) — eles
-// aparecem em branco ou como caracteres corrompidos no PDF gerado. Para nunca
-// silenciar informação (ex.: "m/s²" virando "m/s"), sanitizamos esses símbolos
-// para equivalentes em texto simples só no PDF (a versão em HTML na tela usa fontes
-// do sistema/navegador e não precisa disso).
+/* ---- NOTAÇÃO QUÍMICA NO PDF ----
+
+   Com a Carlito embarcada (fonts.js), o PDF imprime a fórmula como ela é:
+   H₂SO₄, SO₄²⁻, 2 H₂(g) + O₂(g) → 2 H₂O(l). Nada de "H2SO4", "^2", "_2" ou
+   LaTeX: converter índice em "^2" mutila a fórmula e o estudante passa a ler um
+   comando, não uma substância.
+
+   Até a v28 esta função fazia exatamente isso — trocava ² por "^2", ₂ por "_2",
+   µ por "u", → não existia. Era a única saída possível enquanto o PDF usava a
+   Helvetica WinAnsi, que não tem esses glifos. Com a fonte embarcada o mapa
+   deixou de ser necessário e passou a ser proibido.
+
+   Sobra um caso: um caractere fora do subconjunto embarcado sairia EM BRANCO,
+   e uma página em branco mente. Esses caracteres viram "□" e ficam registrados
+   para o auditor apontar antes da entrega.                                   */
+
 const PDF_SYMBOL_MAP = {
+  // Mapa de emergência: só entra em ação se a Carlito não puder ser embarcada
+  // (falha ao registrar a fonte). Aí o PDF cai na Helvetica WinAnsi, e é
+  // preferível "m/s^2" a "m/s".
   "⁰": "^0", "¹": "^1", "²": "^2", "³": "^3", "⁴": "^4", "⁵": "^5",
-  "⁶": "^6", "⁷": "^7", "⁸": "^8", "⁹": "^9",
+  "⁶": "^6", "⁷": "^7", "⁸": "^8", "⁹": "^9", "⁺": "^+", "⁻": "^-",
   "₀": "_0", "₁": "_1", "₂": "_2", "₃": "_3", "₄": "_4", "₅": "_5",
   "₆": "_6", "₇": "_7", "₈": "_8", "₉": "_9",
-  "µ": "u", "μ": "u",
-  "≈": "~", "≠": " diferente de ", "≤": "<=", "≥": ">=",
-  "√": "raiz de ", "∞": "infinito",
+  "µ": "u", "μ": "u", "≈": "~", "≠": " diferente de ", "≤": "<=", "≥": ">=",
+  "√": "raiz de ", "∞": "infinito", "→": " -> ", "⇌": " <=> ", "≡": "=-=",
   "Σ": "somatório de ", "∫": "integral de ",
   "π": "pi", "Δ": "Delta", "δ": "delta", "Ω": "Ohm", "ω": "ômega",
   "α": "alfa", "β": "beta", "θ": "teta", "λ": "lambda", "φ": "fi",
   "′": "'", "″": '"',
 };
 const PDF_SYMBOL_REGEX = new RegExp(Object.keys(PDF_SYMBOL_MAP).join("|"), "g");
+
+let enemFonteEmbarcada = false;                 // ligado por enemRegistraFontes
+const PDF_FORA_DO_SUBCONJUNTO = new Set();
+let CARLITO_SET = null;
+
 function pdfSanitizeText(text){
   if(text == null) return text;
-  return String(text).replace(PDF_SYMBOL_REGEX, ch => PDF_SYMBOL_MAP[ch]);
+  const s = String(text);
+  if(!enemFonteEmbarcada){
+    // Caminho degradado: sem a fonte embarcada, aproxima em ASCII.
+    return s.replace(PDF_SYMBOL_REGEX, ch => PDF_SYMBOL_MAP[ch]);
+  }
+  if(!CARLITO_SET) CARLITO_SET = new Set(Array.from(CARLITO_COBERTURA));
+  let out = "";
+  for(const ch of s){
+    if(ch === "\n" || ch === "\t" || ch === "\r" || CARLITO_SET.has(ch)) out += ch;
+    else { PDF_FORA_DO_SUBCONJUNTO.add(ch); out += "\u25A1"; }
+  }
+  return out;
 }
 
 function pdfEnsureSpace(doc, ctx, neededHeight){
@@ -1262,13 +1448,12 @@ const ENEM = {
   azulTab:  [109, 207, 246],                // #6DCFF6 — cabeçalho de tabela
   azulLogo: [0, 75, 141],                   // #004B8D — logotipo "enem"
 
-  // O jsPDF não embarca Calibri. A Helvetica é 5,8 % mais larga: medido em 940
-  // linhas reais do caderno, a razão de avanço Calibri/Helvetica é 0,942. Usar
-  // Helvetica a 0,942 × o corpo reproduz a MEDIDA da Calibri (mesma quantidade
-  // de caracteres por linha) e, como a Helvetica tem altura-x maior, o texto
-  // ainda aparenta o tamanho certo. A entrelinha permanece absoluta — ela é
-  // propriedade da grade, não da fonte. No Word, a fonte declarada é Calibri.
-  helvK: 0.942,
+  // A Carlito vai EMBARCADA (ver fonts.js): métrica idêntica à Calibri e o
+  // alfabeto completo que a notação química exige — índices inferiores, cargas
+  // superiores, setas de reação, letras gregas. Não há mais substituição de
+  // fonte, então o corpo é 10 pt de verdade e o fator de correção é 1.
+  fonte: "Carlito",
+  helvK: 1.0,
 };
 
 // Margem esquerda da mancha na página n (1 = primeira página de questões).
@@ -1277,9 +1462,26 @@ function enemLeft(pageNo){ return (pageNo % 2 === 1) ? ENEM.margOdd : ENEM.margE
 function enemOuterIsRight(pageNo){ return pageNo % 2 === 1; }
 
 // Define fonte e corpo já compensados para a substituição Helvetica → Calibri.
+// Registra as quatro faces da Carlito no documento. Roda uma vez por PDF; se
+// algo falhar, o texto ainda sai — em Helvetica, sem os glifos de química —, e
+// o auditor avisa em vez de a página mentir.
+function enemRegistraFontes(doc){
+  try{
+    CARLITO_FACES.forEach(f => {
+      doc.addFileToVFS(f.arquivo, f.dados);
+      doc.addFont(f.arquivo, ENEM.fonte, f.estilo);
+    });
+    enemFonteEmbarcada = !!doc.getFontList()[ENEM.fonte];
+    return enemFonteEmbarcada;
+  }catch(e){
+    enemFonteEmbarcada = false;
+    return false;
+  }
+}
+
 function enemFont(doc, weight, size){
-  doc.setFont("helvetica", weight || "normal");
-  doc.setFontSize(size * ENEM.helvK);
+  doc.setFont(doc.__carlito ? ENEM.fonte : "helvetica", weight || "normal");
+  doc.setFontSize(size * (doc.__carlito ? 1 : ENEM.helvK));
 }
 function enemInk(doc, c){ const k = c || ENEM.ink; doc.setTextColor(k[0], k[1], k[2]); }
 
@@ -1896,6 +2098,7 @@ function enemNeedsWidePage(o){
 function enemBuildPdfDoc(doneQuestions, professor){
   const { jsPDF } = window.jspdf;
   const doc = new jsPDF({ unit: "pt", format: [ENEM.pageW, ENEM.pageH], orientation: "portrait" });
+  doc.__carlito = enemRegistraFontes(doc);
   const areaLabel = AREA_META[state.area] ? AREA_META[state.area].label : "";
   const ctx = {
     areaLabel,
@@ -2080,7 +2283,7 @@ table.pg > tbody td{ padding:0; vertical-align:top; }
    entrelinha 13,4 pt. */
 .alts{ margin:1.51mm 0 0; }
 .alt{ margin:0; padding-left:4.5mm; text-indent:-4.5mm; line-height:13.4pt; text-align:left; }
-.alt .letra{ font-family:"Segoe UI Symbol","Apple Symbols",Calibri,sans-serif; }
+.alt .letra{ font-family:"Segoe UI Symbol","Apple Symbols",Calibri,sans-serif; margin-right:1.6mm; }
 
 /* Filete sólido de fechamento, 0,5 pt, largura cheia da coluna. No caderno
    oficial ele aparece SÓ no fim da sequência — entre questões consecutivas
@@ -2189,7 +2392,7 @@ function enemPrintQuestao(o){
   out.push('<div class="alts">');
   ["A","B","C","D","E"].forEach(L => {
     out.push('<p class="alt"><span class="letra">' + (ENEM_DOCX_MARKS[L] || L) +
-             '</span>&nbsp;&nbsp;' + enemPrintRich((d.alternativas && d.alternativas[L]) || "") + '</p>');
+             '</span>' + enemPrintRich((d.alternativas && d.alternativas[L]) || "") + '</p>');
   });
   out.push('</div><div class="fecho"></div></section>');
   return out.join("\n");
@@ -2202,7 +2405,7 @@ function enemPrintResposta(o){
   out.push(enemPrintRotulo("Questão " + (o.idx + 1)));
   const letra = d.gabarito || "—";
   out.push('<p class="alt"><span class="letra">' + (ENEM_DOCX_MARKS[letra] || letra) +
-           '</span>&nbsp;&nbsp;<strong>GABARITO: ' + enemPrintEsc(letra) + '</strong></p>');
+           '</span><strong>GABARITO: ' + enemPrintEsc(letra) + '</strong></p>');
   const resposta = (d.alternativas && d.alternativas[d.gabarito]) || "";
   if(resposta) out.push('<p class="ficha" style="margin-left:4.5mm">' + enemPrintRich(resposta) + '</p>');
 
@@ -2234,7 +2437,7 @@ function enemPrintResposta(o){
       if(!info) return;
       const status = info.status === "correta" ? "CORRETA" : "INCORRETA";
       out.push('<p class="alt"><span class="letra">' + (ENEM_DOCX_MARKS[L] || L) +
-               '</span>&nbsp;&nbsp;' + status + " — " + enemPrintRich(info.comentario || "") + '</p>');
+               '</span>' + status + " — " + enemPrintRich(info.comentario || "") + '</p>');
     });
   }
   out.push('<div class="fecho"></div></section>');
@@ -2274,7 +2477,7 @@ function enemBuildPrintHTML(doneQuestions, professor){
     // §7.2 — folha de gabarito: SOMENTE a letra de cada questão.
     const linhas = doneQuestions.map(o => {
       const letra = (o.q.data && o.q.data.gabarito) || "—";
-      return '<p class="alt"><strong>' + (o.idx + 1) + '.</strong>&nbsp;&nbsp;<span class="letra">' +
+      return '<p class="alt"><strong>' + (o.idx + 1) + '.</strong><span class="letra">' +
              (ENEM_DOCX_MARKS[letra] || letra) + '</span></p>';
     }).join("\n");
     fecho = '<h2 class="area quebra">Gabarito</h2>' +
@@ -3152,6 +3355,7 @@ async function exportPdf(){
     // barra-ornamento). A do professor é idêntica à do aluno e acrescenta, DEPOIS
     // de todas as questões, o caderno de respostas — gabarito, ficha pedagógica,
     // resolução comentada e comentário de cada alternativa.
+    if(bloqueiaSeQuimicaInvalida(doneQuestions)) return;
     enemExportPdf(doneQuestions, !isAluno);
     toast("PDF exportado com sucesso.", "ok");
     return;
@@ -3462,6 +3666,7 @@ async function exportDocx(){
     // e o mesmo cromo de página — marca, quadrados, barra cinza, filete misto,
     // tarja, rodapé corrido e fólio. `evenAndOddHeaderAndFooters` faz cabeçalho
     // e rodapé espelharem pela paridade, como no caderno oficial.
+    if(bloqueiaSeQuimicaInvalida(doneQuestions)) return;
     const docEnem = new Document({
       evenAndOddHeaderAndFooters: true,
       sections: enemDocxSections(doneQuestions, !isAluno),

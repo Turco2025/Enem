@@ -20,7 +20,10 @@ SAIDA = ROOT / "index.html"
 
 template = (SRC / "app_template.html").read_text(encoding="utf-8")
 app_data = (SRC / "app_data.json").read_text(encoding="utf-8")
-app_js = (SRC / "app.js").read_text(encoding="utf-8")
+# fonts.js traz a Carlito em subconjunto (base64) e é embutido ANTES do app.js:
+# o registro das faces precisa existir quando o PDF for montado.
+fonts_js = (SRC / "fonts.js").read_text(encoding="utf-8")
+app_js = fonts_js + "\n" + (SRC / "app.js").read_text(encoding="utf-8")
 
 # app_data.json já é JSON válido; é embutido verbatim como literal JS.
 # O escape de "</script" evita que um conteúdo qualquer feche a tag <script>
