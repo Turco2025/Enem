@@ -345,6 +345,7 @@ deliberadas — não erros de leitura do original.
 - [ ] Cada bloco de resposta traz gabarito, ficha pedagógica, resolução e comentários A–E
 - [ ] Rodapé identificando VERSÃO DO ALUNO / VERSÃO DO PROFESSOR
 - [ ] **A impressão entrega o mesmo documento do PDF** — nunca a tela do aplicativo
+- [ ] **Fórmulas em Unicode** em todas as saídas — ver `notacao_quimica.md` (índices ₀–₉, cargas ⁰–⁹⁺⁻, setas → e ⇌, nada de LaTeX ou tag)
 
 ---
 
