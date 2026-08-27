@@ -449,6 +449,9 @@ async function generateQuestion(q){
     }
 
     q.data = payload.question;
+    // Consumo relatado pelo backend (tokens novos, escritos e lidos do cache).
+    // Serve para conferir, em produção, que o cache de prompt está valendo.
+    if(payload.uso) somaUso(payload.uso);
     // Rede de segurança: a letra planejada tem de ser mesmo a correta.
     q.gabaritoStatus = aplicaGabaritoAlvo(q.data, gabaritoAlvoDe(state.questions.indexOf(q)));
     q.status = "done";
@@ -458,6 +461,25 @@ async function generateQuestion(q){
   }
   updateQuestionCard(q, state.questions.indexOf(q));
   updateProgress();
+}
+
+/* Contabilidade de tokens do simulado inteiro. O backend devolve, em cada
+   questão, quantos tokens de entrada foram novos, quantos gravaram cache e
+   quantos vieram lidos do cache. Somando tudo dá para dizer, ao fim da geração,
+   se o aquecimento funcionou — em vez de acreditar que funcionou. */
+function zeraUso(){
+  state.uso = { chamadas: 0, entradaNova: 0, cacheEscrito: 0, cacheLido: 0, saida: 0 };
+}
+function somaUso(u){
+  if(!state.uso) zeraUso();
+  Object.keys(state.uso).forEach(k => { state.uso[k] += Number(u[k]) || 0; });
+}
+function relatoUso(){
+  const u = state.uso;
+  if(!u || !u.chamadas) return "";
+  const total = u.entradaNova + u.cacheEscrito + u.cacheLido;
+  const pct = total ? Math.round((u.cacheLido / total) * 100) : 0;
+  return `[tokens] ${u.chamadas} chamadas · entrada nova ${u.entradaNova} · cache escrito ${u.cacheEscrito} · cache lido ${u.cacheLido} (${pct}% da entrada) · saída ${u.saida}`;
 }
 
 async function runPool(items, worker, concurrency){
@@ -481,11 +503,23 @@ async function generateAll(){
   state.gabaritoPlan = planejaGabaritos(state.questions.length);
   renderResults();
   updateProgress();
-  // Concorrência aumentada de 2 para 4: cada questão já roda inteiramente no
-  // backend (Supabase Edge Function), então gerar mais questões em paralelo
-  // reduz bastante o tempo total para simulados com várias questões.
-  await runPool(state.questions, generateQuestion, 4);
+  zeraUso();
+  /* AQUECIMENTO DO CACHE. O prompt do sistema tem mais de 25 mil caracteres e é
+     o mesmo em todas as questões da área. O backend o manda com cache_control,
+     mas quem grava o cache é a primeira chamada — e chamadas simultâneas não
+     enxergam o cache uma da outra. Disparando as 4 de uma vez, as 4 pagariam o
+     prompt inteiro. Gerando a primeira sozinha, ela grava; as demais leem.
+     Custa a espera de uma questão e economiza o prompt em todas as outras. */
+  const [primeira, ...demais] = state.questions;
+  if(primeira) await generateQuestion(primeira);
+  // Concorrência 4: cada questão já roda inteiramente no backend (Supabase Edge
+  // Function), então gerar mais em paralelo reduz bastante o tempo total. O
+  // valor foi mantido em 4 de propósito — subir sem medir troca tempo por
+  // retentativas, e uma questão repetida é uma questão cobrada duas vezes.
+  if(demais.length) await runPool(demais, generateQuestion, 4);
   document.getElementById("genProgressWrap").classList.add("hidden");
+  const relato = relatoUso();
+  if(relato) console.log(relato);
 
   // Auditoria da distribuição do gabarito, com o resultado dito em voz alta.
   const presos = state.questions.filter(q => q.gabaritoStatus === "impossivel").length;
