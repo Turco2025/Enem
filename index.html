@@ -956,6 +956,31 @@ async function generateAll(){
 }
 
 
+/* A fórmula é uma unidade visual: não pode ser partida no fim da linha. O Word e
+   o navegador quebram depois de um traço de ligação ou do ponto de hidrato, e
+   "CH₃–CH₂–" numa linha e "OH" na outra deixa de ser uma fórmula.
+
+   A solução preserva o caractere que a regra determina — o traço continua sendo
+   "–", o ponto continua sendo "·" — e insere depois dele um JUNTADOR DE PALAVRA
+   (U+2060), que é invisível e não imprime nada: só diz ao compositor que ali não
+   se quebra. No PDF ele é removido, porque lá a linha só quebra em espaço.      */
+const QUI_LIGACAO = /[A-Za-zÀ-ÿ0-9₀-₉⁰-⁹⁺⁻()\[\]]+(?:[–—·=≡][A-Za-zÀ-ÿ0-9₀-₉⁰-⁹⁺⁻()\[\]]+)+/g;
+function quiJuntaFormula(texto){
+  let t = String(texto == null ? "" : texto);
+  if(/[–—·=≡]/.test(t)){
+    t = t.replace(QUI_LIGACAO, tok => {
+      // Só amarra o que tem cara de fórmula: precisa de um símbolo de elemento.
+      if(!/[A-Z]/.test(tok)) return tok;
+      return tok.replace(/([–—·=≡])/g, "$1\u2060");
+    });
+  }
+  // A seta nunca fica órfã no fim da linha: ela é colada ao que vem depois por
+  // um espaço inseparável, então a equação longa quebra ANTES da seta — que é a
+  // convenção de composição para equações que não cabem na medida.
+  t = t.replace(/([→←⇌↔])[ \u00A0]+/g, "$1\u00A0");
+  return t;
+}
+
 /* ---- AUDITORIA DE NOTAÇÃO QUÍMICA ----
 
    A fórmula tem de chegar ao estudante pronta: H₂SO₄, SO₄²⁻,
@@ -994,7 +1019,15 @@ const QUI_CARGA_ERRADA = [
   // matemático — 1,5 × 10⁻³ — tem o sinal antes do número e está certo assim.
   { re: /[A-Za-z\)\]₀-₉][⁺⁻][⁰¹²³⁴⁵⁶⁷⁸⁹]/,                        o: "sinal antes do número da carga (use ²⁺, não ⁺²)" },
 ];
-// 4) Caractere solto: índice ou expoente separado da fórmula por espaço.
+// 4) Seta montada com caracteres separados — proibida sem exceção. Só acusa
+//    quando a sequência está funcionando COMO seta numa expressão química, isto
+//    é, com espécie química de um dos lados.
+const QUI_ESPECIE = "[A-Za-z0-9₀-₉⁰-⁹⁺⁻()\\[\\]·]";
+const QUI_SETA_FALSA = new RegExp(
+  QUI_ESPECIE + "\\s*(?:<=+>|<-+>|-+>|=+>|<-+|<=+)\\s*" + QUI_ESPECIE);
+// 5) ↔ é ressonância, não equilíbrio: entre espécies com estado físico, o certo é ⇌.
+const QUI_RESSONANCIA_ERRADA = /\([slgaq]{1,2}\)\s*↔|↔\s*\d*\s*[A-Z][a-z]?[₀-₉]*\(/;
+// 6) Caractere solto: índice ou expoente separado da fórmula por espaço.
 const QUI_SOLTO = new RegExp("[A-Za-z\\)\\]]\\s+[" + QUI_INF + QUI_SUP + "]");
 
 // Normaliza a fórmula para comparar grafias: índices e expoentes viram
@@ -1052,6 +1085,12 @@ function auditaQuimica(questoes){
 
       QUI_CODIGOS.forEach(r => { if(r.re.test(t)) registra(campo, r.o); });
       QUI_CARGA_ERRADA.forEach(r => { if(r.re.test(t)) registra(campo, r.o); });
+      if(QUI_SETA_FALSA.test(t)){
+        registra(campo, "seta montada com caracteres separados (use → ← ⇌ ↔ ↑ ↓)");
+      }
+      if(QUI_RESSONANCIA_ERRADA.test(t)){
+        registra(campo, "↔ usado como equilíbrio químico (o símbolo de equilíbrio é ⇌)");
+      }
       if(QUI_SOLTO.test(t)) registra(campo, "índice ou carga separado da fórmula");
 
       const achados = t.match(QUI_INDICE_ASCII) || [];
@@ -1698,7 +1737,10 @@ const PDF_SYMBOL_MAP = {
   "₀": "_0", "₁": "_1", "₂": "_2", "₃": "_3", "₄": "_4", "₅": "_5",
   "₆": "_6", "₇": "_7", "₈": "_8", "₉": "_9",
   "µ": "u", "μ": "u", "≈": "~", "≠": " diferente de ", "≤": "<=", "≥": ">=",
-  "√": "raiz de ", "∞": "infinito", "→": " -> ", "⇌": " <=> ", "≡": "=-=",
+  "√": "raiz de ", "∞": "infinito",
+  // Setas e ligações NÃO entram aqui: montar "→" com hífen e sinal de maior é
+  // proibido pela regra de notação. Se a fonte falhar, o auditor barra a
+  // exportação — não se entrega uma seta improvisada ao estudante.
   "Σ": "somatório de ", "∫": "integral de ",
   "π": "pi", "Δ": "Delta", "δ": "delta", "Ω": "Ohm", "ω": "ômega",
   "α": "alfa", "β": "beta", "θ": "teta", "λ": "lambda", "φ": "fi",
@@ -1712,7 +1754,7 @@ let CARLITO_SET = null;
 
 function pdfSanitizeText(text){
   if(text == null) return text;
-  const s = String(text);
+  const s = quiJuntaFormula(String(text));
   if(!enemFonteEmbarcada){
     // Caminho degradado: sem a fonte embarcada, aproxima em ASCII.
     return s.replace(PDF_SYMBOL_REGEX, ch => PDF_SYMBOL_MAP[ch]);
@@ -1720,6 +1762,7 @@ function pdfSanitizeText(text){
   if(!CARLITO_SET) CARLITO_SET = new Set(Array.from(CARLITO_COBERTURA));
   let out = "";
   for(const ch of s){
+    if(ch === "\u2060") continue;                 // juntador: invisível, só serve ao Word e ao HTML
     if(ch === "\n" || ch === "\t" || ch === "\r" || CARLITO_SET.has(ch)) out += ch;
     else { PDF_FORA_DO_SUBCONJUNTO.add(ch); out += "\u25A1"; }
   }
@@ -2261,15 +2304,15 @@ function enemWrapRuns(doc, runs, width, size, italic, firstIndent){
   const limite = () => (lines.length === 0 ? width - fi : width);
   runs.forEach(run => {
     enemFont(doc, enemStyle(run.bold, !!italic), size);
-    run.text.split(/(\s+)/).forEach(tok => {
+    run.text.split(/([ \t\n]+)/).forEach(tok => {
       if(!tok) return;
       const w = doc.getTextWidth(tok);
-      if(/^\s+$/.test(tok)){
+      if(/^[ \t\n]+$/.test(tok)){
         if(line.length){ line.push({ text: tok, bold: run.bold, w: w }); lineW += w; }
         return;
       }
       if(lineW + w > limite() && line.length){
-        while(line.length && /^\s+$/.test(line[line.length - 1].text)) { lineW -= line.pop().w; }
+        while(line.length && /^[ \t\n]+$/.test(line[line.length - 1].text)) { lineW -= line.pop().w; }
         lines.push(line); line = []; lineW = 0;
       }
       line.push({ text: tok, bold: run.bold, w: w });
@@ -2296,11 +2339,11 @@ function enemDrawRichLine(doc, parts, x, y, width, size, align, isLast, italic){
   if(align === "right"){
     cx = x + width - total;
   }else if(align === "justify" && !isLast){
-    const gaps = parts.filter(p => /^\s+$/.test(p.text)).length;
+    const gaps = parts.filter(p => /^[ \t\n]+$/.test(p.text)).length;
     if(gaps > 0) extra = (width - total) / gaps;
   }
   parts.forEach(p => {
-    const isGap = /^\s+$/.test(p.text);
+    const isGap = /^[ \t\n]+$/.test(p.text);   // o espaço inseparável NÃO é vão de justificação
     if(!isGap){
       enemFont(doc, enemStyle(p.bold, italic), size);
       enemInk(doc);
@@ -2639,13 +2682,13 @@ function enemExportPdf(doneQuestions, professor){
      deslocamento negativo é levado para o fim da página no Chrome.           */
 
 function enemPrintEsc(s){
-  return String(s == null ? "" : s)
+  return quiJuntaFormula(String(s == null ? "" : s))
     .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }
 
 // **negrito** vira <strong>; todo o resto é escapado.
 function enemPrintRich(text){
-  return enemRichRuns(String(text == null ? "" : text))
+  return enemRichRuns(quiJuntaFormula(String(text == null ? "" : text)))
     .map(r => r.bold ? "<strong>" + enemPrintEsc(r.text) + "</strong>" : enemPrintEsc(r.text))
     .join("");
 }
@@ -3205,7 +3248,7 @@ function enemDocxParagraph(text, opts){
       alignment: o.alignment || AlignmentType.JUSTIFIED,
       indent: o.indent === false ? undefined : { firstLine: ENEM_DOCX.indent },
       spacing: { line: o.line || ENEM_DOCX.line, lineRule: LineRuleType.EXACTLY, before: 0, after: 0 },
-      children: enemRichRuns(par.trim()).map(r => new TextRun({
+      children: enemRichRuns(quiJuntaFormula(par.trim())).map(r => new TextRun({
         text: r.text, font: ENEM_DOCX.font, size: Math.round(size * 2),
         color: o.color || ENEM_DOCX.ink, bold: r.bold || !!o.bold,
       })),
@@ -3224,7 +3267,7 @@ function enemDocxRichParagraph(text, opts){
       alignment: AlignmentType.JUSTIFIED,
       indent: o.indent ? { left: o.indent } : undefined,
       spacing: { line: ENEM_DOCX.line, lineRule: LineRuleType.EXACTLY, before: 0, after: 0 },
-      children: enemRichRuns(par.trim()).map(r => new TextRun({
+      children: enemRichRuns(quiJuntaFormula(par.trim())).map(r => new TextRun({
         text: r.text, bold: r.bold, font: ENEM_DOCX.font, size: 20, color: ENEM_DOCX.ink,
       })),
     }));
@@ -3276,7 +3319,7 @@ function enemDocxAlternative(letter, text){
     spacing: { line: ENEM_DOCX.altLine, lineRule: LineRuleType.EXACTLY, before: 0, after: 0 },
     children: [
       new TextRun({ text: ENEM_DOCX_MARKS[letter] + "\t", font: ENEM_DOCX.font, size: 20, color: ENEM_DOCX.ink }),
-      ...enemRichRuns(String(text || "").trim() || "—").map(r => new TextRun({
+      ...enemRichRuns(quiJuntaFormula(String(text || "").trim() || "—")).map(r => new TextRun({
         text: r.text, bold: r.bold, font: ENEM_DOCX.font, size: 20, color: ENEM_DOCX.ink,
       })),
     ],
@@ -3293,7 +3336,7 @@ function enemDocxCaption(text, opts){
   return [ new Paragraph({
     alignment: o.justify ? AlignmentType.JUSTIFIED : AlignmentType.RIGHT,
     spacing: { line: ENEM_DOCX.capLine, lineRule: LineRuleType.EXACTLY, before: 40, after: 60 },
-    children: enemRichRuns(clean).map(r => new TextRun({
+    children: enemRichRuns(quiJuntaFormula(clean)).map(r => new TextRun({
       text: r.text, bold: r.bold, italics: !!o.italic,
       font: ENEM_DOCX.font, size: 16, color: ENEM_DOCX.ink,
     })),
