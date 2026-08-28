@@ -558,6 +558,7 @@ async function generateAll(){
   renderResults();
   updateProgress();
   zeraUso();
+  zeraUsoImagem();
   /* AQUECIMENTO DO CACHE. O prompt do sistema tem mais de 25 mil caracteres e é
      o mesmo em todas as questões da área. O backend o manda com cache_control,
      mas quem grava o cache é a primeira chamada — e chamadas simultâneas não
@@ -3262,6 +3263,10 @@ function pdfGetVisualImageInfo(cardIdx, paraDocx){
   if(!img || !img.src) return null;
   // Só o Word precisa da conversão; o PDF aceita o WebP e converte internamente.
   const dataUrl = paraDocx ? imagemParaJpeg(img.src, img) : img.src;
+  // Sem conversão possível, o Word sai sem a figura — e, como quem chama
+  // interrompe o bloco inteiro, sem a legenda também. É pior perder a figura do
+  // que entregar um .docx com um quadro quebrado que ninguém consegue abrir.
+  if(!dataUrl) return null;
   return { dataUrl, width: img.naturalWidth || 800, height: img.naturalHeight || 500 };
 }
 
@@ -3632,7 +3637,7 @@ function docxImageType(dataUrl){
   if(!m) return "png";
   const f = m[1].toLowerCase();
   if(f === "jpeg" || f === "jpg") return "jpg";
-  return f === "webp" ? "jpg" : f;   // WebP é convertido para JPEG antes de entrar no .docx
+  return f;   // diz o formato REAL; quem garante que não chega webp é imagemParaJpeg
 }
 
 /* O Word não abre WebP. Desde que as imagens passaram a chegar em WebP (bem
@@ -3648,7 +3653,7 @@ function imagemParaJpeg(dataUrl, imgEl){
   if(!/^data:image\/webp/i.test(dataUrl || "")) return dataUrl;
   try{
     const fonte = (imgEl && imgEl.complete && imgEl.naturalWidth) ? imgEl : null;
-    if(!fonte) return dataUrl;
+    if(!fonte) return null;
     const cv = document.createElement("canvas");
     cv.width = fonte.naturalWidth;
     cv.height = fonte.naturalHeight;
@@ -3656,9 +3661,10 @@ function imagemParaJpeg(dataUrl, imgEl){
     ctx.fillStyle = "#FFFFFF";                 // JPEG não tem transparência
     ctx.fillRect(0, 0, cv.width, cv.height);
     ctx.drawImage(fonte, 0, 0);
-    return cv.toDataURL("image/jpeg", 0.92);
+    const saida = cv.toDataURL("image/jpeg", 0.92);
+    return /^data:image\/jpeg/i.test(saida) ? saida : null;
   }catch(e){
-    return dataUrl;
+    return null;   // devolver o WebP aqui faria o Word receber bytes que não abre
   }
 }
 
