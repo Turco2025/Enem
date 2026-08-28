@@ -59,11 +59,11 @@ segurança, §4).
 | Papel | Fonte | Corpo | Entrelinha | Alinhamento | Cor |
 |---|---|---|---|---|---|
 | **Corpo de texto** | Calibri Regular | **10 pt** | **12,0 pt (1,20×)** | justificado, recuo 6 mm | #231F20 |
-| **Alternativas A–E** | Calibri Regular | **10 pt** | **13,4 pt (1,34×)** | à esquerda, pendurado | #231F20 |
+| **Alternativas A–E** | Calibri Regular | **10 pt** | **13,4 pt (1,34×)** | **justificado**, pendurado 4,5 mm | #231F20 |
 | **Rótulo "QUESTÃO N"** | Calibri Bold | **11 pt** | — | caixa alta, margem da coluna | #231F20 |
 | **Título de área** | Calibri Bold | **11 pt** | — | caixa alta, recuado 2 mm | #231F20 |
 | **Rótulo "TEXTO I / II"** | Calibri Bold | **10 pt** | 12,0 pt | à esquerda | #231F20 |
-| **Subtítulo interno** (ficha, resolução, comentários) | Calibri Bold | **10 pt** caixa alta | 12,0 pt | à esquerda | #231F20 |
+| **Subtítulo interno** (ficha, resolução, comentários) | Calibri Bold | **10 pt** caixa alta | 12,0 pt | **justificado** (linha única, não estica) | #231F20 |
 | **Referência do texto introdutório** | Calibri ***Italic*** | **8 pt** (corpo − 2) | 9,6 pt | **à direita** (bandeira à esquerda) | #231F20 |
 | **Referência de imagem, tabela e gráfico** | Calibri Regular | **8 pt** (corpo − 2) | 9,6 pt | **justificada** | #231F20 |
 | **Título da obra na referência** | Calibri **Bold** (bold-itálico no texto introdutório) | 8 pt | — | — | #231F20 |
@@ -107,6 +107,34 @@ obra vai em **negrito, nunca em itálico**.
 > para compensar a altura-x menor. No Word declare **Calibri** de verdade.
 
 ---
+
+### 2.2 Justificação — regra do professor
+
+**Todo texto do simulado sai justificado nas duas margens.** Vale para o
+texto-base, o comando, as **alternativas A–E**, o gabarito, a ficha pedagógica,
+a resolução comentada e o comentário de cada alternativa — e vale nas três
+saídas: **PDF, Word (DOCX) e HTML**, que precisam continuar idênticas entre si.
+
+O que isso significa na prática:
+
+- a última linha de cada parágrafo **nunca** é esticada — é assim que a
+  justificação funciona, e é o que evita o efeito de palavras espalhadas;
+- alternativa de uma linha só (o caso comum em Matemática, Física e Química)
+  fica visualmente igual ao alinhamento à esquerda, porque linha única é
+  sempre última linha;
+- rótulos e subtítulos de uma linha (`QUESTÃO N`, `FICHA PEDAGÓGICA`) recebem o
+  alinhamento declarado por coerência, sem efeito visual;
+- o **espaço inseparável** que mantém a fórmula química inteira (§ notação
+  química) não é vão de justificação: o esticamento distribui-se só pelos
+  espaços comuns, para que `CaCO₃(s) ⇌ Ca²⁺(aq)` não se abra no meio.
+
+**Única exceção:** a *referência bibliográfica do texto introdutório*, que
+permanece em itálico e alinhada à direita, como no caderno oficial (§2.1).
+
+> Divergência assumida em relação ao ENEM 2025: o caderno oficial alinha as
+> alternativas à esquerda. A justificação das alternativas é uma determinação
+> do professor responsável, registrada aqui para que ninguém a "corrija" de
+> volta achando que é um desvio do padrão.
 
 ## 3. Cor
 
@@ -210,7 +238,7 @@ Na ordem em que entra no fluxo da coluna:
 7. **Comando** — 10 pt, justificado, **sem recuo**.
 8. **Alternativas A–E** — letra circulada (`BundesbahnPiStd-1`, 10 pt) encostada na
    margem da coluna, texto começando **4,5 mm** à direita da letra, com recuo pendurado
-   nessa mesma medida; entrelinha 13,4 pt.
+   nessa mesma medida; entrelinha 13,4 pt; **texto justificado** (§2.2).
 9. **Filete de fechamento** — linha **sólida** de 0,5 pt, cor #231F20, **largura cheia da
    coluna (88,63 mm)**, usada **apenas quando a questão é a última da coluna** e sobra
    espaço abaixo. Ocorre em 15 das 60 colunas do caderno. **Não há filete entre questões
