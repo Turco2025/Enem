@@ -216,7 +216,7 @@ O gerador NÃO conhece a questão, NÃO lê o texto-base, NÃO vê o comando e N
 
 4. ARROWS — a causa mais frequente de erro. Para CADA seta, uma linha própria contendo, nesta ordem: origem, destino, onde fica a ponta (arrowhead), direção na tela e o que representa. Modelo: "One arrow starting at the right edge of the sun and ending at the top surface of the leaf, with the arrowhead touching the leaf and pointing down-left, representing incident sunlight." TERMINANTEMENTE PROIBIDO "an arrow between A and B", "arrows connecting the parts", "arrows showing the cycle" ou qualquer forma sem origem, destino e ponta — sem isso o gerador escolhe o sentido e frequentemente o inverte. Se o SENTIDO for parte do que a questão avalia (fluxo de energia, corrente elétrica, movimento, sentido de reação, cadeia alimentar, ciclo biogeoquímico), repita a direção uma segunda vez, com outras palavras, ao final.
 
-5. TEXT LABELS — para CADA rótulo, escreva: o texto EXATO entre aspas, o elemento a que pertence, o lado em que fica e se há linha de chamada. Modelo: 'the label "Cloroplasto" placed immediately to the right of the green organelle, connected to it by a thin straight leader line'. Regras: (a) TODO texto visível deve estar EM PORTUGUÊS, ainda que a especificação esteja em inglês — inclua "all visible text must be rendered exactly as written above, in Portuguese, with correct spelling"; (b) o rótulo fica FORA do contorno do elemento, nunca sobreposto; (c) nem rótulo sem elemento, nem elemento essencial sem rótulo; (d) se dois rótulos correrem risco de se aproximar, declare os lados opostos; (e) declare o tamanho ("labels in a clear sans-serif typeface, large enough to be read when the image is printed at half page width").
+5. TEXT LABELS — para CADA rótulo, escreva: o texto EXATO entre ASPAS SIMPLES, o elemento a que pertence, o lado em que fica e se há linha de chamada. Modelo: the label 'Cloroplasto' placed immediately to the right of the green organelle, connected to it by a thin straight leader line. Use aspas simples em TODA a especificação da imagem — ela viaja dentro de um campo JSON, e aspas duplas não escapadas quebram a resposta inteira. Regras: (a) TODO texto visível deve estar EM PORTUGUÊS, ainda que a especificação esteja em inglês — inclua "all visible text must be rendered exactly as written above, in Portuguese, with correct spelling"; (b) o rótulo fica FORA do contorno do elemento, nunca sobreposto; (c) nem rótulo sem elemento, nem elemento essencial sem rótulo; (d) se dois rótulos correrem risco de se aproximar, declare os lados opostos; (e) declare o tamanho ("labels in a clear sans-serif typeface, large enough to be read when the image is printed at half page width").
 
 6. NUMBERS, SCALES AND MEASUREMENT MARKS — havendo dado referencial (régua ou escala graduada, marcações de altura, distância, tempo, velocidade, temperatura, valores em eixo, unidades), liste os valores EXATOS, onde cada um aparece e de que lado do traço fica impresso. Modelo: "a vertical graduated ruler along the left side, with clearly legible labeled tick marks at 5 m, 10 m, 15 m and 20 m, each number printed to the left of its own tick". Os valores devem ser exatamente os mesmos do texto-base, do comando, das alternativas e da resolução — nunca aproximados nem arredondados de outra forma.
 
@@ -299,7 +299,13 @@ const JSON_SCHEMA_TXT = `Responda SOMENTE com um objeto JSON válido (sem markdo
    "E": {"status":"correta"|"incorreta","comentario":"string"}
  }
 }
-No campo "comentario" de cada alternativa errada, nomeie explicitamente o tipo de distrator (leitura parcial, inversão de causa/efeito, verdade parcial, anacronismo/confusão conceitual, senso comum, erro de processo, excesso de escopo, reaproveitamento fora de contexto) e explique EM TERMOS CONCEITUAIS o raciocínio equivocado que ela representa — nunca justifique a incorreção apenas apontando que a alternativa usa uma palavra absoluta/extrema; a palavra não é o motivo do erro, o raciocínio é. Nunca deixe mais de uma alternativa com status "correta".`;
+No campo "comentario" de cada alternativa errada, nomeie explicitamente o tipo de distrator (leitura parcial, inversão de causa/efeito, verdade parcial, anacronismo/confusão conceitual, senso comum, erro de processo, excesso de escopo, reaproveitamento fora de contexto) e explique EM TERMOS CONCEITUAIS o raciocínio equivocado que ela representa — nunca justifique a incorreção apenas apontando que a alternativa usa uma palavra absoluta/extrema; a palavra não é o motivo do erro, o raciocínio é. Nunca deixe mais de uma alternativa com status "correta".
+
+REGRA DE FORMATAÇÃO DO JSON — vale para TODOS os campos de texto, e o campo "promptImagem" é o mais sensível porque cita o texto dos rótulos:
+- prefira ASPAS SIMPLES dentro dos textos; se precisar mesmo de uma aspa dupla, escape-a como \\" ;
+- nada de LaTeX nem de barra invertida solta: escreva "2π vezes a raiz quadrada de (L/g)", nunca "2\\pi\\sqrt{L/g}";
+- nada de quebra de linha literal dentro de uma string (use \\n);
+- nada de vírgula sobrando antes de } ou ].`;
 
 // Bloco anti-alucinação: injetado apenas para disciplinas em que o texto-suporte
 // tipicamente cita autor/obra/pesquisa real (ver DISCIPLINAS_FONTES_REAIS_OBRIGATORIAS).
@@ -632,6 +638,76 @@ function sanitizeJsonControlChars(text: string) {
   return out;
 }
 
+/* ASPAS SOLTAS DENTRO DE UM CAMPO DE TEXTO.
+
+   Era a causa da falha "Expected ',' or '}' after property value", e ela tinha
+   origem concreta: o protocolo da imagem pedia o texto de cada rótulo entre
+   aspas duplas — `the label "Comprimento (L)" placed to the left…` — e essa
+   especificação inteira viaja dentro do campo JSON "promptImagem". Quando o
+   modelo esquecia de escapá-las, o JSON.parse fechava a string cedo e a questão
+   inteira se perdia. O protocolo passou a pedir aspas simples, o que remove a
+   causa; esta função é a rede embaixo, porque uma citação entre aspas no
+   texto-base ou uma frase em inglês copiada de outra seção reabrem o mesmo
+   buraco.
+
+   A regra de decisão: dentro de uma string, uma aspa só ENCERRA de verdade se
+   o próximo caractere não-branco for `:`, `}`, `]` ou o fim do texto — ou uma
+   vírgula seguida do começo de um novo valor (`"`, `{`, `[`). Qualquer outra
+   coisa depois dela é continuação do texto, então a aspa é escapada. É por
+   isso que `"o professor disse "não depende da massa", e os alunos…"` é
+   recuperado corretamente: a aspa antes da vírgula é seguida de ` e`, não de
+   uma nova chave. */
+function escaparAspasSoltas(text: string) {
+  let out = "";
+  let inString = false;
+  let escaped = false;
+  const proximoNaoBranco = (de: number) => {
+    let k = de;
+    while (k < text.length && /\s/.test(text[k])) k++;
+    return { ch: k < text.length ? text[k] : "", i: k };
+  };
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    if (!inString) { out += ch; if (ch === '"') inString = true; continue; }
+    if (escaped) { out += ch; escaped = false; continue; }
+    if (ch === "\\") { out += ch; escaped = true; continue; }
+    if (ch !== '"') { out += ch; continue; }
+    const depois = proximoNaoBranco(i + 1);
+    let encerra: boolean;
+    if (depois.ch === "" || depois.ch === ":" || depois.ch === "}" || depois.ch === "]") {
+      encerra = true;
+    } else if (depois.ch === ",") {
+      const seguinte = proximoNaoBranco(depois.i + 1);
+      encerra = seguinte.ch === '"' || seguinte.ch === "{" || seguinte.ch === "[" || seguinte.ch === "";
+    } else {
+      encerra = false;
+    }
+    if (encerra) { out += ch; inString = false; } else { out += '\\"'; }
+  }
+  return out;
+}
+
+/* Barra invertida que não inicia um escape válido. Aparece quando o modelo
+   escorrega para notação de LaTeX no meio de uma explicação de física ou de
+   matemática (`T = 2\pi\sqrt{L/g}`): `\p` e `\s` não são escapes de JSON. */
+function escaparBarrasInvalidas(text: string) {
+  let out = "";
+  let inString = false;
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    if (!inString) { out += ch; if (ch === '"') inString = true; continue; }
+    if (ch === '"') { out += ch; inString = false; continue; }
+    if (ch === "\\") {
+      const p = text[i + 1] || "";
+      if ('"\\/bfnrtu'.includes(p)) { out += ch + p; i++; continue; }
+      out += "\\\\";
+      continue;
+    }
+    out += ch;
+  }
+  return out;
+}
+
 function parseJSONLoose(text: string) {
   const raw = (text || "").trim();
   const candidates = [raw];
@@ -641,15 +717,23 @@ function parseJSONLoose(text: string) {
   const end = raw.lastIndexOf("}");
   if (start !== -1 && end !== -1 && end > start) candidates.push(raw.slice(start, end + 1));
 
+  const semVirgulaFinal = (v: string) => v.replace(/,(\s*[}\]])/g, "$1");
+
   let lastErr: any;
   for (const cand of candidates) {
-    const variants = [
-      cand,
-      cand.replace(/,(\s*[}\]])/g, "$1"),
-      sanitizeJsonControlChars(cand),
-      sanitizeJsonControlChars(cand).replace(/,(\s*[}\]])/g, "$1"),
-    ];
-    for (const v of variants) {
+    /* Do mais literal ao mais reparado. A tentativa sem reparo nenhum vem
+       sempre primeiro: reparo só entra quando o texto já está quebrado, então
+       uma resposta bem-formada nunca passa por essas funções. */
+    const variantes: string[] = [];
+    for (const base of [cand, sanitizeJsonControlChars(cand)]) {
+      const aspas = escaparAspasSoltas(base);
+      const barras = escaparBarrasInvalidas(base);
+      const ambos = escaparBarrasInvalidas(aspas);
+      for (const v of [base, aspas, barras, ambos]) {
+        variantes.push(v, semVirgulaFinal(v));
+      }
+    }
+    for (const v of variantes) {
       try { return JSON.parse(v); } catch (e) { lastErr = e; }
     }
   }
@@ -663,13 +747,26 @@ async function callClaudeForJSON(system: string, userMsg: string, enableWebSearc
   if (usos && usage) usos.push(usage);
   try {
     return parseJSONLoose(text);
-  } catch (err) {
+  } catch (err: any) {
+    /* Resposta cortada no meio: o problema é espaço, então repete com teto
+       maior. Resposta completa porém malformada: o problema é a redação do
+       JSON, então repete DIZENDO qual foi o erro — sem isso a segunda
+       tentativa costuma reproduzir o mesmo defeito. Em ambos os casos é uma
+       chamada a mais só quando já se perdeu a questão; o caminho feliz
+       continua com uma chamada só. */
     if (truncated) {
       const retry = await callClaude(system, userMsg, 12000, enableWebSearch);
       if (usos && retry.usage) usos.push(retry.usage);
       return parseJSONLoose(retry.text);
     }
-    throw err;
+    const correcao = `${userMsg}
+
+ATENÇÃO — sua resposta anterior não pôde ser lida como JSON. O erro do interpretador foi: ${String(err?.message || err).slice(0, 300)}
+
+Reenvie a MESMA questão, agora como JSON estritamente válido. Verifique, antes de responder: toda aspa dupla que faça parte de um texto está escapada como \\" ; não há barra invertida solta (nada de LaTeX como \\pi ou \\sqrt — escreva por extenso); não há quebra de linha literal dentro de uma string; não há vírgula sobrando antes de } ou ]. Responda SOMENTE com o objeto JSON, sem crase e sem texto em volta.`;
+    const retry = await callClaude(system, correcao, 8000, enableWebSearch);
+    if (usos && retry.usage) usos.push(retry.usage);
+    return parseJSONLoose(retry.text);
   }
 }
 
