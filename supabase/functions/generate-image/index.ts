@@ -43,7 +43,10 @@ Deno.serve(async (req: Request) => {
     }, 500);
   }
 
-  let body: { prompt?: string; size?: string };
+  let body: {
+    prompt?: string; size?: string; quality?: string;
+    outputFormat?: string; outputCompression?: number;
+  };
   try {
     body = await req.json();
   } catch {
@@ -55,6 +58,30 @@ Deno.serve(async (req: Request) => {
     return jsonResponse({ error: "Campo 'prompt' é obrigatório." }, 400);
   }
   const size = body.size || "1536x1024";
+
+  /* QUALIDADE POR REQUISIÇÃO. Antes ficava presa no secret do projeto, o que
+     obrigava a reimplantar para trocar — e escondia a alavanca que de fato
+     manda no custo e no tempo. A OpenAI cobra a imagem pelos tokens de SAÍDA:
+     em 1536×1024, "high" custa cerca de 5.500 tokens e "medium" cerca de 1.367,
+     ou seja, um quarto do preço e proporcionalmente menos tempo de geração. O
+     padrão continua sendo o do secret (hoje "high"), então nada muda para quem
+     não pedir outra coisa.                                                   */
+  const QUALIDADES = ["low", "medium", "high", "auto"];
+  const qualidadePedida = (body.quality || "").toString().trim().toLowerCase();
+  const quality = QUALIDADES.includes(qualidadePedida) ? qualidadePedida : IMAGE_QUALITY;
+
+  /* FORMATO DE SAÍDA. O padrão continua PNG — é o que o aplicativo sempre
+     recebeu, e trocar sozinho mudaria o peso de todo PDF já gerado. Pedindo
+     "webp" com compressão, a mesma imagem chega várias vezes menor, o que
+     encurta o download e enxuga o PDF sem alterar o que a OpenAI cobra (o
+     preço é pelos tokens da imagem, não pelos bytes que trafegam).           */
+  const FORMATOS = ["png", "jpeg", "webp"];
+  const formatoPedido = (body.outputFormat || "").toString().trim().toLowerCase();
+  const outputFormatPedido = FORMATOS.includes(formatoPedido) ? formatoPedido : null;
+  const compressao = Number(body.outputCompression);
+  const outputCompression = (outputFormatPedido && outputFormatPedido !== "png" &&
+    Number.isFinite(compressao) && compressao >= 1 && compressao <= 100)
+    ? Math.round(compressao) : null;
 
   // Limite diário opcional (desligado por padrão). Quando MAX_DAILY_IMAGES não
   // está definido, nada é consultado nem bloqueado — a geração é ilimitada.
@@ -78,29 +105,61 @@ Deno.serve(async (req: Request) => {
     // devolve a imagem em base64 por padrão — o parâmetro "response_format"
     // NÃO é mais aceito por esse endpoint e causa erro 400 "Unknown parameter"
     // se enviado. Por isso ele foi removido do corpo da requisição abaixo.
-    const res = await fetch("https://api.openai.com/v1/images/generations", {
-      method: "POST",
-      headers: {
-        "Authorization": `Bearer ${OPENAI_API_KEY}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model: IMAGE_MODEL,
-        prompt,
-        size,
-        quality: IMAGE_QUALITY,
-        n: 1,
-      }),
-    });
+    const corpo: Record<string, unknown> = {
+      model: IMAGE_MODEL,
+      prompt,
+      size,
+      quality,
+      n: 1,
+    };
+    if (outputFormatPedido) corpo.output_format = outputFormatPedido;
+    if (outputCompression !== null) corpo.output_compression = outputCompression;
 
-    if (!res.ok) {
-      const errText = await res.text();
-      return jsonResponse({
-        error: `Falha ao gerar imagem na OpenAI (status ${res.status}): ${errText.slice(0, 500)}`,
-      }, 502);
+    /* Uma imagem em qualidade alta leva mais de um minuto para ficar pronta, e
+       até agora esta função chamava a OpenAI sem relógio e sem segunda chance:
+       qualquer soluço de rede devolvia erro ao professor — e a imagem que a
+       OpenAI já tinha começado a produzir seria cobrada assim mesmo. Agora há
+       um limite de 240 s por tentativa e até 3 tentativas, com espera crescente
+       entre elas, no mesmo padrão da função de questões.                      */
+    const inicio = Date.now();
+    let data: any = null;
+    let ultimoErro = "";
+    for (let tentativa = 1; tentativa <= 3; tentativa++) {
+      const controller = new AbortController();
+      const relogio = setTimeout(() => controller.abort(), 240_000);
+      try {
+        const res = await fetch("https://api.openai.com/v1/images/generations", {
+          method: "POST",
+          headers: {
+            "Authorization": `Bearer ${OPENAI_API_KEY}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify(corpo),
+          signal: controller.signal,
+        });
+        clearTimeout(relogio);
+        if (res.ok) { data = await res.json(); break; }
+        const errText = await res.text();
+        // 429 e 5xx passam; 400 é erro de pedido e não melhora tentando de novo.
+        const vaiMelhorar = res.status === 429 || res.status >= 500;
+        ultimoErro = `status ${res.status}: ${errText.slice(0, 400)}`;
+        if (!vaiMelhorar || tentativa === 3) {
+          return jsonResponse({ error: `Falha ao gerar imagem na OpenAI (${ultimoErro})` }, 502);
+        }
+      } catch (err) {
+        clearTimeout(relogio);
+        const abortou = (err as any)?.name === "AbortError";
+        ultimoErro = abortou ? "a OpenAI passou de 240 s sem responder" : String(err);
+        if (tentativa === 3) {
+          return jsonResponse({ error: `Falha ao gerar imagem (${ultimoErro}) após 3 tentativas.` }, 502);
+        }
+      }
+      await new Promise((r) => setTimeout(r, 2000 * tentativa));
     }
-
-    const data = await res.json();
+    if (!data) {
+      return jsonResponse({ error: `Falha ao gerar imagem (${ultimoErro}).` }, 502);
+    }
+    const segundos = Math.round((Date.now() - inicio) / 1000);
     const b64 = data.data && data.data[0] && data.data[0].b64_json;
     if (!b64) {
       return jsonResponse({ error: "A resposta da OpenAI não trouxe a imagem (b64_json ausente).", raw: data }, 502);
@@ -114,7 +173,29 @@ Deno.serve(async (req: Request) => {
       // best-effort logging
     }
 
-    return jsonResponse({ imageDataUrl });
+    /* O custo da imagem é verificável, não estimado: a OpenAI devolve, em
+       "usage", quantos tokens de texto entraram e quantos tokens de imagem
+       saíram. Multiplicando pelos preços vigentes (US$ 5 e US$ 30 por milhão)
+       sai o preço real daquela imagem — dá para comparar qualidades sem
+       depender de tabela publicada.                                          */
+    const uso = data.usage || {};
+    const tokensEntrada = Number(uso.input_tokens) || 0;
+    const tokensSaida = Number(uso.output_tokens) || 0;
+    const custoUSD = Number(((tokensEntrada * 5 + tokensSaida * 30) / 1e6).toFixed(5));
+
+    return jsonResponse({
+      imageDataUrl,
+      uso: {
+        qualidade: quality,
+        tamanho: size,
+        formato: outputFormat,
+        segundos,
+        tokensEntrada,
+        tokensSaida,
+        custoUSD,
+        bytesImagem: Math.round(b64.length * 3 / 4),
+      },
+    });
   } catch (err) {
     return jsonResponse({ error: `Erro inesperado no backend: ${String(err)}` }, 500);
   }
