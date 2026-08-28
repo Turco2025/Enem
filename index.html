@@ -3517,7 +3517,7 @@ function enemDocxVisual(visual, cardIdx, colTw){
     return out;
   }
 
-  const info = visual.tipo === "imagem" ? pdfGetVisualImageInfo(cardIdx) : pdfGetVisualChartInfo(cardIdx);
+  const info = visual.tipo === "imagem" ? pdfGetVisualImageInfo(cardIdx, true) : pdfGetVisualChartInfo(cardIdx);
   if(!info) return [];
   const maxW = Math.round(larg / TW * 72 / 25.4);      // twips → mm → pontos
   const ratio = info.height / info.width;
@@ -3712,12 +3712,14 @@ function enemDocxSections(doneQuestions, professor){
   return sections;
 }
 
-function pdfGetVisualImageInfo(cardIdx){
+function pdfGetVisualImageInfo(cardIdx, paraDocx){
   const card = document.querySelectorAll("#questionResults .qcard")[cardIdx];
   if(!card) return null;
   const img = card.querySelector(".visual-image-holder img");
   if(!img || !img.src) return null;
-  return { dataUrl: img.src, width: img.naturalWidth || 800, height: img.naturalHeight || 500 };
+  // Só o Word precisa da conversão; o PDF aceita o WebP e converte internamente.
+  const dataUrl = paraDocx ? imagemParaJpeg(img.src, img) : img.src;
+  return { dataUrl, width: img.naturalWidth || 800, height: img.naturalHeight || 500 };
 }
 
 // Os gráficos na tela usam texto claro (legenda, título, eixos) porque o app tem
@@ -4087,8 +4089,34 @@ function docxImageType(dataUrl){
   if(!m) return "png";
   const f = m[1].toLowerCase();
   if(f === "jpeg" || f === "jpg") return "jpg";
-  if(f === "webp") return "png"; // docx não suporta webp nativamente; nossos casos reais geram png/jpeg
-  return f;
+  return f === "webp" ? "jpg" : f;   // WebP é convertido para JPEG antes de entrar no .docx
+}
+
+/* O Word não abre WebP. Desde que as imagens passaram a chegar em WebP (bem
+   menor que o PNG, ver a seção de geração de imagem), é preciso converter antes
+   de embutir no .docx — senão o arquivo sai com um quadro vazio no lugar da
+   figura. O PDF não precisa disto: o jsPDF converte sozinho para JPEG.
+
+   A conversão é feita no próprio navegador, com canvas, a partir da imagem que
+   JÁ está desenhada na tela (portanto já decodificada). Se algo falhar, devolve
+   a original em vez de derrubar a exportação inteira — e aí o pior caso é o
+   comportamento anterior, não uma exportação perdida.                         */
+function imagemParaJpeg(dataUrl, imgEl){
+  if(!/^data:image\/webp/i.test(dataUrl || "")) return dataUrl;
+  try{
+    const fonte = (imgEl && imgEl.complete && imgEl.naturalWidth) ? imgEl : null;
+    if(!fonte) return dataUrl;
+    const cv = document.createElement("canvas");
+    cv.width = fonte.naturalWidth;
+    cv.height = fonte.naturalHeight;
+    const ctx = cv.getContext("2d");
+    ctx.fillStyle = "#FFFFFF";                 // JPEG não tem transparência
+    ctx.fillRect(0, 0, cv.width, cv.height);
+    ctx.drawImage(fonte, 0, 0);
+    return cv.toDataURL("image/jpeg", 0.92);
+  }catch(e){
+    return dataUrl;
+  }
 }
 
 function docxDataUrlToUint8Array(dataUrl){
@@ -4194,7 +4222,7 @@ function docxBuildVisualBox(visual, cardIdx){
       }));
     }
   } else {
-    const info = visual.tipo === "imagem" ? pdfGetVisualImageInfo(cardIdx) : pdfGetVisualChartInfo(cardIdx);
+    const info = visual.tipo === "imagem" ? pdfGetVisualImageInfo(cardIdx, true) : pdfGetVisualChartInfo(cardIdx);
     if(info){
       const maxW = DOCX_CONTENT_WIDTH_PT - 20 - 6;
       const maxH = 260;
