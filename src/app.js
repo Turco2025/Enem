@@ -51,27 +51,63 @@ let state = {
   viewMode: "professor",
 };
 
-/* ---------------- Geração de imagem (Higgsfield / GPT Image 2 via backend) ---------------- */
-async function generateImageViaBackend(promptText){
+/* ---------------- Geração de imagem (GPT Image 2 via backend) ----------------
+
+   QUALIDADE PADRÃO: "low". A escolha foi medida, não estilística. Gerando a
+   MESMA especificação nas três qualidades, em 1536×1024:
+
+       low     16 s   ·   158 tokens   ·   US$ 0,0065
+       medium  39 s   · 1.372 tokens   ·   US$ 0,0429
+       high    97 s   · 5.488 tokens   ·   US$ 0,1664
+
+   Além de 26× mais barata e 6× mais rápida que "high", a saída em "low" foi a
+   MAIS legível para o nosso caso: o modelo desenhou os rótulos em texto branco
+   sobre tarja sólida — a camada de anotação que o protocolo pede —, enquanto em
+   "high" ele gastou o orçamento extra em realismo fotográfico e escreveu os
+   rótulos em cinza fino, sem tarja, sobre a foto. Para uma figura didática com
+   régua e rótulo, mais tokens de imagem trabalham CONTRA a leitura.
+
+   O professor pode subir a qualidade figura a figura pelo seletor no card —
+   nenhuma decisão fica presa no código.
+
+   FORMATO: WebP com compressão 80. A mesma imagem que sai com 2,2 MB em PNG sai
+   com 110 KB em WebP — 20× menor, custo idêntico (a OpenAI cobra pelos tokens da
+   imagem, não pelos bytes). É o que torna viável um simulado com 15 figuras sem
+   gerar um PDF de 30 MB.                                                      */
+
+const IMG_QUALIDADES = ["low", "medium", "high"];
+const IMG_QUALIDADE_PADRAO = "low";
+const IMG_QUALIDADE_ROTULO = { low: "Rápida", medium: "Média", high: "Alta" };
+
+/* O agente já entrega o "promptImagem" no protocolo das 8 seções, que ali dentro
+   descreve as duas camadas, a regra de precedência e as restrições negativas.
+   Mandar tudo isso de novo num preâmbulo era repetir a mesma instrução duas
+   vezes na mesma requisição. Então o preâmbulo só entra quando o texto NÃO é uma
+   especificação completa — o caso de reserva, em que só há a "descricao". */
+function imgEhEspecificacaoCompleta(texto){
+  const t = String(texto || "");
+  return /ELEMENT INVENTORY/i.test(t) && /NEGATIVE CONSTRAINTS/i.test(t);
+}
+
+const IMG_PREAMBULO_CURTO = `Ilustração educacional para uma questão no padrão ENEM. Cena real e nítida, com uma camada de anotação vetorial limpa por cima: rótulos legíveis com tarja ou halo atrás do texto, setas com sentido explícito e marcações de medida. A cena nunca pode prejudicar a leitura da anotação. Todo texto visível deve estar em português do Brasil, com ortografia correta. Sem texto decorativo, marca d'água ou assinatura.
+
+Cena: `;
+
+async function generateImageViaBackend(promptText, opts){
+  const o = opts || {};
+  const qualidade = IMG_QUALIDADES.includes(o.qualidade) ? o.qualidade : IMG_QUALIDADE_PADRAO;
+  const texto = String(promptText || "");
+  const prompt = imgEhEspecificacaoCompleta(texto) ? texto : (IMG_PREAMBULO_CURTO + texto);
+
   const res = await fetch(IMAGE_BACKEND_URL, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
-      prompt: `Ilustração educacional de MÁXIMA QUALIDADE para uma questão de vestibular (padrão ENEM). A imagem tem DUAS CAMADAS, e as duas são obrigatórias.
-
-CAMADA 1 — BASE CINEMATOGRÁFICA: ultra-realistic 4K/8K photography, ultra definition, razor-sharp focus on the subject, cinematic composition, dramatic directional natural lighting, rich material textures and micro-detail, deep saturated color, atmospheric depth of field, epic sense of scale and grandeur — no padrão visual de National Geographic, BBC Earth, Planet Earth e projeção IMAX. Acabamento profissional de fotografia documental de museu. Nada chapado, genérico, borrado, pixelizado ou com cara de clipart.
-
-CAMADA 2 — CAMADA DE ANOTAÇÃO: por cima da cena, uma sobreposição gráfica limpa e vetorial, em estilo de infográfico moderno com princípios de UI/UX — clean vector annotation overlay, consistent labeling system, clear visual hierarchy, clean sans-serif typography at consistent sizes, thin leader lines, generous spacing, high contrast against the scene, e halo suave ou tarja translúcida sutil atrás do texto onde o fundo estiver detalhado. Ela carrega as setas, os rótulos e as marcações de medida descritos na cena abaixo.
-
-REGRA DE PRECEDÊNCIA: the cinematic scene must never obscure the annotation layer. Todo rótulo, seta e valor numérico permanece plenamente legível; se a riqueza da cena ameaçar a leitura, é a cena que cede (menos detalhe, área escurecida ou desfocada atrás da anotação, mais espaço na composição).
-
-TEXTO NA IMAGEM: nenhum texto decorativo, legenda solta, assinatura ou marca d'água. Os únicos textos permitidos são os rótulos, números e marcações descritos na cena abaixo — esses são obrigatórios, precisam aparecer desenhados de forma nítida, legível e corretamente posicionados, e devem ser renderizados EM PORTUGUÊS, exatamente como escritos, com ortografia correta.
-
-FIDELIDADE: a cena deve refletir exatamente a situação descrita, sem acrescentar elementos espetaculares que não façam parte dela.
-
-Cena: ${promptText}`,
-
+      prompt,
       size: "1536x1024",
+      quality: qualidade,
+      outputFormat: "webp",
+      outputCompression: 80,
     }),
   });
   let data = {};
@@ -82,7 +118,25 @@ Cena: ${promptText}`,
   if(!data.imageDataUrl){
     throw new Error("O backend não retornou a imagem.");
   }
-  return data.imageDataUrl;
+  if(data.uso) somaUsoImagem(data.uso);
+  return { dataUrl: data.imageDataUrl, uso: data.uso || null };
+}
+
+/* Contabilidade das imagens do simulado, para o custo ser verificável em vez de
+   estimado: o backend devolve tokens, segundos e preço de cada imagem. */
+function zeraUsoImagem(){
+  state.usoImagem = { imagens: 0, segundos: 0, tokensEntrada: 0, tokensSaida: 0, custoUSD: 0, bytes: 0 };
+}
+function somaUsoImagem(u){
+  if(!state.usoImagem) zeraUsoImagem();
+  const a = state.usoImagem;
+  a.imagens += 1;
+  a.segundos += Number(u.segundos) || 0;
+  a.tokensEntrada += Number(u.tokensEntrada) || 0;
+  a.tokensSaida += Number(u.tokensSaida) || 0;
+  a.custoUSD += Number(u.custoUSD) || 0;
+  a.bytes += Number(u.bytesImagem) || 0;
+  console.log(`[imagem] ${u.qualidade} · ${u.segundos}s · ${u.tokensSaida} tokens · US$ ${Number(u.custoUSD).toFixed(5)} · ${Math.round((Number(u.bytesImagem)||0)/1024)} KB  |  acumulado: ${a.imagens} imagens, US$ ${a.custoUSD.toFixed(4)}`);
 }
 
 let uidCounter = 1;
@@ -1095,14 +1149,16 @@ function renderVisualContent(body, visual){
   }
 }
 
-function renderGeneratedImage(holder, promptText, descricao){
+function renderGeneratedImage(holder, promptText, descricao, qualidade){
+  const q = IMG_QUALIDADES.includes(qualidade) ? qualidade : IMG_QUALIDADE_PADRAO;
+  const espera = { low: "cerca de 15 s", medium: "cerca de 40 s", high: "pode passar de 1 min" }[q];
   holder.innerHTML = `
     <div class="visual-image-loading" style="text-align:center;padding:28px 12px;">
       <div class="spinner" style="margin:0 auto;"></div>
-      <div class="hint" style="margin-top:10px;">Gerando imagem... pode levar alguns segundos.</div>
+      <div class="hint" style="margin-top:10px;">Gerando imagem em qualidade ${IMG_QUALIDADE_ROTULO[q].toLowerCase()}... ${espera}.</div>
     </div>
   `;
-  generateImageViaBackend(promptText).then(dataUrl => {
+  generateImageViaBackend(promptText, { qualidade: q }).then(({ dataUrl, uso }) => {
     holder.innerHTML = "";
     const img = document.createElement("img");
     img.src = dataUrl;
@@ -1114,6 +1170,21 @@ function renderGeneratedImage(holder, promptText, descricao){
       cap.textContent = descricao;
       holder.appendChild(cap);
     }
+    /* Seletor de qualidade POR FIGURA. O padrão "low" atende a maioria das
+       figuras didáticas e é o mais legível na anotação; quando uma figura
+       específica pedir mais realismo fotográfico, o professor sobe aqui e só
+       aquela é refeita — sem mexer em configuração nem reimplantar nada. */
+    const barra = document.createElement("div");
+    barra.className = "img-qualidade no-print";
+    barra.innerHTML = `<span class="lab">Qualidade:</span>` +
+      IMG_QUALIDADES.map(k =>
+        `<button class="btn sm ${k === q ? "" : "ghost"} img-q-btn" data-q="${k}"${k === q ? " disabled" : ""}>${IMG_QUALIDADE_ROTULO[k]}</button>`
+      ).join("") +
+      (uso ? `<span class="uso">${uso.segundos}s · US$ ${Number(uso.custoUSD).toFixed(4)} · ${Math.round((uso.bytesImagem||0)/1024)} KB</span>` : "");
+    holder.appendChild(barra);
+    barra.querySelectorAll(".img-q-btn").forEach(b => {
+      b.addEventListener("click", () => renderGeneratedImage(holder, promptText, descricao, b.dataset.q));
+    });
   }).catch(err => {
     holder.innerHTML = `
       <div style="text-align:center;padding:18px 12px;">
@@ -1121,7 +1192,7 @@ function renderGeneratedImage(holder, promptText, descricao){
         <button class="btn sm ghost no-print retry-img-btn">🔄 Tentar novamente</button>
       </div>
     `;
-    holder.querySelector(".retry-img-btn").addEventListener("click", () => renderGeneratedImage(holder, promptText, descricao));
+    holder.querySelector(".retry-img-btn").addEventListener("click", () => renderGeneratedImage(holder, promptText, descricao, q));
   });
 }
 
