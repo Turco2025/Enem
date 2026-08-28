@@ -1846,8 +1846,17 @@ function enemOptionMark(doc, x, yBaseline, letter){
   doc.text(letter, cx, cy + 2.5, { align: "center" });
 }
 
-// Alternativa A–E: letra circulada encostada na margem da coluna, texto
-// pendurado a 4,5 mm, entrelinha 13,4 pt, alinhado à esquerda (não justificado).
+/* Alternativa A–E: letra circulada encostada na margem da coluna, texto
+   pendurado a 4,5 mm, entrelinha 13,4 pt, JUSTIFICADO nas duas margens.
+
+   Determinação do professor: todo texto do simulado sai justificado — o
+   texto-base, o comando, as alternativas, o gabarito e os comentários de cada
+   alternativa —, no PDF, no Word e no HTML. Esta função desenha tanto as
+   alternativas da prova quanto os comentários da versão do professor, então a
+   regra vale nos dois lugares. A última linha de cada alternativa nunca é
+   esticada (enemDrawRichLine trata isso), e alternativa de uma linha só — o
+   caso comum em Matemática, Física e Química — fica visualmente igual ao que
+   era antes, porque linha única é sempre última linha.                       */
 function enemAlternative(doc, ctx, flow, letter, text){
   const width = flow.w - ENEM.hang;
   const clean = pdfSanitizeText(String(text || "").trim()) || "—";
@@ -1856,10 +1865,9 @@ function enemAlternative(doc, ctx, flow, letter, text){
     enemEnsure(doc, ctx, flow, ENEM.altLeading);
     const base = flow.y + ENEM.body;
     if(i === 0) enemOptionMark(doc, flow.x, base, letter);
-    // Alternativas são alinhadas à esquerda (não justificadas), com o texto
-    // pendurado a 4,5 mm da letra circulada.
+    // Justificadas, com o texto pendurado a 4,5 mm da letra circulada.
     enemDrawRichLine(doc, parts, flow.x + ENEM.hang, base, width, ENEM.body,
-                     "left", i === lines.length - 1, false);
+                     "justify", i === lines.length - 1, false);
     flow.y += ENEM.altLeading;
   });
 }
@@ -2357,9 +2365,9 @@ table.pg > tbody td{ padding:0; vertical-align:top; }
 .ref-visual{ text-align:justify; }
 
 /* Alternativas: letra circulada na margem, texto pendurado a 4,5 mm,
-   entrelinha 13,4 pt. */
+   entrelinha 13,4 pt, justificadas — como no PDF e no Word. */
 .alts{ margin:1.51mm 0 0; }
-.alt{ margin:0; padding-left:4.5mm; text-indent:-4.5mm; line-height:13.4pt; text-align:left; }
+.alt{ margin:0; padding-left:4.5mm; text-indent:-4.5mm; line-height:13.4pt; text-align:justify; }
 .alt .letra{ font-family:"Segoe UI Symbol","Apple Symbols",Calibri,sans-serif; margin-right:1.6mm; }
 
 /* Filete sólido de fechamento, 0,5 pt, largura cheia da coluna. No caderno
@@ -2860,7 +2868,7 @@ function enemDocxRichParagraph(text, opts){
    da borda da coluna, termina 0,30 mm antes da direita, filete escuro de 1 pt
    no topo e faixa de 1,06 mm com 79,5 % em #B9E5FA e 20,5 % em #231F20.     */
 function enemDocxQuestionLabel(numero, colTw, primeiro){
-  const { Paragraph, TextRun, BorderStyle, LineRuleType, VerticalAlign } = window.docx;
+  const { Paragraph, TextRun, AlignmentType, BorderStyle, LineRuleType, VerticalAlign } = window.docx;
   const larg = colTw || ENEM_DOCX.colW;
   const barra = larg - ENEM_DOCX.ornStart - ENEM_DOCX.ornGap;
   const azulW = Math.round(barra * ENEM_DOCX.ornBlueShare);
@@ -2871,6 +2879,7 @@ function enemDocxQuestionLabel(numero, colTw, primeiro){
     bottom: { style: BorderStyle.SINGLE, size: DOCX_LINHA.orn, color: cor, space: 0 },
   });
   const rotulo = new Paragraph({
+    alignment: AlignmentType.JUSTIFIED,
     spacing: { before: 0, after: 0, line: Math.round(12 * 20), lineRule: LineRuleType.EXACTLY },
     children: [ new TextRun({ text: "QUESTÃO " + numero, bold: true, font: ENEM_DOCX.font, size: 22, color: ENEM_DOCX.ink }) ],
   });
@@ -2892,10 +2901,13 @@ function enemDocxQuestionLabel(numero, colTw, primeiro){
 
 const ENEM_DOCX_MARKS = { A: "Ⓐ", B: "Ⓑ", C: "Ⓒ", D: "Ⓓ", E: "Ⓔ" };
 
+// Justificada, como no PDF — ver enemAlternative. O Word aplica a justificação
+// ao parágrafo inteiro e deixa a última linha em bandeira, exatamente como o
+// desenho do PDF faz, o que mantém as duas saídas idênticas.
 function enemDocxAlternative(letter, text){
   const { Paragraph, TextRun, AlignmentType, LineRuleType } = window.docx;
   return [ new Paragraph({
-    alignment: AlignmentType.LEFT,
+    alignment: AlignmentType.JUSTIFIED,
     indent: { left: ENEM_DOCX.hang, hanging: ENEM_DOCX.hang },
     spacing: { line: ENEM_DOCX.altLine, lineRule: LineRuleType.EXACTLY, before: 0, after: 0 },
     children: [
@@ -2998,16 +3010,21 @@ function enemDocxVisual(visual, cardIdx, colTw){
 }
 
 function enemDocxSubhead(texto){
-  const { Paragraph, TextRun, LineRuleType } = window.docx;
+  const { Paragraph, TextRun, AlignmentType, LineRuleType } = window.docx;
   return [ new Paragraph({
+    // Justificado por coerência com o resto do documento. Subtítulo é sempre
+    // uma linha só, então a justificação não estica nada — mas deixa o
+    // alinhamento declarado igual em todo o arquivo.
+    alignment: AlignmentType.JUSTIFIED,
     spacing: { before: 85, after: 0, line: ENEM_DOCX.line, lineRule: LineRuleType.EXACTLY },
     children: [ new TextRun({ text: String(texto).toUpperCase(), bold: true, font: ENEM_DOCX.font, size: 20, color: ENEM_DOCX.ink }) ],
   }) ];
 }
 
 function enemDocxAreaTitle(texto){
-  const { Paragraph, TextRun, LineRuleType } = window.docx;
+  const { Paragraph, TextRun, AlignmentType, LineRuleType } = window.docx;
   return [ new Paragraph({
+    alignment: AlignmentType.JUSTIFIED,
     spacing: { after: 181, line: ENEM_DOCX.line, lineRule: LineRuleType.EXACTLY },
     indent: { left: docxMM(2) },
     children: [ new TextRun({ text: String(texto).toUpperCase(), bold: true, font: ENEM_DOCX.font, size: 22, color: ENEM_DOCX.ink }) ],
@@ -3035,13 +3052,14 @@ function enemDocxGabaritoAluno(doneQuestions){
 
 /* §7.3 — caderno de respostas do PROFESSOR. */
 function enemDocxGabaritoBlock(o){
-  const { Paragraph, TextRun, LineRuleType } = window.docx;
+  const { Paragraph, TextRun, AlignmentType, LineRuleType } = window.docx;
   const d = o.q.data || {};
   const out = [];
   out.push(...enemDocxQuestionLabel(o.idx + 1, ENEM_DOCX.colW, o.primeiroDoCaderno));
 
   const letra = d.gabarito || "—";
   out.push(new Paragraph({
+    alignment: AlignmentType.JUSTIFIED,
     spacing: { line: ENEM_DOCX.altLine, lineRule: LineRuleType.EXACTLY, before: 0, after: 0 },
     indent: { left: ENEM_DOCX.hang, hanging: ENEM_DOCX.hang },
     children: [
