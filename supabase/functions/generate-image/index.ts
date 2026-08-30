@@ -10,7 +10,6 @@ const CORS_HEADERS = {
 // Usa a API oficial da OpenAI, modelo GPT Image 2 ("ChatGPT").
 const OPENAI_API_KEY = Deno.env.get("OPENAI_API_KEY");
 const IMAGE_MODEL = Deno.env.get("OPENAI_IMAGE_MODEL") || "gpt-image-2";
-const IMAGE_QUALITY = Deno.env.get("OPENAI_IMAGE_QUALITY") || "high";
 // SEM TETO DIÁRIO (decisão do professor): ausente, 0 ou negativo = ilimitado.
 // Para reativar um limite depois, basta definir MAX_DAILY_IMAGES com um número
 // positivo nos secrets do projeto Supabase — não é preciso reimplantar a função.
@@ -59,16 +58,12 @@ Deno.serve(async (req: Request) => {
   }
   const size = body.size || "1536x1024";
 
-  /* QUALIDADE POR REQUISIÇÃO. Antes ficava presa no secret do projeto, o que
-     obrigava a reimplantar para trocar — e escondia a alavanca que de fato
-     manda no custo e no tempo. A OpenAI cobra a imagem pelos tokens de SAÍDA:
-     em 1536×1024, "high" custa cerca de 5.500 tokens e "medium" cerca de 1.367,
-     ou seja, um quarto do preço e proporcionalmente menos tempo de geração. O
-     padrão continua sendo o do secret (hoje "high"), então nada muda para quem
-     não pedir outra coisa.                                                   */
-  const QUALIDADES = ["low", "medium", "high", "auto"];
-  const qualidadePedida = (body.quality || "").toString().trim().toLowerCase();
-  const quality = QUALIDADES.includes(qualidadePedida) ? qualidadePedida : IMAGE_QUALITY;
+  /* QUALIDADE FIXA EM "low" — decisão do professor, travada aqui no servidor.
+     Antes a qualidade vinha por requisição (o app tinha um seletor por figura
+     que permitia "medium"/"high"); agora ela é sempre "low", não importa o
+     que o corpo da requisição peça — o campo "quality", se vier, é ignorado.
+     Trocar isso exige mexer neste arquivo, não um clique na interface.        */
+  const quality = "low";
 
   /* FORMATO DE SAÍDA. O padrão continua PNG — é o que o aplicativo sempre
      recebeu, e trocar sozinho mudaria o peso de todo PDF já gerado. Pedindo
