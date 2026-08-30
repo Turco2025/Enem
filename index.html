@@ -233,10 +233,6 @@ select optgroup{background:#fff;color:#111;font-weight:700;}
 .visual-box .visual-instr-wrap .field-label{font-size:11.5px;color:var(--ink-2);margin-bottom:5px;}
 .visual-box .visual-instr-input{min-height:40px;font-size:12.5px;}
 .visual-box .visual-body{padding:14px;}
-/* Seletor de qualidade da imagem, por figura. Não sai na impressão. */
-.img-qualidade{display:flex;align-items:center;gap:7px;flex-wrap:wrap;margin-top:10px;}
-.img-qualidade .lab{font-size:11.5px;color:var(--ink-2);}
-.img-qualidade .uso{font-size:11px;color:var(--ink-2);margin-left:auto;font-variant-numeric:tabular-nums;}
 .visual-box img{width:100%;display:block;border-radius:8px;}
 table.enem-table{width:100%;border-collapse:collapse;font-size:12.5px;}
 table.enem-table th, table.enem-table td{border:1px solid var(--glass-brd);padding:8px 10px;text-align:left;}
@@ -510,8 +506,9 @@ let state = {
 
 /* ---------------- Geração de imagem (GPT Image 2 via backend) ----------------
 
-   QUALIDADE PADRÃO: "low". A escolha foi medida, não estilística. Gerando a
-   MESMA especificação nas três qualidades, em 1536×1024:
+   QUALIDADE FIXA EM "low" — sem opção de escolha na interface. A decisão foi
+   medida, não estilística. Gerando a MESMA especificação nas três qualidades,
+   em 1536×1024:
 
        low     16 s   ·   158 tokens   ·   US$ 0,0065
        medium  39 s   · 1.372 tokens   ·   US$ 0,0429
@@ -524,17 +521,16 @@ let state = {
    rótulos em cinza fino, sem tarja, sobre a foto. Para uma figura didática com
    régua e rótulo, mais tokens de imagem trabalham CONTRA a leitura.
 
-   O professor pode subir a qualidade figura a figura pelo seletor no card —
-   nenhuma decisão fica presa no código.
+   Não há mais seletor de qualidade por figura: toda imagem é sempre gerada em
+   "low" — o backend (generate-image) trava isso do lado do servidor também,
+   então nem uma requisição feita fora deste app consegue pedir outra coisa.
 
    FORMATO: WebP com compressão 80. A mesma imagem que sai com 2,2 MB em PNG sai
    com 110 KB em WebP — 20× menor, custo idêntico (a OpenAI cobra pelos tokens da
    imagem, não pelos bytes). É o que torna viável um simulado com 15 figuras sem
    gerar um PDF de 30 MB.                                                      */
 
-const IMG_QUALIDADES = ["low", "medium", "high"];
 const IMG_QUALIDADE_PADRAO = "low";
-const IMG_QUALIDADE_ROTULO = { low: "Rápida", medium: "Média", high: "Alta" };
 
 /* O agente já entrega o "promptImagem" no protocolo das 8 seções, que ali dentro
    descreve as duas camadas, a regra de precedência e as restrições negativas.
@@ -550,9 +546,7 @@ const IMG_PREAMBULO_CURTO = `Ilustração educacional para uma questão no padr�
 
 Cena: `;
 
-async function generateImageViaBackend(promptText, opts){
-  const o = opts || {};
-  const qualidade = IMG_QUALIDADES.includes(o.qualidade) ? o.qualidade : IMG_QUALIDADE_PADRAO;
+async function generateImageViaBackend(promptText){
   const texto = String(promptText || "");
   const prompt = imgEhEspecificacaoCompleta(texto) ? texto : (IMG_PREAMBULO_CURTO + texto);
 
@@ -562,7 +556,7 @@ async function generateImageViaBackend(promptText, opts){
     body: JSON.stringify({
       prompt,
       size: "1536x1024",
-      quality: qualidade,
+      quality: IMG_QUALIDADE_PADRAO,
       outputFormat: "webp",
       outputCompression: 80,
     }),
@@ -1607,16 +1601,14 @@ function renderVisualContent(body, visual){
   }
 }
 
-function renderGeneratedImage(holder, promptText, descricao, qualidade){
-  const q = IMG_QUALIDADES.includes(qualidade) ? qualidade : IMG_QUALIDADE_PADRAO;
-  const espera = { low: "cerca de 15 s", medium: "cerca de 40 s", high: "pode passar de 1 min" }[q];
+function renderGeneratedImage(holder, promptText, descricao){
   holder.innerHTML = `
     <div class="visual-image-loading" style="text-align:center;padding:28px 12px;">
       <div class="spinner" style="margin:0 auto;"></div>
-      <div class="hint" style="margin-top:10px;">Gerando imagem em qualidade ${IMG_QUALIDADE_ROTULO[q].toLowerCase()}... ${espera}.</div>
+      <div class="hint" style="margin-top:10px;">Gerando imagem... cerca de 15 s.</div>
     </div>
   `;
-  generateImageViaBackend(promptText, { qualidade: q }).then(({ dataUrl, uso }) => {
+  generateImageViaBackend(promptText).then(({ dataUrl, uso }) => {
     holder.innerHTML = "";
     const img = document.createElement("img");
     img.src = dataUrl;
@@ -1628,21 +1620,9 @@ function renderGeneratedImage(holder, promptText, descricao, qualidade){
       cap.textContent = descricao;
       holder.appendChild(cap);
     }
-    /* Seletor de qualidade POR FIGURA. O padrão "low" atende a maioria das
-       figuras didáticas e é o mais legível na anotação; quando uma figura
-       específica pedir mais realismo fotográfico, o professor sobe aqui e só
-       aquela é refeita — sem mexer em configuração nem reimplantar nada. */
-    const barra = document.createElement("div");
-    barra.className = "img-qualidade no-print";
-    barra.innerHTML = `<span class="lab">Qualidade:</span>` +
-      IMG_QUALIDADES.map(k =>
-        `<button class="btn sm ${k === q ? "" : "ghost"} img-q-btn" data-q="${k}"${k === q ? " disabled" : ""}>${IMG_QUALIDADE_ROTULO[k]}</button>`
-      ).join("") +
-      (uso ? `<span class="uso">${uso.segundos}s · US$ ${Number(uso.custoUSD).toFixed(4)} · ${Math.round((uso.bytesImagem||0)/1024)} KB</span>` : "");
-    holder.appendChild(barra);
-    barra.querySelectorAll(".img-q-btn").forEach(b => {
-      b.addEventListener("click", () => renderGeneratedImage(holder, promptText, descricao, b.dataset.q));
-    });
+    /* Sem seletor de qualidade e sem custo exibido na tela — a geração é
+       sempre "low", sem opção de troca. O uso continua contabilizado em
+       state.usoImagem (ver somaUsoImagem) para consulta quando pedida. */
   }).catch(err => {
     holder.innerHTML = `
       <div style="text-align:center;padding:18px 12px;">
@@ -1650,7 +1630,7 @@ function renderGeneratedImage(holder, promptText, descricao, qualidade){
         <button class="btn sm ghost no-print retry-img-btn">🔄 Tentar novamente</button>
       </div>
     `;
-    holder.querySelector(".retry-img-btn").addEventListener("click", () => renderGeneratedImage(holder, promptText, descricao, q));
+    holder.querySelector(".retry-img-btn").addEventListener("click", () => renderGeneratedImage(holder, promptText, descricao));
   });
 }
 
