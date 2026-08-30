@@ -4044,20 +4044,9 @@ function init(){
 
   setViewMode("professor");
 
-  // 3D tilt effect on cards (delegated)
-  document.addEventListener("mousemove", e => {
-    const card = e.target.closest && e.target.closest(".qcard, .area-tile");
-    document.querySelectorAll(".qcard.tilt-active, .area-tile.tilt-active").forEach(c => { if(c !== card){ c.style.transform = ""; c.classList.remove("tilt-active"); }});
-    if(!card) return;
-    const r = card.getBoundingClientRect();
-    const px = (e.clientX - r.left) / r.width - .5;
-    const py = (e.clientY - r.top) / r.height - .5;
-    card.classList.add("tilt-active");
-    card.style.transform = `perspective(900px) rotateX(${(-py*4).toFixed(2)}deg) rotateY(${(px*4).toFixed(2)}deg) translateY(-2px)`;
-  });
-  document.addEventListener("mouseleave", () => {
-    document.querySelectorAll(".tilt-active").forEach(c => { c.style.transform = ""; c.classList.remove("tilt-active"); });
-  }, true);
+  // Efeito de inclinação 3D ao passar o mouse foi removido a pedido do usuário:
+  // os cartões de questão (.qcard) e os blocos de área (.area-tile) agora ficam
+  // fixos, sem rotacionar/deslocar ao movimentar o cursor sobre eles.
 }
 
 function openModal(id){ document.getElementById(id).classList.add("show"); }
