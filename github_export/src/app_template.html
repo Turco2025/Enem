@@ -4,19 +4,12 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Gerador Inteligente de Simulados ENEM</title>
-<!-- Chart.js é usado ao exibir questões com gráfico; carregado sem bloquear o
-     parsing da página (defer). jsPDF e docx.js só são baixados sob demanda,
-     quando o usuário clica em "Exportar PDF"/"Exportar DOCX" (ver loadScriptOnce
-     em app.js) — evita ~1MB de download/execução bloqueando o carregamento inicial. -->
-<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.5.0/chart.umd.min.js" defer></script>
-<!-- Supabase (login/cadastro e arquivo "Meus Simulados"). Carregado como defer;
-     o cliente só é criado dentro de init() (DOMContentLoaded), quando o script
-     abaixo já terminou de rodar, então window.supabase sempre existe a tempo. -->
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js" defer></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.5.0/chart.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/4.2.1/jspdf.umd.min.js"></script>
 <style>
 :root{
   --bg-0:#0b0f1e; --bg-1:#131a2e; --bg-2:#1b2440;
-  --ink-0:#ffffff; --ink-1:#ffffff; --ink-2:#ffffff;
+  --ink-0:#f5f7ff; --ink-1:#c7cde3; --ink-2:#8a92b8;
   --glass: rgba(255,255,255,.06); --glass-brd: rgba(255,255,255,.14);
   --ok:#22c55e; --warn:#f59e0b; --bad:#ef4444;
   --ling-a:#a855f7; --ling-b:#ec4899;
@@ -92,15 +85,6 @@ header.topbar{display:flex;align-items:center;justify-content:space-between;gap:
   -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
   -webkit-mask-composite: xor; mask-composite: exclude; pointer-events:none;}
 
-/* Cada etapa do formulário com uma cor de fundo própria, para um layout mais colorido.
-   Cada bloco também redefine --accent-a/--accent-b localmente, então botões, chips
-   selecionados, badges e outros elementos internos herdam automaticamente a cor do bloco. */
-.card-step1{--accent-a:#1e3a8a;--accent-b:#1d4ed8;background:linear-gradient(150deg, #1e3a8a, #172554);border-color:rgba(96,165,250,.55);border-width:2px;}
-.card-step2{--accent-a:#22c55e;--accent-b:#16a34a;background:linear-gradient(150deg, #15803d, #14532d);border-color:rgba(134,239,172,.5);border-width:2px;}
-.card-step3{--accent-a:#f59e0b;--accent-b:#f97316;background:linear-gradient(150deg, #92400e, #7c2d12);border-color:rgba(253,186,116,.5);border-width:2px;}
-.card-step4{--accent-a:#ec4899;--accent-b:#db2777;background:linear-gradient(150deg, #9d174d, #701a3f);border-color:rgba(249,168,212,.5);border-width:2px;}
-.card-step5{--accent-a:#a855f7;--accent-b:#9333ea;background:linear-gradient(150deg, #6b21a8, #4c1d95);border-color:rgba(216,180,254,.5);border-width:2px;}
-
 .section-title{display:flex;align-items:center;gap:10px;margin:0 0 6px;font-size:16px;font-weight:700;color:var(--ink-0);}
 .section-title .num{
   width:26px;height:26px;border-radius:8px;display:flex;align-items:center;justify-content:center;
@@ -121,17 +105,12 @@ header.topbar{display:flex;align-items:center;justify-content:space-between;gap:
   background:var(--tile-grad);display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:900;}
 .area-tile .ic{font-size:26px;margin-bottom:8px;display:block;}
 .area-tile h3{margin:0 0 4px;font-size:14.5px;}
-.area-tile p{margin:0;font-size:11.5px;color:rgba(255,255,255,.88);line-height:1.4;text-shadow:0 1px 3px rgba(0,0,0,.35);}
-.area-tile h3{text-shadow:0 1px 3px rgba(0,0,0,.35);}
-.area-tile[data-area="linguagens"]{--tile-grad:linear-gradient(135deg,#15803d,#14532d);--tile-glow:rgba(21,128,61,.55);
-  background:linear-gradient(160deg, #15803d, #14532d);border-color:rgba(134,239,172,.55);}
-.area-tile[data-area="humanas"]{--tile-grad:linear-gradient(135deg,#92400e,#7c2d12);--tile-glow:rgba(146,64,14,.55);
-  background:linear-gradient(160deg, #92400e, #7c2d12);border-color:rgba(253,186,116,.55);}
-.area-tile[data-area="natureza"]{--tile-grad:linear-gradient(135deg,#9d174d,#701a3f);--tile-glow:rgba(157,23,77,.55);
-  background:linear-gradient(160deg, #9d174d, #701a3f);border-color:rgba(249,168,212,.55);}
-.area-tile[data-area="matematica"]{--tile-grad:linear-gradient(135deg,#6b21a8,#4c1d95);--tile-glow:rgba(107,33,168,.55);
-  background:linear-gradient(160deg, #6b21a8, #4c1d95);border-color:rgba(216,180,254,.55);}
-.area-tile.sel[data-area]{box-shadow:0 20px 44px -14px var(--tile-glow,rgba(99,102,241,.95)), inset 0 0 0 3px rgba(255,255,255,.65);}
+.area-tile p{margin:0;font-size:11.5px;color:var(--ink-2);line-height:1.4;}
+.area-tile[data-area="linguagens"]{--tile-grad:linear-gradient(135deg,var(--ling-a),var(--ling-b));--tile-glow:rgba(168,85,247,.55);}
+.area-tile[data-area="humanas"]{--tile-grad:linear-gradient(135deg,var(--hum-a),var(--hum-b));--tile-glow:rgba(249,115,22,.55);}
+.area-tile[data-area="natureza"]{--tile-grad:linear-gradient(135deg,var(--nat-a),var(--nat-b));--tile-glow:rgba(16,185,129,.55);}
+.area-tile[data-area="matematica"]{--tile-grad:linear-gradient(135deg,var(--mat-a),var(--mat-b));--tile-glow:rgba(59,130,246,.55);}
+.area-tile.sel[data-area]{background:linear-gradient(160deg, color-mix(in srgb, var(--tile-glow) 22%, transparent), transparent);}
 
 .chip-row{display:flex;flex-wrap:wrap;gap:10px;}
 .chip{
@@ -139,7 +118,7 @@ header.topbar{display:flex;align-items:center;justify-content:space-between;gap:
   cursor:pointer;font-size:13px;color:var(--ink-1);transition:all .15s ease;
 }
 .chip:hover{background:rgba(255,255,255,.08);}
-.chip.sel{color:#fff;border-color:transparent;background:linear-gradient(135deg,var(--accent-a),var(--accent-b));box-shadow:0 8px 18px -6px color-mix(in srgb, var(--accent-a) 70%, transparent);}
+.chip.sel{color:#fff;border-color:transparent;background:linear-gradient(135deg,var(--accent-a),var(--accent-b));box-shadow:0 8px 18px -6px rgba(99,102,241,.5);}
 
 label.field-label{display:block;font-size:12.5px;font-weight:600;color:var(--ink-1);margin:0 0 7px;letter-spacing:.2px;}
 input[type=text], input[type=number], input[type=password], textarea, select{
@@ -155,10 +134,8 @@ select option{background:#151b30;color:#fff;}
 select optgroup{background:#fff;color:#111;font-weight:700;}
 
 .qty-stepper{display:flex;align-items:center;gap:14px;}
-.qty-stepper button{width:42px;height:42px;border-radius:12px;border:none;
-  background:linear-gradient(135deg,var(--accent-a),var(--accent-b));color:#fff;font-size:19px;font-weight:800;cursor:pointer;transition:.15s;
-  box-shadow:0 6px 16px -6px rgba(0,0,0,.45);}
-.qty-stepper button:hover{filter:brightness(1.15);transform:translateY(-1px);}
+.qty-stepper button{width:42px;height:42px;border-radius:12px;border:1.5px solid var(--glass-brd);background:rgba(255,255,255,.04);color:#fff;font-size:19px;cursor:pointer;transition:.15s;}
+.qty-stepper button:hover{background:rgba(255,255,255,.1);}
 .qty-stepper .qty-val{font-size:28px;font-weight:800;min-width:52px;text-align:center;background:linear-gradient(90deg,#fff,#c7d2fe);-webkit-background-clip:text;background-clip:text;color:transparent;}
 
 .qblock{
@@ -168,14 +145,13 @@ select optgroup{background:#fff;color:#111;font-weight:700;}
 .qblock .qb-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;}
 .qblock .qb-num{display:flex;align-items:center;gap:10px;font-weight:700;font-size:13.5px;}
 .qblock .qb-num .dot{width:26px;height:26px;border-radius:8px;background:linear-gradient(135deg,var(--accent-a),var(--accent-b));display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:800;}
-.qgrid{display:grid;grid-template-columns:1fr;gap:12px;}
+.qgrid{display:grid;grid-template-columns:2fr 1fr 1fr;gap:12px;}
 .qgrid2{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:12px;}
-.qgrid-stack{display:grid;grid-template-columns:1fr;gap:12px;margin-top:12px;}
 @media (max-width:760px){.qgrid,.qgrid2{grid-template-columns:1fr;}}
 .resource-row{display:flex;gap:8px;flex-wrap:wrap;}
 .res-opt{flex:1;min-width:90px;text-align:center;padding:9px 6px;border-radius:10px;border:1.5px solid var(--glass-brd);cursor:pointer;font-size:12px;background:rgba(255,255,255,.03);transition:.15s;}
 .res-opt:hover{background:rgba(255,255,255,.08);}
-.res-opt.sel{border-color:transparent;background:linear-gradient(135deg,var(--accent-a),var(--accent-b));color:#fff;font-weight:700;box-shadow:0 8px 18px -6px color-mix(in srgb, var(--accent-a) 70%, transparent);}
+.res-opt.sel{border-color:transparent;background:linear-gradient(135deg,var(--accent-a),var(--accent-b));color:#fff;font-weight:700;}
 .res-opt .ic{display:block;font-size:16px;margin-bottom:3px;}
 
 .diff-row{display:flex;gap:8px;}
@@ -200,7 +176,7 @@ select optgroup{background:#fff;color:#111;font-weight:700;}
   background:linear-gradient(160deg, rgba(255,255,255,.07), rgba(255,255,255,.02));
   border:1px solid var(--glass-brd);
   box-shadow:0 25px 60px -25px rgba(0,0,0,.6);
-  transition:box-shadow .12s ease;
+  transform-style:preserve-3d; transition:transform .12s ease, box-shadow .12s ease;
   overflow:hidden;
 }
 .qcard .qcard-top{height:6px;background:linear-gradient(90deg,var(--accent-a),var(--accent-b));}
@@ -220,14 +196,14 @@ select optgroup{background:#fff;color:#111;font-weight:700;}
 .spinner{width:18px;height:18px;border-radius:50%;border:2.5px solid rgba(255,255,255,.2);border-top-color:var(--accent-a);animation:spin .8s linear infinite;flex-shrink:0;}
 @keyframes spin{to{transform:rotate(360deg);}}
 
-.texto-base{background:rgba(255,255,255,.035);border-left:3px solid var(--accent-a);border-radius:0 10px 10px 0;padding:14px 16px;font-size:14px;line-height:1.65;color:var(--ink-1);margin-bottom:16px;white-space:pre-wrap;text-align:justify;}
-.comando{font-size:14.5px;font-weight:600;margin:18px 0 14px;padding-top:16px;line-height:1.5;border-top:1px dashed var(--glass-brd);text-align:justify;}
+.texto-base{background:rgba(255,255,255,.035);border-left:3px solid var(--accent-a);border-radius:0 10px 10px 0;padding:14px 16px;font-size:14px;line-height:1.65;color:var(--ink-1);margin-bottom:16px;white-space:pre-wrap;}
+.comando{font-size:14.5px;font-weight:600;margin:0 0 14px;line-height:1.5;}
 .alt-list{display:flex;flex-direction:column;gap:9px;margin-bottom:6px;}
-.alt-item{display:flex;gap:12px;padding:12px 14px;border-radius:12px;border:1.5px solid var(--glass-brd);background:rgba(255,255,255,.025);font-size:13.5px;line-height:1.55;transition:.15s;text-align:justify;}
-.alt-item .alt-letter{flex-shrink:0;text-align:center;width:26px;height:26px;border-radius:8px;background:rgba(255,255,255,.08);display:flex;align-items:center;justify-content:center;font-weight:800;font-size:12.5px;}
+.alt-item{display:flex;gap:12px;padding:12px 14px;border-radius:12px;border:1.5px solid var(--glass-brd);background:rgba(255,255,255,.025);font-size:13.5px;line-height:1.55;transition:.15s;}
+.alt-item .alt-letter{flex-shrink:0;width:26px;height:26px;border-radius:8px;background:rgba(255,255,255,.08);display:flex;align-items:center;justify-content:center;font-weight:800;font-size:12.5px;}
 .alt-item.correct{border-color:rgba(34,197,94,.5);background:rgba(34,197,94,.08);}
 .alt-item.correct .alt-letter{background:linear-gradient(135deg,#22c55e,#16a34a);color:#fff;}
-.alt-item .alt-comment{margin-top:6px;font-size:12.5px;color:var(--ink-2);border-top:1px dashed var(--glass-brd);padding-top:6px;text-align:justify;}
+.alt-item .alt-comment{margin-top:6px;font-size:12.5px;color:var(--ink-2);border-top:1px dashed var(--glass-brd);padding-top:6px;}
 
 .visual-box{margin:14px 0;border-radius:14px;overflow:hidden;border:1.5px solid var(--glass-brd);background:rgba(255,255,255,.03);}
 .visual-box .visual-header-row{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 14px;border-bottom:1px solid var(--glass-brd);}
@@ -246,8 +222,8 @@ table.enem-table th{background:rgba(255,255,255,.06);}
 .pedagog-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px;margin-bottom:14px;}
 .pedagog-item{background:rgba(255,255,255,.03);border:1px solid var(--glass-brd);border-radius:10px;padding:10px 12px;}
 .pedagog-item .lab{font-size:10.5px;text-transform:uppercase;letter-spacing:.5px;color:var(--ink-2);margin-bottom:3px;}
-.pedagog-item .val{font-size:12.5px;font-weight:600;text-align:justify;}
-.resolucao{background:rgba(255,255,255,.03);border-radius:10px;padding:12px 14px;font-size:13px;line-height:1.6;color:var(--ink-1);margin-bottom:14px;text-align:justify;}
+.pedagog-item .val{font-size:12.5px;font-weight:600;}
+.resolucao{background:rgba(255,255,255,.03);border-radius:10px;padding:12px 14px;font-size:13px;line-height:1.6;color:var(--ink-1);margin-bottom:14px;}
 
 .editrow{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:14px;padding-top:14px;border-top:1px dashed var(--glass-brd);}
 
@@ -272,48 +248,6 @@ table.enem-table th{background:rgba(255,255,255,.06);}
 
 .progressbar{height:8px;border-radius:99px;background:rgba(255,255,255,.08);overflow:hidden;margin:14px 0;}
 .progressbar .fill{height:100%;background:linear-gradient(90deg,var(--accent-a),var(--accent-b));transition:width .3s ease;border-radius:99px;}
-
-/* ---------------- Autenticação ---------------- */
-.modal-box{position:relative;}
-.modal-box .modal-x{position:absolute;top:18px;right:18px;width:32px;height:32px;border-radius:50%;
-  background:rgba(255,255,255,.06);border:none;color:#fff;cursor:pointer;font-size:15px;display:flex;align-items:center;justify-content:center;line-height:1;}
-.modal-box .modal-x:hover{background:rgba(255,255,255,.15);}
-.auth-tabs{display:flex;gap:8px;margin:16px 0 18px;background:rgba(255,255,255,.04);border-radius:12px;padding:4px;}
-.auth-tab{flex:1;text-align:center;padding:10px 12px;border-radius:9px;font-size:13.5px;font-weight:700;cursor:pointer;color:var(--ink-2);transition:.15s;}
-.auth-tab.sel{background:linear-gradient(135deg,var(--mat-a),var(--mat-b));color:#fff;box-shadow:0 8px 18px -6px rgba(59,130,246,.55);}
-.btn-google{width:100%;display:flex;align-items:center;justify-content:center;gap:10px;padding:12px 14px;border-radius:12px;
-  border:1.5px solid var(--glass-brd);background:rgba(255,255,255,.06);color:#fff;font-weight:600;font-size:13.5px;cursor:pointer;transition:.15s;}
-.btn-google:hover{background:rgba(255,255,255,.12);}
-.btn-google svg{width:18px;height:18px;flex-shrink:0;}
-.auth-divider{display:flex;align-items:center;gap:12px;margin:18px 0;color:var(--ink-2);font-size:11.5px;letter-spacing:.5px;}
-.auth-divider::before,.auth-divider::after{content:"";flex:1;height:1px;background:var(--glass-brd);}
-.auth-field{margin-bottom:14px;}
-.auth-submit{width:100%;justify-content:center;margin-top:4px;}
-.auth-switch{text-align:center;margin:16px 0 0;font-size:12.5px;color:var(--ink-2);}
-.auth-err{font-size:12.5px;color:#fca5a5;margin:0 0 12px;display:none;}
-.auth-err.show{display:block;}
-.auth-pane{display:none;}
-.auth-pane.sel{display:block;}
-
-/* ---------------- Meus Simulados ---------------- */
-#simuladosPanel{display:none;}
-.simulados-toolbar{display:flex;justify-content:space-between;align-items:center;gap:14px;flex-wrap:wrap;margin-bottom:22px;}
-.simulados-eyebrow{font-size:12px;font-weight:700;letter-spacing:1px;color:#93c5fd;text-transform:uppercase;margin:0 0 4px;}
-.simulados-titulo{font-size:30px;font-weight:800;margin:0;background:linear-gradient(90deg,#fff,#c7d2fe);-webkit-background-clip:text;background-clip:text;color:transparent;}
-.simulados-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:16px;}
-.simulado-card{border-radius:16px;border:1.5px solid var(--glass-brd);background:rgba(255,255,255,.03);padding:18px;display:flex;flex-direction:column;gap:10px;}
-.simulado-tag{font-size:10.5px;font-weight:700;letter-spacing:.4px;text-transform:uppercase;color:#93c5fd;}
-.simulado-nome{display:flex;align-items:center;gap:8px;font-size:15.5px;font-weight:700;}
-.simulado-nome .txt{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
-.simulado-nome input{flex:1;padding:6px 9px;font-size:14px;}
-.simulado-edit{background:none;border:none;color:var(--ink-2);cursor:pointer;font-size:14px;padding:2px;flex-shrink:0;}
-.simulado-edit:hover{color:#fff;}
-.simulado-meta{font-size:12px;color:var(--ink-2);}
-.simulado-actions{display:flex;gap:8px;margin-top:4px;}
-.simulado-actions .btn{flex:1;justify-content:center;}
-.simulado-del{background:rgba(239,68,68,.12);border:1px solid rgba(239,68,68,.35);color:#fca5a5;width:38px;flex:none !important;border-radius:10px;cursor:pointer;font-size:14px;}
-.simulado-del:hover{background:rgba(239,68,68,.22);}
-.simulados-vazio{color:var(--ink-2);font-size:13.5px;padding:30px 0;text-align:center;}
 
 @media print{
   .no-print, #toastBox{display:none !important;}
@@ -341,48 +275,45 @@ body.mode-professor .qcard{box-shadow:0 25px 60px -25px rgba(0,0,0,.6), 0 0 0 1.
         <p>Conectado ao Agente Elaborador de Questões · Matriz de Referência oficial embutida</p>
       </div>
     </div>
-    <div style="display:flex;gap:10px;align-items:center;" class="no-print">
+    <div style="display:flex;gap:10px;">
       <button class="btn ghost sm" id="btnHelp">Como funciona</button>
       <button class="btn ghost sm no-print" id="btnSettings" style="display:none;">⚙️ Configurações</button>
-      <button class="btn ghost sm" id="btnMeusSimulados" style="display:none;">📄 Meus Simulados</button>
-      <button class="btn ghost sm" id="btnEntrar">Entrar</button>
-      <button class="btn ghost sm" id="btnSair" style="display:none;">Sair</button>
     </div>
   </header>
 
   <!-- FORM PANEL -->
   <div id="formPanel">
 
-    <div class="card card-step1">
+    <div class="card">
       <div class="section-title"><span class="num">1</span> Área do conhecimento</div>
       <p class="section-sub">Escolha a área. As competências, habilidades e o padrão de construção corretos serão carregados automaticamente da Matriz de Referência do ENEM.</p>
       <div class="area-grid" id="areaGrid"></div>
     </div>
 
-    <div class="card card-step2">
+    <div class="card">
       <div class="section-title"><span class="num">2</span> Disciplina</div>
       <p class="section-sub">Dentro da área escolhida, selecione a disciplina específica.</p>
       <div class="chip-row" id="disciplinaChips"></div>
     </div>
 
-    <div class="card card-step3">
+    <div class="card">
       <div class="section-title"><span class="num">3</span> Quantidade de questões</div>
       <p class="section-sub">Você poderá configurar tema, dificuldade, recurso visual, competência e habilidade individualmente para cada questão.</p>
       <div class="qty-stepper">
         <button type="button" id="qtyMinus">–</button>
-        <div class="qty-val" id="qtyVal">1</div>
+        <div class="qty-val" id="qtyVal">5</div>
         <button type="button" id="qtyPlus">+</button>
         <span class="hint">questões (máximo 20)</span>
       </div>
     </div>
 
-    <div class="card card-step4">
+    <div class="card">
       <div class="section-title"><span class="num">4</span> Configuração individual das questões</div>
       <p class="section-sub">Para cada questão, defina o tema, a dificuldade e o recurso visual. Competência e habilidade são opcionais — se você não escolher, o agente seleciona automaticamente a mais aderente ao tema e informa a classificação usada.</p>
       <div id="questionBlocks"></div>
     </div>
 
-    <div class="card card-step5">
+    <div class="card">
       <div class="section-title"><span class="num">5</span> Gerar simulado</div>
       <div class="footer-actions">
         <label style="display:flex;align-items:center;gap:8px;font-size:13px;color:var(--ink-1);">
@@ -410,7 +341,6 @@ body.mode-professor .qcard{box-shadow:0 25px 60px -25px rgba(0,0,0,.6), 0 0 0 1.
           </div>
           <button class="btn ghost sm" id="btnPrint">🖨️ Imprimir</button>
           <button class="btn ghost sm" id="btnExportPdf">📄 Exportar PDF</button>
-          <button class="btn ghost sm" id="btnExportDocx">📝 Exportar DOCX</button>
           <button class="btn ghost sm" id="btnExport">⬇️ Exportar HTML</button>
           <button class="btn ghost sm" id="btnBackToForm">← Nova configuração</button>
         </div>
@@ -421,68 +351,6 @@ body.mode-professor .qcard{box-shadow:0 25px 60px -25px rgba(0,0,0,.6), 0 0 0 1.
     <div class="card hidden" id="summaryCard">
       <div class="section-title"><span class="num">📋</span> Gabarito resumido</div>
       <table class="summary-table"><thead><tr><th>Questão</th><th>Tema</th><th>Habilidade</th><th>Dificuldade</th><th>Gabarito</th></tr></thead><tbody id="summaryBody"></tbody></table>
-    </div>
-  </div>
-
-  <!-- MEUS SIMULADOS PANEL -->
-  <div id="simuladosPanel">
-    <div class="simulados-toolbar no-print">
-      <div>
-        <p class="simulados-eyebrow">Sua área</p>
-        <h2 class="simulados-titulo">Meus Simulados</h2>
-      </div>
-      <button class="btn ghost sm" id="btnFecharSimulados">← Voltar</button>
-    </div>
-    <div class="simulados-grid" id="simuladosGrid"></div>
-    <p class="simulados-vazio hidden" id="simuladosVazio">Você ainda não gerou nenhum simulado. Assim que gerar o primeiro, ele aparece arquivado aqui.</p>
-  </div>
-</div>
-
-<!-- Auth modal (login / cadastro) -->
-<div class="modal-overlay no-print" id="authModal">
-  <div class="modal-box">
-    <button class="modal-x" id="btnCloseAuth" aria-label="Fechar" title="Fechar">✕</button>
-    <h2>Acesse sua área</h2>
-    <p class="desc" style="margin-bottom:6px;">Entre para gerar simulados</p>
-
-    <div class="auth-tabs">
-      <div class="auth-tab sel" id="authTabLogin" data-pane="login">→ Acessar</div>
-      <div class="auth-tab" id="authTabCadastro" data-pane="cadastro">+ Cadastrar</div>
-    </div>
-
-    <p class="auth-err" id="authErr"></p>
-
-    <button class="btn-google" id="btnGoogleAuth" type="button">
-      <svg viewBox="0 0 48 48"><path fill="#FFC107" d="M43.6 20.5H42V20H24v8h11.3C33.9 32.6 29.4 36 24 36c-6.6 0-12-5.4-12-12s5.4-12 12-12c3.1 0 5.8 1.1 8 3l6-6C34.6 5.1 29.6 3 24 3 12.4 3 3 12.4 3 24s9.4 21 21 21 21-9.4 21-21c0-1.2-.1-2.4-.4-3.5z"/><path fill="#FF3D00" d="M6.3 14.7l6.6 4.8C14.7 15.6 19 13 24 13c3.1 0 5.8 1.1 8 3l6-6C34.6 6.1 29.6 4 24 4c-7.4 0-13.8 4.1-17.1 10.1z"/><path fill="#4CAF50" d="M24 44c5.5 0 10.4-2.1 14.1-5.5l-6.5-5.5C29.6 34.8 27 35.7 24 35.7c-5.4 0-9.9-3.4-11.4-8.2l-6.6 5.1C9.1 40 16 44 24 44z"/><path fill="#1976D2" d="M43.6 20.5H42V20H24v8h11.3c-.7 2-2 3.7-3.7 4.9l6.5 5.5C41.8 35.4 44 30.1 44 24c0-1.2-.1-2.4-.4-3.5z"/></svg>
-      Continuar com Google
-    </button>
-
-    <div class="auth-divider">OU</div>
-
-    <div id="authPaneLogin" class="auth-pane sel">
-      <div class="auth-field">
-        <label class="field-label">E-mail</label>
-        <input type="text" id="loginEmail" placeholder="voce@exemplo.com" autocomplete="username">
-      </div>
-      <div class="auth-field">
-        <label class="field-label">Senha</label>
-        <input type="password" id="loginSenha" placeholder="••••••••" autocomplete="current-password">
-      </div>
-      <button class="btn auth-submit" id="btnLoginSubmit">Acessar minha área</button>
-      <p class="auth-switch">Não tem conta? <a id="linkIrCadastro">Cadastre-se aqui</a></p>
-    </div>
-
-    <div id="authPaneCadastro" class="auth-pane">
-      <div class="auth-field">
-        <label class="field-label">E-mail</label>
-        <input type="text" id="cadastroEmail" placeholder="voce@exemplo.com" autocomplete="username">
-      </div>
-      <div class="auth-field">
-        <label class="field-label">Senha</label>
-        <input type="password" id="cadastroSenha" placeholder="Mínimo 6 caracteres" autocomplete="new-password">
-      </div>
-      <button class="btn auth-submit" id="btnCadastroSubmit">Criar minha conta</button>
-      <p class="auth-switch">Já tem conta? <a id="linkIrLogin">Entrar</a></p>
     </div>
   </div>
 </div>

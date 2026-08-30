@@ -19,6 +19,19 @@ const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
 const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
+// Geração de imagem agora exige login (Supabase Auth): o app cliente manda o
+// token da sessão do usuário em "Authorization: Bearer <token>". A chave
+// anônima (anon key) sozinha NÃO passa nesta checagem, só um token de sessão
+// de um usuário autenticado de verdade.
+async function usuarioAutenticado(req: Request) {
+  const authHeader = req.headers.get("Authorization") || req.headers.get("authorization") || "";
+  const token = authHeader.replace(/^Bearer\s+/i, "").trim();
+  if (!token) return null;
+  const { data, error } = await supabase.auth.getUser(token);
+  if (error || !data?.user) return null;
+  return data.user;
+}
+
 function jsonResponse(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), {
     status,
@@ -33,6 +46,11 @@ Deno.serve(async (req: Request) => {
 
   if (req.method !== "POST") {
     return jsonResponse({ error: "Método não suportado." }, 405);
+  }
+
+  const usuario = await usuarioAutenticado(req);
+  if (!usuario) {
+    return jsonResponse({ error: "É necessário fazer login para gerar imagens." }, 401);
   }
 
   if (!OPENAI_API_KEY) {

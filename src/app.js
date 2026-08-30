@@ -51,6 +51,339 @@ let state = {
   viewMode: "professor",
 };
 
+/* ---------------- Autenticação (Supabase Auth) + "Meus Simulados" ----------------
+
+   Login é OBRIGATÓRIO para gerar simulados: assim que a pessoa clica em
+   qualquer caixa/etapa do formulário sem estar logada, o modal de login abre
+   e bloqueia o fluxo até ela entrar ou se cadastrar (ver exigirLogin() e o
+   listener de clique dos cartões de área em renderAreaGrid()). Uma vez
+   logada, todo simulado gerado é automaticamente arquivado em "Meus
+   Simulados" (tabela "simulados" no Supabase, protegida por RLS: cada
+   usuário só enxerga os próprios registros).
+
+   O cliente Supabase só é criado dentro de init() (na virada do
+   DOMContentLoaded) — ver comentário junto à tag <script defer> do
+   supabase-js no template — então nenhuma função abaixo pode ser chamada
+   antes disso. */
+const SUPABASE_URL = "https://gkceyrkdmnhgqimmrsre.supabase.co";
+const SUPABASE_PUBLISHABLE_KEY = "sb_publishable_-s4dLevKftQzX-aOJyKfMw_u5c_JzLV";
+
+let supabaseClient = null;
+let currentUser = null;
+let currentSession = null;
+// Guarda o id do registro em "simulados" quando o simulado exibido na tela
+// veio de "Meus Simulados" (botão "Abrir") — assim, ao gerar de novo, não se
+// confunde um simulado reaberto com um simulado novo.
+let simuladoAbertoId = null;
+
+function initAuth(){
+  supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY);
+  supabaseClient.auth.onAuthStateChange((_event, session) => {
+    currentSession = session;
+    currentUser = session ? session.user : null;
+    atualizaHeaderAuth();
+  });
+  supabaseClient.auth.getSession().then(({ data }) => {
+    currentSession = data.session;
+    currentUser = data.session ? data.session.user : null;
+    atualizaHeaderAuth();
+  });
+}
+
+// Cabeçalho de autorização enviado ao backend (Supabase Edge Functions), que
+// agora exige um usuário logado de verdade — ver usuarioAutenticado() nos
+// arquivos supabase/functions/generate-question|generate-image/index.ts.
+function authHeaders(){
+  return currentSession && currentSession.access_token
+    ? { "Authorization": "Bearer " + currentSession.access_token }
+    : {};
+}
+
+function atualizaHeaderAuth(){
+  const logado = !!currentUser;
+  document.getElementById("btnEntrar").style.display = logado ? "none" : "";
+  document.getElementById("btnSair").style.display = logado ? "" : "none";
+  document.getElementById("btnMeusSimulados").style.display = logado ? "" : "none";
+}
+
+// Chama antes de qualquer ação que exija estar logado (selecionar área,
+// clicar em "Gerar simulado completo", abrir "Meus Simulados"...). Se não
+// houver sessão, abre o modal de login/cadastro e devolve false — quem
+// chamou deve interromper a ação nesse caso.
+function exigirLogin(){
+  if(currentUser) return true;
+  abrirAuthModal("login");
+  return false;
+}
+
+function abrirAuthModal(aba){
+  document.getElementById("authErr").classList.remove("show");
+  document.getElementById("authErr").textContent = "";
+  selecionaAbaAuth(aba || "login");
+  openModal("authModal");
+}
+
+function selecionaAbaAuth(aba){
+  const login = aba === "login";
+  document.getElementById("authTabLogin").classList.toggle("sel", login);
+  document.getElementById("authTabCadastro").classList.toggle("sel", !login);
+  document.getElementById("authPaneLogin").classList.toggle("sel", login);
+  document.getElementById("authPaneCadastro").classList.toggle("sel", !login);
+}
+
+function mostraErroAuth(msg){
+  const el = document.getElementById("authErr");
+  el.textContent = msg;
+  el.classList.add("show");
+}
+
+function traduzErroAuth(err){
+  const msg = String(err && err.message || err || "");
+  if(/invalid login credentials/i.test(msg)) return "E-mail ou senha incorretos.";
+  if(/already registered|already exists|user already registered/i.test(msg)) return "Já existe uma conta com este e-mail. Tente acessar em vez de cadastrar.";
+  if(/password should be at least/i.test(msg)) return "A senha precisa ter pelo menos 6 caracteres.";
+  if(/invalid email/i.test(msg)) return "E-mail inválido.";
+  return msg || "Não foi possível concluir. Tente novamente.";
+}
+
+async function fazerLogin(){
+  const email = document.getElementById("loginEmail").value.trim();
+  const senha = document.getElementById("loginSenha").value;
+  if(!email || !senha){ mostraErroAuth("Preencha e-mail e senha."); return; }
+  const btn = document.getElementById("btnLoginSubmit");
+  btn.disabled = true;
+  try{
+    const { error } = await supabaseClient.auth.signInWithPassword({ email, password: senha });
+    if(error) throw error;
+    closeModal("authModal");
+    toast("Login realizado!", "ok");
+  }catch(err){
+    mostraErroAuth(traduzErroAuth(err));
+  }finally{
+    btn.disabled = false;
+  }
+}
+
+async function fazerCadastro(){
+  const email = document.getElementById("cadastroEmail").value.trim();
+  const senha = document.getElementById("cadastroSenha").value;
+  if(!email || !senha){ mostraErroAuth("Preencha e-mail e senha."); return; }
+  if(senha.length < 6){ mostraErroAuth("A senha precisa ter pelo menos 6 caracteres."); return; }
+  const btn = document.getElementById("btnCadastroSubmit");
+  btn.disabled = true;
+  try{
+    const { data, error } = await supabaseClient.auth.signUp({ email, password: senha });
+    if(error) throw error;
+    if(data.session){
+      closeModal("authModal");
+      toast("Conta criada! Você já está logado.", "ok");
+    }else{
+      // Projeto com confirmação de e-mail ativada: ainda não há sessão.
+      mostraErroAuth("Conta criada! Confira seu e-mail para confirmar o cadastro antes de entrar.");
+    }
+  }catch(err){
+    mostraErroAuth(traduzErroAuth(err));
+  }finally{
+    btn.disabled = false;
+  }
+}
+
+async function fazerLoginGoogle(){
+  try{
+    await supabaseClient.auth.signInWithOAuth({
+      provider: "google",
+      options: { redirectTo: window.location.origin + window.location.pathname },
+    });
+  }catch(err){
+    mostraErroAuth(traduzErroAuth(err));
+  }
+}
+
+async function fazerLogout(){
+  await supabaseClient.auth.signOut();
+  toast("Você saiu da sua conta.", "info");
+  document.getElementById("formPanel").style.display = "block";
+  document.getElementById("resultsPanel").style.display = "none";
+  document.getElementById("simuladosPanel").style.display = "none";
+}
+
+/* ---------------- Arquivo "Meus Simulados" ---------------- */
+
+// Chamado ao final de generateAll(): arquiva (ou atualiza, se o simulado
+// atual veio de "Abrir") o simulado recém-gerado na conta do usuário
+// logado. Tudo que é necessário para reabrir o simulado depois — as
+// questões, o plano de gabarito, a validação escolhida — vai no campo
+// "dados" (jsonb). Melhor esforço: se salvar falhar, o professor ainda fica
+// com o simulado na tela e pode exportar normalmente, só não fica arquivado.
+async function salvarSimuladoAtual(){
+  if(!currentUser) return;
+  const nomeArea = (AREA_META[state.area] && AREA_META[state.area].label) || state.area || "";
+  const linha = {
+    user_id: currentUser.id,
+    nome: `Simulado de ${state.disciplina || state.area || "ENEM"}`,
+    area: state.area,
+    area_label: nomeArea,
+    disciplina: state.disciplina,
+    num_questoes: state.questions.length,
+    validacao_dupla: !!document.getElementById("chkValidacao").checked,
+    dados: {
+      area: state.area,
+      disciplina: state.disciplina,
+      qty: state.qty,
+      questions: state.questions,
+      gabaritoPlan: state.gabaritoPlan || null,
+    },
+  };
+  try{
+    if(simuladoAbertoId){
+      const { error } = await supabaseClient.from("simulados").update(linha).eq("id", simuladoAbertoId);
+      if(error) throw error;
+    }else{
+      const { data, error } = await supabaseClient.from("simulados").insert(linha).select("id").single();
+      if(error) throw error;
+      simuladoAbertoId = data.id;
+    }
+  }catch(err){
+    console.error("Falha ao arquivar o simulado em 'Meus Simulados':", err);
+    toast("O simulado foi gerado, mas não foi possível arquivá-lo em 'Meus Simulados' agora.", "err");
+  }
+}
+
+function formataDataSimulado(iso){
+  try{
+    return new Date(iso).toLocaleDateString("pt-BR", { day: "2-digit", month: "long", year: "numeric" });
+  }catch(e){ return ""; }
+}
+
+async function abrirMeusSimulados(){
+  if(!exigirLogin()) return;
+  document.getElementById("formPanel").style.display = "none";
+  document.getElementById("resultsPanel").style.display = "none";
+  document.getElementById("simuladosPanel").style.display = "block";
+  const grid = document.getElementById("simuladosGrid");
+  const vazio = document.getElementById("simuladosVazio");
+  grid.innerHTML = `<p class="hint">Carregando...</p>`;
+  vazio.classList.add("hidden");
+  try{
+    const { data, error } = await supabaseClient
+      .from("simulados")
+      .select("id, nome, area_label, disciplina, num_questoes, validacao_dupla, created_at")
+      .order("created_at", { ascending: false });
+    if(error) throw error;
+    renderSimuladosGrid(data || []);
+  }catch(err){
+    grid.innerHTML = "";
+    toast("Não foi possível carregar seus simulados: " + String(err && err.message || err), "err");
+  }
+}
+
+function fecharMeusSimulados(){
+  document.getElementById("simuladosPanel").style.display = "none";
+  document.getElementById("formPanel").style.display = "block";
+}
+
+function renderSimuladosGrid(lista){
+  const grid = document.getElementById("simuladosGrid");
+  const vazio = document.getElementById("simuladosVazio");
+  grid.innerHTML = "";
+  if(!lista.length){ vazio.classList.remove("hidden"); return; }
+  vazio.classList.add("hidden");
+  lista.forEach(sim => {
+    const card = document.createElement("div");
+    card.className = "simulado-card";
+    const qtdTxt = sim.num_questoes === 1 ? "1 questão" : `${sim.num_questoes} questões`;
+    const valTxt = sim.validacao_dupla ? "com validação dupla" : "sem validação dupla";
+    card.innerHTML = `
+      <div class="simulado-tag">${escapeHtml(sim.area_label || "")}${sim.area_label ? " · " : ""}${escapeHtml(sim.disciplina || "")}</div>
+      <div class="simulado-nome">
+        <span class="txt" title="${escapeHtml(sim.nome)}">${escapeHtml(sim.nome)}</span>
+        <button class="simulado-edit" title="Renomear">✏️</button>
+      </div>
+      <div class="simulado-meta">${qtdTxt} · ${valTxt}<br>📅 ${formataDataSimulado(sim.created_at)}</div>
+      <div class="simulado-actions">
+        <button class="btn ghost sm btn-abrir">Abrir</button>
+        <button class="simulado-del" title="Excluir">🗑️</button>
+      </div>`;
+    card.querySelector(".btn-abrir").addEventListener("click", () => abrirSimuladoSalvo(sim.id));
+    card.querySelector(".simulado-edit").addEventListener("click", () => iniciarRenomeioSimulado(card, sim));
+    card.querySelector(".simulado-del").addEventListener("click", () => excluirSimulado(sim.id, card));
+    grid.appendChild(card);
+  });
+}
+
+function iniciarRenomeioSimulado(card, sim){
+  const nomeWrap = card.querySelector(".simulado-nome");
+  const nomeAtual = sim.nome;
+  nomeWrap.innerHTML = `
+    <input type="text" value="${escapeHtml(nomeAtual)}" maxlength="120">
+    <button class="simulado-edit edit-ok" title="Salvar">✔️</button>
+    <button class="simulado-edit edit-cancelar" title="Cancelar">✕</button>`;
+  const input = nomeWrap.querySelector("input");
+  input.focus();
+  input.select();
+  const salvar = async () => {
+    const novoNome = input.value.trim() || nomeAtual;
+    nomeWrap.innerHTML = `<span class="txt">${escapeHtml(novoNome)}</span><button class="simulado-edit" title="Renomear">✏️</button>`;
+    nomeWrap.querySelector(".simulado-edit").addEventListener("click", () => iniciarRenomeioSimulado(card, { ...sim, nome: novoNome }));
+    if(novoNome === nomeAtual) return;
+    try{
+      const { error } = await supabaseClient.from("simulados").update({ nome: novoNome }).eq("id", sim.id);
+      if(error) throw error;
+    }catch(err){
+      toast("Não foi possível renomear: " + String(err && err.message || err), "err");
+    }
+  };
+  const cancelar = () => {
+    nomeWrap.innerHTML = `<span class="txt">${escapeHtml(nomeAtual)}</span><button class="simulado-edit" title="Renomear">✏️</button>`;
+    nomeWrap.querySelector(".simulado-edit").addEventListener("click", () => iniciarRenomeioSimulado(card, sim));
+  };
+  nomeWrap.querySelector(".edit-ok").addEventListener("click", salvar);
+  nomeWrap.querySelector(".edit-cancelar").addEventListener("click", cancelar);
+  input.addEventListener("keydown", (e) => {
+    if(e.key === "Enter") salvar();
+    if(e.key === "Escape") cancelar();
+  });
+}
+
+async function excluirSimulado(id, card){
+  if(!confirm("Excluir este simulado arquivado? Esta ação não pode ser desfeita.")) return;
+  try{
+    const { error } = await supabaseClient.from("simulados").delete().eq("id", id);
+    if(error) throw error;
+    card.remove();
+    if(!document.getElementById("simuladosGrid").children.length){
+      document.getElementById("simuladosVazio").classList.remove("hidden");
+    }
+    toast("Simulado excluído.", "ok");
+  }catch(err){
+    toast("Não foi possível excluir: " + String(err && err.message || err), "err");
+  }
+}
+
+async function abrirSimuladoSalvo(id){
+  try{
+    const { data, error } = await supabaseClient.from("simulados").select("*").eq("id", id).single();
+    if(error) throw error;
+    const dados = data.dados || {};
+    state.area = dados.area || data.area;
+    state.disciplina = dados.disciplina || data.disciplina;
+    state.qty = dados.qty || (dados.questions ? dados.questions.length : 1);
+    state.questions = dados.questions || [];
+    state.gabaritoPlan = dados.gabaritoPlan || null;
+    simuladoAbertoId = data.id;
+    document.getElementById("chkValidacao").checked = !!data.validacao_dupla;
+    document.getElementById("simuladosPanel").style.display = "none";
+    document.getElementById("formPanel").style.display = "none";
+    document.getElementById("resultsPanel").style.display = "block";
+    document.getElementById("genProgressWrap").classList.add("hidden");
+    renderResults();
+    updateProgress();
+    toast(`Simulado "${data.nome}" aberto.`, "ok");
+  }catch(err){
+    toast("Não foi possível abrir este simulado: " + String(err && err.message || err), "err");
+  }
+}
+
 /* ---------------- Geração de imagem (GPT Image 2 via backend) ----------------
 
    QUALIDADE FIXA EM "low" — sem opção de escolha na interface. A decisão foi
@@ -99,7 +432,7 @@ async function generateImageViaBackend(promptText){
 
   const res = await fetch(IMAGE_BACKEND_URL, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", ...authHeaders() },
     body: JSON.stringify({
       prompt,
       size: "1536x1024",
@@ -176,7 +509,7 @@ function renderAreaGrid(){
     tile.className = "area-tile" + (state.area === key ? " sel" : "");
     tile.dataset.area = key;
     tile.innerHTML = `<span class="ic">${m.icon}</span><h3>${m.label}</h3><p>${m.desc}</p>`;
-    tile.addEventListener("click", () => selectArea(key));
+    tile.addEventListener("click", () => { if(exigirLogin()) selectArea(key); });
     grid.appendChild(tile);
   });
 }
@@ -475,7 +808,7 @@ async function generateQuestion(q){
     const validar = document.getElementById("chkValidacao").checked;
     const resp = await fetch(QUESTION_BACKEND_URL, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", ...authHeaders() },
       body: JSON.stringify({
         area: state.area,
         disciplina: state.disciplina,
@@ -587,6 +920,11 @@ async function generateAll(){
   }else{
     toast("Simulado gerado! Revise, edite ou regenere questões conforme necessário.", "ok");
   }
+
+  // Arquiva automaticamente em "Meus Simulados" (todo simulado gerado fica
+  // arquivado). Roda por último e nunca interrompe o fluxo do professor —
+  // qualquer falha aqui só avisa por toast, sem desfazer o simulado na tela.
+  await salvarSimuladoAtual();
 }
 
 
@@ -1213,7 +1551,7 @@ async function redoDataVisual(q, body, titleEl, redoBtn){
   try{
     const resp = await fetch(QUESTION_BACKEND_URL, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", ...authHeaders() },
       body: JSON.stringify({
         regenerarVisual: true,
         area: state.area,
@@ -3968,6 +4306,7 @@ async function exportDocx(){
 
 /* ---------------- Init / events ---------------- */
 function init(){
+  initAuth();
   renderAreaGrid();
   renderDisciplinaChips();
   setQty(1);
@@ -3990,12 +4329,15 @@ function init(){
   document.getElementById("qtyPlus").addEventListener("click", () => setQty(state.qty + 1));
 
   document.getElementById("btnGenerate").addEventListener("click", () => {
+    if(!exigirLogin()) return;
     if(!state.area){ toast("Selecione a área do conhecimento.", "err"); return; }
     if(!state.disciplina){ toast("Selecione a disciplina.", "err"); return; }
+    simuladoAbertoId = null; // simulado novo, não é edição de um já arquivado
     generateAll();
   });
 
   document.getElementById("btnBackToForm").addEventListener("click", () => {
+    simuladoAbertoId = null;
     document.getElementById("formPanel").style.display = "block";
     document.getElementById("resultsPanel").style.display = "none";
   });
@@ -4041,6 +4383,22 @@ function init(){
 
   document.getElementById("btnHelp").addEventListener("click", () => openModal("helpModal"));
   document.getElementById("btnCloseHelp").addEventListener("click", () => closeModal("helpModal"));
+
+  // ---------------- Autenticação e "Meus Simulados" ----------------
+  document.getElementById("btnEntrar").addEventListener("click", () => abrirAuthModal("login"));
+  document.getElementById("btnCloseAuth").addEventListener("click", () => closeModal("authModal"));
+  document.getElementById("authTabLogin").addEventListener("click", () => selecionaAbaAuth("login"));
+  document.getElementById("authTabCadastro").addEventListener("click", () => selecionaAbaAuth("cadastro"));
+  document.getElementById("linkIrCadastro").addEventListener("click", () => selecionaAbaAuth("cadastro"));
+  document.getElementById("linkIrLogin").addEventListener("click", () => selecionaAbaAuth("login"));
+  document.getElementById("btnGoogleAuth").addEventListener("click", fazerLoginGoogle);
+  document.getElementById("btnLoginSubmit").addEventListener("click", fazerLogin);
+  document.getElementById("btnCadastroSubmit").addEventListener("click", fazerCadastro);
+  ["loginEmail","loginSenha"].forEach(id => document.getElementById(id).addEventListener("keydown", e => { if(e.key === "Enter") fazerLogin(); }));
+  ["cadastroEmail","cadastroSenha"].forEach(id => document.getElementById(id).addEventListener("keydown", e => { if(e.key === "Enter") fazerCadastro(); }));
+  document.getElementById("btnSair").addEventListener("click", fazerLogout);
+  document.getElementById("btnMeusSimulados").addEventListener("click", abrirMeusSimulados);
+  document.getElementById("btnFecharSimulados").addEventListener("click", fecharMeusSimulados);
 
   setViewMode("professor");
 

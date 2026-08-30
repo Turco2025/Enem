@@ -1,0 +1,2066 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Gerador Inteligente de Simulados ENEM</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.5.0/chart.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/4.2.1/jspdf.umd.min.js"></script>
+<style>
+:root{
+  --bg-0:#0b0f1e; --bg-1:#131a2e; --bg-2:#1b2440;
+  --ink-0:#f5f7ff; --ink-1:#c7cde3; --ink-2:#8a92b8;
+  --glass: rgba(255,255,255,.06); --glass-brd: rgba(255,255,255,.14);
+  --ok:#22c55e; --warn:#f59e0b; --bad:#ef4444;
+  --ling-a:#a855f7; --ling-b:#ec4899;
+  --hum-a:#f97316; --hum-b:#ef4444;
+  --nat-a:#10b981; --nat-b:#14b8a6;
+  --mat-a:#3b82f6; --mat-b:#6366f1;
+  --accent-a: var(--mat-a); --accent-b: var(--mat-b);
+  --radius: 18px;
+}
+*{box-sizing:border-box;}
+html,body{margin:0;padding:0;}
+body{
+  font-family:'Segoe UI',-apple-system,BlinkMacSystemFont,Roboto,Helvetica,Arial,sans-serif;
+  background: radial-gradient(circle at 15% 8%, #1c2650 0%, transparent 45%),
+              radial-gradient(circle at 85% 12%, #2a1b4d 0%, transparent 40%),
+              radial-gradient(circle at 50% 90%, #0f2e3a 0%, transparent 45%),
+              linear-gradient(160deg, var(--bg-0), var(--bg-1) 55%, var(--bg-2));
+  background-attachment: fixed;
+  color: var(--ink-0);
+  min-height:100vh;
+  overflow-x:hidden;
+  position:relative;
+}
+.blob{position:fixed;border-radius:50%;filter:blur(90px);opacity:.35;z-index:0;pointer-events:none;animation:float 18s ease-in-out infinite;}
+.blob.b1{width:420px;height:420px;background:linear-gradient(135deg,var(--ling-a),var(--ling-b));top:-120px;left:-100px;animation-duration:22s;}
+.blob.b2{width:380px;height:380px;background:linear-gradient(135deg,var(--nat-a),var(--nat-b));bottom:-140px;right:-80px;animation-duration:26s;animation-delay:-6s;}
+.blob.b3{width:300px;height:300px;background:linear-gradient(135deg,var(--mat-a),var(--mat-b));top:40%;right:10%;animation-duration:20s;animation-delay:-3s;}
+.blob.b4{width:260px;height:260px;background:linear-gradient(135deg,var(--hum-a),var(--hum-b));bottom:20%;left:6%;animation-duration:24s;animation-delay:-10s;}
+@keyframes float{0%,100%{transform:translate(0,0) scale(1);}33%{transform:translate(30px,-40px) scale(1.08);}66%{transform:translate(-25px,25px) scale(.95);}}
+
+.wrap{position:relative;z-index:1;max-width:1180px;margin:0 auto;padding:28px 20px 90px;}
+
+header.topbar{display:flex;align-items:center;justify-content:space-between;gap:16px;margin-bottom:28px;flex-wrap:wrap;}
+.brand{display:flex;align-items:center;gap:14px;}
+.brand .logo{
+  width:52px;height:52px;border-radius:16px;
+  background:linear-gradient(135deg,var(--mat-a),var(--ling-a));
+  display:flex;align-items:center;justify-content:center;font-size:26px;
+  box-shadow:0 10px 30px -8px rgba(99,102,241,.7), inset 0 1px 0 rgba(255,255,255,.3);
+  transform-style:preserve-3d;
+}
+.brand h1{font-size:22px;margin:0;letter-spacing:.2px;background:linear-gradient(90deg,#fff,#c7d2fe);-webkit-background-clip:text;background-clip:text;color:transparent;}
+.brand p{margin:2px 0 0;font-size:12.5px;color:var(--ink-2);}
+.btn{
+  border:none;cursor:pointer;font-weight:600;font-size:14px;
+  padding:11px 18px;border-radius:12px;color:#fff;
+  background:linear-gradient(135deg,var(--accent-a),var(--accent-b));
+  box-shadow:0 8px 22px -6px rgba(99,102,241,.55), inset 0 1px 0 rgba(255,255,255,.25);
+  transition:transform .15s ease, box-shadow .15s ease, filter .15s ease;
+  display:inline-flex;align-items:center;gap:8px;
+}
+.btn:hover{transform:translateY(-2px);filter:brightness(1.08);}
+.btn:active{transform:translateY(0);}
+.btn.ghost{background:var(--glass);border:1px solid var(--glass-brd);box-shadow:none;color:var(--ink-1);}
+.btn.ghost:hover{background:rgba(255,255,255,.1);color:#fff;}
+.btn.sm{padding:7px 12px;font-size:12.5px;border-radius:9px;}
+.btn:disabled{opacity:.5;cursor:not-allowed;transform:none;}
+
+.card{
+  background:var(--glass);
+  border:1px solid var(--glass-brd);
+  border-radius:var(--radius);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+  box-shadow: 0 20px 50px -20px rgba(0,0,0,.55), inset 0 1px 0 rgba(255,255,255,.06);
+  padding:26px;
+  margin-bottom:22px;
+  position:relative;
+  overflow:hidden;
+}
+.card::before{content:"";position:absolute;inset:0;border-radius:inherit;padding:1px;
+  background:linear-gradient(135deg, rgba(255,255,255,.25), rgba(255,255,255,0) 40%);
+  -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor; mask-composite: exclude; pointer-events:none;}
+
+.section-title{display:flex;align-items:center;gap:10px;margin:0 0 6px;font-size:16px;font-weight:700;color:var(--ink-0);}
+.section-title .num{
+  width:26px;height:26px;border-radius:8px;display:flex;align-items:center;justify-content:center;
+  background:linear-gradient(135deg,var(--accent-a),var(--accent-b));font-size:13px;font-weight:800;
+  box-shadow:0 4px 12px -3px rgba(99,102,241,.6);
+}
+.section-sub{color:var(--ink-2);font-size:13px;margin:0 0 18px;}
+
+.area-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:14px;margin-bottom:6px;}
+.area-tile{
+  cursor:pointer;border-radius:16px;padding:18px 16px;border:1.5px solid var(--glass-brd);
+  background:rgba(255,255,255,.03);transition:all .2s ease;position:relative;overflow:hidden;
+  transform-style:preserve-3d;
+}
+.area-tile:hover{transform:translateY(-4px);}
+.area-tile.sel{border-color:transparent;box-shadow:0 16px 34px -14px var(--tile-glow,rgba(99,102,241,.7));}
+.area-tile.sel::after{content:"✓";position:absolute;top:10px;right:12px;width:22px;height:22px;border-radius:50%;
+  background:var(--tile-grad);display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:900;}
+.area-tile .ic{font-size:26px;margin-bottom:8px;display:block;}
+.area-tile h3{margin:0 0 4px;font-size:14.5px;}
+.area-tile p{margin:0;font-size:11.5px;color:var(--ink-2);line-height:1.4;}
+.area-tile[data-area="linguagens"]{--tile-grad:linear-gradient(135deg,var(--ling-a),var(--ling-b));--tile-glow:rgba(168,85,247,.55);}
+.area-tile[data-area="humanas"]{--tile-grad:linear-gradient(135deg,var(--hum-a),var(--hum-b));--tile-glow:rgba(249,115,22,.55);}
+.area-tile[data-area="natureza"]{--tile-grad:linear-gradient(135deg,var(--nat-a),var(--nat-b));--tile-glow:rgba(16,185,129,.55);}
+.area-tile[data-area="matematica"]{--tile-grad:linear-gradient(135deg,var(--mat-a),var(--mat-b));--tile-glow:rgba(59,130,246,.55);}
+.area-tile.sel[data-area]{background:linear-gradient(160deg, color-mix(in srgb, var(--tile-glow) 22%, transparent), transparent);}
+
+.chip-row{display:flex;flex-wrap:wrap;gap:10px;}
+.chip{
+  padding:9px 15px;border-radius:999px;border:1.5px solid var(--glass-brd);background:rgba(255,255,255,.03);
+  cursor:pointer;font-size:13px;color:var(--ink-1);transition:all .15s ease;
+}
+.chip:hover{background:rgba(255,255,255,.08);}
+.chip.sel{color:#fff;border-color:transparent;background:linear-gradient(135deg,var(--accent-a),var(--accent-b));box-shadow:0 8px 18px -6px rgba(99,102,241,.5);}
+
+label.field-label{display:block;font-size:12.5px;font-weight:600;color:var(--ink-1);margin:0 0 7px;letter-spacing:.2px;}
+input[type=text], input[type=number], input[type=password], textarea, select{
+  width:100%;padding:11px 13px;border-radius:10px;border:1.5px solid var(--glass-brd);
+  background:rgba(255,255,255,.04);color:var(--ink-0);font-size:13.5px;font-family:inherit;
+  transition:border-color .15s ease, background .15s ease;
+}
+input::placeholder, textarea::placeholder{color:var(--ink-2);}
+input:focus, textarea:focus, select:focus{outline:none;border-color:var(--accent-a);background:rgba(255,255,255,.07);}
+textarea{resize:vertical;min-height:64px;}
+select{appearance:none;background-image:url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="%238a92b8"><path d="M5.5 7.5l4.5 5 4.5-5z"/></svg>');background-repeat:no-repeat;background-position:right 12px center;padding-right:34px;}
+select option{background:#151b30;color:#fff;}
+select optgroup{background:#fff;color:#111;font-weight:700;}
+
+.qty-stepper{display:flex;align-items:center;gap:14px;}
+.qty-stepper button{width:42px;height:42px;border-radius:12px;border:1.5px solid var(--glass-brd);background:rgba(255,255,255,.04);color:#fff;font-size:19px;cursor:pointer;transition:.15s;}
+.qty-stepper button:hover{background:rgba(255,255,255,.1);}
+.qty-stepper .qty-val{font-size:28px;font-weight:800;min-width:52px;text-align:center;background:linear-gradient(90deg,#fff,#c7d2fe);-webkit-background-clip:text;background-clip:text;color:transparent;}
+
+.qblock{
+  border-radius:16px;border:1.5px solid var(--glass-brd);background:rgba(255,255,255,.03);
+  padding:18px;margin-bottom:14px;position:relative;
+}
+.qblock .qb-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;}
+.qblock .qb-num{display:flex;align-items:center;gap:10px;font-weight:700;font-size:13.5px;}
+.qblock .qb-num .dot{width:26px;height:26px;border-radius:8px;background:linear-gradient(135deg,var(--accent-a),var(--accent-b));display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:800;}
+.qgrid{display:grid;grid-template-columns:2fr 1fr 1fr;gap:12px;}
+.qgrid2{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:12px;}
+@media (max-width:760px){.qgrid,.qgrid2{grid-template-columns:1fr;}}
+.resource-row{display:flex;gap:8px;flex-wrap:wrap;}
+.res-opt{flex:1;min-width:90px;text-align:center;padding:9px 6px;border-radius:10px;border:1.5px solid var(--glass-brd);cursor:pointer;font-size:12px;background:rgba(255,255,255,.03);transition:.15s;}
+.res-opt:hover{background:rgba(255,255,255,.08);}
+.res-opt.sel{border-color:transparent;background:linear-gradient(135deg,var(--accent-a),var(--accent-b));color:#fff;font-weight:700;}
+.res-opt .ic{display:block;font-size:16px;margin-bottom:3px;}
+
+.diff-row{display:flex;gap:8px;}
+.diff-opt{flex:1;text-align:center;padding:9px 4px;border-radius:10px;border:1.5px solid var(--glass-brd);cursor:pointer;font-size:12px;background:rgba(255,255,255,.03);transition:.15s;font-weight:600;}
+.diff-opt[data-d="Fácil"].sel{background:linear-gradient(135deg,#22c55e,#16a34a);border-color:transparent;}
+.diff-opt[data-d="Médio"].sel{background:linear-gradient(135deg,#f59e0b,#d97706);border-color:transparent;}
+.diff-opt[data-d="Difícil"].sel{background:linear-gradient(135deg,#ef4444,#b91c1c);border-color:transparent;}
+.diff-opt.sel{color:#fff;}
+
+.footer-actions{display:flex;justify-content:space-between;align-items:center;gap:14px;flex-wrap:wrap;margin-top:8px;}
+.hint{font-size:12px;color:var(--ink-2);}
+
+/* results */
+#resultsPanel{display:none;}
+.results-toolbar{display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px;margin-bottom:18px;}
+.view-toggle{display:flex;background:rgba(255,255,255,.05);border:1.5px solid var(--glass-brd);border-radius:12px;padding:4px;}
+.view-toggle button{border:none;background:transparent;color:var(--ink-2);padding:8px 16px;border-radius:9px;cursor:pointer;font-weight:600;font-size:13px;transition:.15s;}
+.view-toggle button.active{background:linear-gradient(135deg,var(--accent-a),var(--accent-b));color:#fff;}
+
+.qcard{
+  border-radius:20px;padding:0;margin-bottom:22px;position:relative;
+  background:linear-gradient(160deg, rgba(255,255,255,.07), rgba(255,255,255,.02));
+  border:1px solid var(--glass-brd);
+  box-shadow:0 25px 60px -25px rgba(0,0,0,.6);
+  transform-style:preserve-3d; transition:transform .12s ease, box-shadow .12s ease;
+  overflow:hidden;
+}
+.qcard .qcard-top{height:6px;background:linear-gradient(90deg,var(--accent-a),var(--accent-b));}
+.qcard-inner{padding:22px 24px 24px;}
+.qcard-head{display:flex;justify-content:space-between;align-items:flex-start;gap:14px;margin-bottom:14px;flex-wrap:wrap;}
+.qcard-head .qtitle{display:flex;align-items:center;gap:10px;}
+.qcard-head .qnum-badge{width:38px;height:38px;border-radius:12px;background:linear-gradient(135deg,var(--accent-a),var(--accent-b));display:flex;align-items:center;justify-content:center;font-weight:800;box-shadow:0 8px 18px -6px rgba(99,102,241,.55);}
+.qcard-head h3{margin:0;font-size:15.5px;}
+.qcard-head .qcard-meta{font-size:12px;color:var(--ink-2);margin-top:2px;}
+.badge{display:inline-flex;align-items:center;gap:5px;padding:5px 11px;border-radius:999px;font-size:11.5px;font-weight:700;border:1px solid var(--glass-brd);background:rgba(255,255,255,.05);}
+.badge.dif-Fácil{background:rgba(34,197,94,.18);color:#4ade80;border-color:rgba(34,197,94,.35);}
+.badge.dif-Médio{background:rgba(245,158,11,.18);color:#fbbf24;border-color:rgba(245,158,11,.35);}
+.badge.dif-Difícil{background:rgba(239,68,68,.18);color:#f87171;border-color:rgba(239,68,68,.35);}
+.qcard-actions{display:flex;gap:6px;flex-wrap:wrap;}
+
+.status-line{display:flex;align-items:center;gap:10px;padding:16px;border-radius:12px;background:rgba(255,255,255,.04);font-size:13px;color:var(--ink-1);}
+.spinner{width:18px;height:18px;border-radius:50%;border:2.5px solid rgba(255,255,255,.2);border-top-color:var(--accent-a);animation:spin .8s linear infinite;flex-shrink:0;}
+@keyframes spin{to{transform:rotate(360deg);}}
+
+.texto-base{background:rgba(255,255,255,.035);border-left:3px solid var(--accent-a);border-radius:0 10px 10px 0;padding:14px 16px;font-size:14px;line-height:1.65;color:var(--ink-1);margin-bottom:16px;white-space:pre-wrap;}
+.comando{font-size:14.5px;font-weight:600;margin:0 0 14px;line-height:1.5;}
+.alt-list{display:flex;flex-direction:column;gap:9px;margin-bottom:6px;}
+.alt-item{display:flex;gap:12px;padding:12px 14px;border-radius:12px;border:1.5px solid var(--glass-brd);background:rgba(255,255,255,.025);font-size:13.5px;line-height:1.55;transition:.15s;}
+.alt-item .alt-letter{flex-shrink:0;width:26px;height:26px;border-radius:8px;background:rgba(255,255,255,.08);display:flex;align-items:center;justify-content:center;font-weight:800;font-size:12.5px;}
+.alt-item.correct{border-color:rgba(34,197,94,.5);background:rgba(34,197,94,.08);}
+.alt-item.correct .alt-letter{background:linear-gradient(135deg,#22c55e,#16a34a);color:#fff;}
+.alt-item .alt-comment{margin-top:6px;font-size:12.5px;color:var(--ink-2);border-top:1px dashed var(--glass-brd);padding-top:6px;}
+
+.visual-box{margin:14px 0;border-radius:14px;overflow:hidden;border:1.5px solid var(--glass-brd);background:rgba(255,255,255,.03);}
+.visual-box .visual-header-row{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 14px;border-bottom:1px solid var(--glass-brd);}
+.visual-box .visual-title{font-size:12px;font-weight:700;color:var(--ink-1);}
+.visual-box .visual-redo-btn{flex-shrink:0;white-space:nowrap;}
+.visual-box .visual-instr-wrap{padding:10px 14px 0;}
+.visual-box .visual-instr-wrap .field-label{font-size:11.5px;color:var(--ink-2);margin-bottom:5px;}
+.visual-box .visual-instr-input{min-height:40px;font-size:12.5px;}
+.visual-box .visual-body{padding:14px;}
+.visual-box img{width:100%;display:block;border-radius:8px;}
+table.enem-table{width:100%;border-collapse:collapse;font-size:12.5px;}
+table.enem-table th, table.enem-table td{border:1px solid var(--glass-brd);padding:8px 10px;text-align:left;}
+table.enem-table th{background:rgba(255,255,255,.06);}
+
+.pedagog{margin-top:18px;border-top:1px dashed var(--glass-brd);padding-top:16px;}
+.pedagog-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px;margin-bottom:14px;}
+.pedagog-item{background:rgba(255,255,255,.03);border:1px solid var(--glass-brd);border-radius:10px;padding:10px 12px;}
+.pedagog-item .lab{font-size:10.5px;text-transform:uppercase;letter-spacing:.5px;color:var(--ink-2);margin-bottom:3px;}
+.pedagog-item .val{font-size:12.5px;font-weight:600;}
+.resolucao{background:rgba(255,255,255,.03);border-radius:10px;padding:12px 14px;font-size:13px;line-height:1.6;color:var(--ink-1);margin-bottom:14px;}
+
+.editrow{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:14px;padding-top:14px;border-top:1px dashed var(--glass-brd);}
+
+.summary-table{width:100%;border-collapse:collapse;font-size:13px;margin-top:6px;}
+.summary-table th,.summary-table td{padding:9px 12px;border-bottom:1px solid var(--glass-brd);text-align:left;}
+
+/* toast */
+#toastBox{position:fixed;bottom:24px;right:24px;z-index:999;display:flex;flex-direction:column;gap:10px;}
+.toast{padding:13px 18px;border-radius:12px;background:rgba(20,25,45,.95);border:1px solid var(--glass-brd);box-shadow:0 15px 40px -12px rgba(0,0,0,.6);font-size:13.5px;max-width:340px;animation:slideIn .25s ease;}
+.toast.err{border-left:4px solid var(--bad);}
+.toast.ok{border-left:4px solid var(--ok);}
+.toast.info{border-left:4px solid var(--accent-a);}
+@keyframes slideIn{from{transform:translateX(30px);opacity:0;}to{transform:translateX(0);opacity:1;}}
+
+/* modal */
+.modal-overlay{position:fixed;inset:0;background:rgba(5,7,16,.7);backdrop-filter:blur(4px);display:none;align-items:center;justify-content:center;z-index:900;padding:20px;}
+.modal-overlay.show{display:flex;}
+.modal-box{width:100%;max-width:480px;background:linear-gradient(160deg,#1b2140,#141a30);border:1px solid var(--glass-brd);border-radius:20px;padding:26px;box-shadow:0 40px 90px -20px rgba(0,0,0,.7);}
+.modal-box h2{margin:0 0 6px;font-size:18px;}
+.modal-box p.desc{color:var(--ink-2);font-size:13px;margin:0 0 18px;line-height:1.5;}
+.modal-close-row{display:flex;justify-content:flex-end;gap:10px;margin-top:20px;}
+
+.progressbar{height:8px;border-radius:99px;background:rgba(255,255,255,.08);overflow:hidden;margin:14px 0;}
+.progressbar .fill{height:100%;background:linear-gradient(90deg,var(--accent-a),var(--accent-b));transition:width .3s ease;border-radius:99px;}
+
+@media print{
+  .no-print, #toastBox{display:none !important;}
+  body{background:#fff !important;color:#111 !important;}
+  .qcard{break-inside:avoid;box-shadow:none;border:1px solid #ccc;background:#fff;}
+  .blob{display:none;}
+  .card, .texto-base, .alt-item, .visual-box, .pedagog-item, .resolucao{background:#fff !important;color:#111 !important;}
+}
+.hidden{display:none !important;}
+body.mode-aluno .professor-only{display:none !important;}
+body.mode-aluno .alt-item.correct{background:rgba(255,255,255,.025);border-color:var(--glass-brd);}
+body.mode-aluno .alt-item.correct .alt-letter{background:rgba(255,255,255,.08);color:inherit;}
+body.mode-professor .qcard{box-shadow:0 25px 60px -25px rgba(0,0,0,.6), 0 0 0 1.5px rgba(99,102,241,.25);}
+</style>
+</head>
+<body>
+<div class="blob b1"></div><div class="blob b2"></div><div class="blob b3"></div><div class="blob b4"></div>
+
+<div class="wrap">
+  <header class="topbar no-print">
+    <div class="brand">
+      <div class="logo">🎓</div>
+      <div>
+        <h1>Gerador Inteligente de Simulados ENEM</h1>
+        <p>Conectado ao Agente Elaborador de Questões · Matriz de Referência oficial embutida</p>
+      </div>
+    </div>
+    <div style="display:flex;gap:10px;">
+      <button class="btn ghost sm" id="btnHelp">Como funciona</button>
+      <button class="btn ghost sm no-print" id="btnSettings" style="display:none;">⚙️ Configurações</button>
+    </div>
+  </header>
+
+  <!-- FORM PANEL -->
+  <div id="formPanel">
+
+    <div class="card">
+      <div class="section-title"><span class="num">1</span> Área do conhecimento</div>
+      <p class="section-sub">Escolha a área. As competências, habilidades e o padrão de construção corretos serão carregados automaticamente da Matriz de Referência do ENEM.</p>
+      <div class="area-grid" id="areaGrid"></div>
+    </div>
+
+    <div class="card">
+      <div class="section-title"><span class="num">2</span> Disciplina</div>
+      <p class="section-sub">Dentro da área escolhida, selecione a disciplina específica.</p>
+      <div class="chip-row" id="disciplinaChips"></div>
+    </div>
+
+    <div class="card">
+      <div class="section-title"><span class="num">3</span> Quantidade de questões</div>
+      <p class="section-sub">Você poderá configurar tema, dificuldade, recurso visual, competência e habilidade individualmente para cada questão.</p>
+      <div class="qty-stepper">
+        <button type="button" id="qtyMinus">–</button>
+        <div class="qty-val" id="qtyVal">5</div>
+        <button type="button" id="qtyPlus">+</button>
+        <span class="hint">questões (máximo 20)</span>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="section-title"><span class="num">4</span> Configuração individual das questões</div>
+      <p class="section-sub">Para cada questão, defina o tema, a dificuldade e o recurso visual. Competência e habilidade são opcionais — se você não escolher, o agente seleciona automaticamente a mais aderente ao tema e informa a classificação usada.</p>
+      <div id="questionBlocks"></div>
+    </div>
+
+    <div class="card">
+      <div class="section-title"><span class="num">5</span> Gerar simulado</div>
+      <div class="footer-actions">
+        <label style="display:flex;align-items:center;gap:8px;font-size:13px;color:var(--ink-1);">
+          <input type="checkbox" id="chkValidacao" checked style="width:auto;">
+          Validação pedagógica em duas etapas (recomendado)
+        </label>
+        <button class="btn" id="btnGenerate">✨ Gerar simulado completo</button>
+      </div>
+      <p class="hint" style="margin-top:10px;">A validação em duas etapas faz o agente revisar cada questão (gabarito único, distratores plausíveis, coerência com a dificuldade e com a habilidade) antes de te entregar — recomendado, porém um pouco mais lento.</p>
+    </div>
+  </div>
+
+  <!-- RESULTS PANEL -->
+  <div id="resultsPanel">
+    <div class="card no-print">
+      <div class="results-toolbar">
+        <div>
+          <div class="section-title" style="margin-bottom:2px;"><span class="num">✓</span> Simulado gerado</div>
+          <p class="section-sub" style="margin:0;" id="resultsSummary"></p>
+        </div>
+        <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;">
+          <div class="view-toggle">
+            <button type="button" id="viewAluno">Versão do aluno</button>
+            <button type="button" id="viewProfessor" class="active">Versão do professor</button>
+          </div>
+          <button class="btn ghost sm" id="btnPrint">🖨️ Imprimir</button>
+          <button class="btn ghost sm" id="btnExportPdf">📄 Exportar PDF</button>
+          <button class="btn ghost sm" id="btnExport">⬇️ Exportar HTML</button>
+          <button class="btn ghost sm" id="btnBackToForm">← Nova configuração</button>
+        </div>
+      </div>
+      <div class="progressbar hidden" id="genProgressWrap"><div class="fill" id="genProgressFill" style="width:0%"></div></div>
+    </div>
+    <div id="questionResults"></div>
+    <div class="card hidden" id="summaryCard">
+      <div class="section-title"><span class="num">📋</span> Gabarito resumido</div>
+      <table class="summary-table"><thead><tr><th>Questão</th><th>Tema</th><th>Habilidade</th><th>Dificuldade</th><th>Gabarito</th></tr></thead><tbody id="summaryBody"></tbody></table>
+    </div>
+  </div>
+</div>
+
+<!-- Settings modal -->
+<div class="modal-overlay no-print" id="settingsModal">
+  <div class="modal-box">
+    <h2>⚙️ Configurações do agente</h2>
+    <p class="desc">Para gerar questões em tempo real, o aplicativo chama a API da Anthropic (o mesmo modelo Claude do agente). Ao salvar, sua chave fica guardada <strong>somente neste navegador</strong> (não é enviada a mim nem a terceiros) — assim você não precisa digitar de novo da próxima vez. Use "Esquecer chave" para removê-la deste navegador quando quiser.</p>
+    <label class="field-label">Chave de API da Anthropic</label>
+    <input type="password" id="apiKeyInput" placeholder="sk-ant-...">
+    <div style="height:14px;"></div>
+    <label class="field-label">Modelo</label>
+    <input type="text" id="modelInput" value="claude-sonnet-5" placeholder="claude-sonnet-5">
+    <p class="hint" style="margin-top:6px;">Se aparecer erro de "modelo não encontrado", troque para o identificador de modelo disponível na sua conta (ex.: claude-opus-5, claude-haiku-4-5).</p>
+    <div class="modal-close-row">
+      <button class="btn ghost sm" id="btnForgetKey" title="Remove a chave salva deste navegador">🗑️ Esquecer chave</button>
+      <button class="btn ghost sm" id="btnCloseSettings">Fechar</button>
+      <button class="btn sm" id="btnSaveSettings">Salvar</button>
+    </div>
+  </div>
+</div>
+
+<!-- Help modal -->
+<div class="modal-overlay no-print" id="helpModal">
+  <div class="modal-box" style="max-width:560px;">
+    <h2>Como este gerador funciona</h2>
+    <p class="desc">
+      1) Você escolhe área, disciplina e configura cada questão (tema, dificuldade, recurso visual e, se quiser, a competência/habilidade específica). <br><br>
+      2) O aplicativo monta, para cada questão, um prompt para o agente contendo o padrão de construção do ENEM (derivado da leitura de 11 provas reais, 2015–2025) e o trecho relevante da Matriz de Referência oficial. Se você não escolher competência/habilidade, o próprio agente decide a mais aderente ao tema e informa qual usou. <br><br>
+      3) Com a validação em duas etapas ativada, uma segunda chamada ao agente revisa a questão contra os critérios pedagógicos (gabarito único, distratores plausíveis, coerência com a dificuldade) e corrige antes de te entregar. <br><br>
+      4) Gráficos e tabelas são gerados com dados reais criados pelo agente e renderizados no navegador; imagens usam um serviço de geração de imagens gratuito, a partir de uma descrição pedagógica feita pelo agente. <br><br>
+      5) Ao final, alterne entre a <strong>versão do aluno</strong> (sem gabarito) e a <strong>versão do professor</strong> (com gabarito, competência/habilidade e comentários) e use "Imprimir/Exportar".
+    </p>
+    <div class="modal-close-row"><button class="btn sm" id="btnCloseHelp">Entendi</button></div>
+  </div>
+</div>
+
+<div id="toastBox"></div>
+
+<script>
+const APP_DATA = {"matriz": {"linguagens": {"label": "Linguagens, Códigos e suas Tecnologias", "competencias": [{"numero": 1, "texto": "Aplicar as tecnologias da comunicação e da informação na escola, no trabalho e em outros contextos relevantes para sua vida.", "habilidades": [{"codigo": "H1", "texto": "Identificar as diferentes linguagens e seus recursos expressivos como elementos de caracterização dos sistemas de comunicação."}, {"codigo": "H2", "texto": "Recorrer aos conhecimentos sobre as linguagens dos sistemas de comunicação e informação para resolver problemas sociais."}, {"codigo": "H3", "texto": "Relacionar informações geradas nos sistemas de comunicação e informação, considerando a função social desses sistemas."}, {"codigo": "H4", "texto": "Reconhecer posições críticas aos usos sociais que são feitos das linguagens e dos sistemas de comunicação e informação."}]}, {"numero": 2, "texto": "Conhecer e usar língua(s) estrangeira(s) moderna(s) como instrumento de acesso a informações e a outras culturas e grupos sociais*.", "habilidades": [{"codigo": "H5", "texto": "Associar vocábulos e expressões de um texto em LEM ao seu tema."}, {"codigo": "H6", "texto": "Utilizar os conhecimentos da LEM e de seus mecanismos como meio de ampliar as possibilidades de acesso a informações, tecnologias e culturas."}, {"codigo": "H7", "texto": "Relacionar um texto em LEM, as estruturas linguísticas, sua função e seu uso social."}, {"codigo": "H8", "texto": "Reconhecer a importância da produção cultural em LEM como representação da diversidade cultural e linguística."}]}, {"numero": 3, "texto": "Compreender e usar a linguagem corporal como relevante para a própria vida, integradora social e formadora da identidade.", "habilidades": [{"codigo": "H9", "texto": "Reconhecer as manifestações corporais de movimento como originárias de necessidades cotidianas de um grupo social."}, {"codigo": "H10", "texto": "Reconhecer a necessidade de transformação de hábitos corporais em função das necessidades cinestésicas."}, {"codigo": "H11", "texto": "Reconhecer a linguagem corporal como meio de interação social, considerando os limites de desempenho e as alternativas de adaptação para diferentes indivíduos."}]}, {"numero": 4, "texto": "Compreender a arte como saber cultural e estético gerador de significação e integrador da organização do mundo e da própria identidade.", "habilidades": [{"codigo": "H12", "texto": "Reconhecer diferentes funções da arte, do trabalho da produção dos artistas em seus meios culturais."}, {"codigo": "H13", "texto": "Analisar as diversas produções artísticas como meio de explicar diferentes culturas, padrões de beleza e preconceitos."}, {"codigo": "H14", "texto": "Reconhecer o valor da diversidade artística e das inter-relações de elementos que se apresentam nas manifestações de vários grupos sociais e étnicos."}]}, {"numero": 5, "texto": "Analisar, interpretar e aplicar recursos expressivos das linguagens, relacionando textos com seus contextos, mediante a natureza, função, organização, estrutura das manifestações, de acordo com as condições de produção e recepção.", "habilidades": [{"codigo": "H15", "texto": "Estabelecer relações entre o texto literário e o momento de sua produção, situando aspectos do contexto histórico, social e político."}, {"codigo": "H16", "texto": "Relacionar informações sobre concepções artísticas e procedimentos de construção do texto literário."}, {"codigo": "H17", "texto": "Reconhecer a presença de valores sociais e humanos atualizáveis e permanentes no patrimônio literário nacional."}]}, {"numero": 6, "texto": "Compreender e usar os sistemas simbólicos das diferentes linguagens como meios de organização cognitiva da realidade pela constituição de significados, expressão, comunicação e informação.", "habilidades": [{"codigo": "H18", "texto": "Identificar os elementos que concorrem para a progressão temática e para a organização e estruturação de textos de diferentes gêneros e tipos."}, {"codigo": "H19", "texto": "Analisar a função da linguagem predominante nos textos em situações específicas de interlocução."}, {"codigo": "H20", "texto": "Reconhecer a importância do patrimônio linguístico para a preservação da memória e da identidade nacional."}]}, {"numero": 7, "texto": "Confrontar opiniões e pontos de vista sobre as diferentes linguagens e suas manifestações específicas.", "habilidades": [{"codigo": "H21", "texto": "Reconhecer em textos de diferentes gêneros, recursos verbais e não-verbais utilizados com a finalidade de criar e mudar comportamentos e hábitos."}, {"codigo": "H22", "texto": "Relacionar, em diferentes textos, opiniões, temas, assuntos e recursos linguísticos."}, {"codigo": "H23", "texto": "Inferir em um texto quais são os objetivos de seu produtor e quem é seu público alvo, pela análise dos procedimentos argumentativos utilizados."}, {"codigo": "H24", "texto": "Reconhecer no texto estratégias argumentativas empregadas para o convencimento do público, tais como a intimidação, sedução, comoção, chantagem, entre outras."}]}, {"numero": 8, "texto": "Compreender e usar a língua portuguesa como língua materna, geradora de significação e integradora da organização do mundo e da própria identidade.", "habilidades": [{"codigo": "H25", "texto": "Identificar, em textos de diferentes gêneros, as marcas linguísticas que singularizam as variedades linguísticas sociais, regionais e de registro."}, {"codigo": "H26", "texto": "Relacionar as variedades linguísticas a situações específicas de uso social."}, {"codigo": "H27", "texto": "Reconhecer os usos da norma padrão da língua portuguesa nas diferentes situações de comunicação."}]}, {"numero": 9, "texto": "Entender os princípios, a natureza, a função e o impacto das tecnologias da comunicação e da informação na sua vida pessoal e social, no desenvolvimento do conhecimento, associando-o aos conhecimentos científicos, às linguagens que lhes dão suporte, às demais tecnologias, aos processos de produção e aos problemas que se propõem solucionar.", "habilidades": [{"codigo": "H28", "texto": "Reconhecer a função e o impacto social das diferentes tecnologias da comunicação e informação."}, {"codigo": "H29", "texto": "Identificar pela análise de suas linguagens, as tecnologias da comunicação e informação."}, {"codigo": "H30", "texto": "Relacionar as tecnologias de comunicação e informação ao desenvolvimento das sociedades e ao conhecimento que elas produzem."}]}]}, "matematica": {"label": "Matemática e suas Tecnologias", "competencias": [{"numero": 1, "texto": "Construir significados para os números naturais, inteiros, racionais e reais.", "habilidades": [{"codigo": "H1", "texto": "Reconhecer, no contexto social, diferentes significados e representações dos números e operações - naturais, inteiros, racionais ou reais."}, {"codigo": "H2", "texto": "Identificar padrões numéricos ou princípios de contagem."}, {"codigo": "H3", "texto": "Resolver situação-problema envolvendo conhecimentos numéricos."}, {"codigo": "H4", "texto": "Avaliar a razoabilidade de um resultado numérico na construção de argumentos sobre afirmações quantitativas."}, {"codigo": "H5", "texto": "Avaliar propostas de intervenção na realidade utilizando conhecimentos numéricos."}]}, {"numero": 2, "texto": "Utilizar o conhecimento geométrico para realizar a leitura e a representação da realidade e agir sobre ela.", "habilidades": [{"codigo": "H6", "texto": "Interpretar a localização e a movimentação de pessoas/objetos no espaço tridimensional e sua representação no espaço bidimensional."}, {"codigo": "H7", "texto": "Identificar características de figuras planas ou espaciais."}, {"codigo": "H8", "texto": "Resolver situação-problema que envolva conhecimentos geométricos de espaço e forma."}, {"codigo": "H9", "texto": "Utilizar conhecimentos geométricos de espaço e forma na seleção de argumentos propostos como solução de problemas do cotidiano."}]}, {"numero": 3, "texto": "Construir noções de grandezas e medidas para a compreensão da realidade e a solução de problemas do cotidiano.", "habilidades": [{"codigo": "H10", "texto": "Identificar relações entre grandezas e unidades de medida."}, {"codigo": "H11", "texto": "Utilizar a noção de escalas na leitura de representação de situação do cotidiano."}, {"codigo": "H12", "texto": "Resolver situação-problema que envolva medidas de grandezas."}, {"codigo": "H13", "texto": "Avaliar o resultado de uma medição na construção de um argumento consistente."}, {"codigo": "H14", "texto": "Avaliar proposta de intervenção na realidade utilizando conhecimentos geométricos relacionados a grandezas e medidas."}]}, {"numero": 4, "texto": "Construir noções de variação de grandezas para a compreensão da realidade e a solução de problemas do cotidiano.", "habilidades": [{"codigo": "H15", "texto": "Identificar a relação de dependência entre grandezas."}, {"codigo": "H16", "texto": "Resolver situação-problema envolvendo a variação de grandezas, direta ou inversamente proporcionais."}, {"codigo": "H17", "texto": "Analisar informações envolvendo a variação de grandezas como recurso para a construção de argumentação."}, {"codigo": "H18", "texto": "Avaliar propostas de intervenção na realidade envolvendo variação de grandezas."}]}, {"numero": 5, "texto": "Modelar e resolver problemas que envolvem variáveis socioeconômicas ou técnico-científicas, usando representações algébricas.", "habilidades": [{"codigo": "H19", "texto": "Identificar representações algébricas que expressem a relação entre grandezas."}, {"codigo": "H20", "texto": "Interpretar gráfico cartesiano que represente relações entre grandezas."}, {"codigo": "H21", "texto": "Resolver situação-problema cuja modelagem envolva conhecimentos algébricos."}, {"codigo": "H22", "texto": "Utilizar conhecimentos algébricos/geométricos como recurso para a construção de argumentação."}, {"codigo": "H23", "texto": "Avaliar propostas de intervenção na realidade utilizando conhecimentos algébricos."}]}, {"numero": 6, "texto": "Interpretar informações de natureza científica e social obtidas da leitura de gráficos e tabelas, realizando previsão de tendência, extrapolação, interpolação e interpretação.", "habilidades": [{"codigo": "H24", "texto": "Utilizar informações expressas em gráficos ou tabelas para fazer inferências."}, {"codigo": "H25", "texto": "Resolver problema com dados apresentados em tabelas ou gráficos."}, {"codigo": "H26", "texto": "Analisar informações expressas em gráficos ou tabelas como recurso para a construção de argumentos."}]}, {"numero": 7, "texto": "Compreender o caráter aleatório e não-determinístico dos fenômenos naturais e sociais e utilizar instrumentos adequados para medidas, determinação de amostras e cálculos de probabilidade para interpretar informações de variáveis apresentadas em uma distribuição estatística.", "habilidades": [{"codigo": "H27", "texto": "Calcular medidas de tendência central ou de dispersão de um conjunto de dados expressos em uma tabela de frequências de dados agrupados (não em classes) ou em gráficos."}, {"codigo": "H28", "texto": "Resolver situação-problema que envolva conhecimentos de estatística e probabilidade."}, {"codigo": "H29", "texto": "Utilizar conhecimentos de estatística e probabilidade como recurso para a construção de argumentação."}, {"codigo": "H30", "texto": "Avaliar propostas de intervenção na realidade utilizando conhecimentos de estatística e probabilidade."}]}]}, "natureza": {"label": "Ciências da Natureza e suas Tecnologias", "competencias": [{"numero": 1, "texto": "Compreender as ciências naturais e as tecnologias a elas associadas como construções humanas, percebendo seus papéis nos processos de produção e no desenvolvimento econômico e social da humanidade.", "habilidades": [{"codigo": "H1", "texto": "Reconhecer características ou propriedades de fenômenos ondulatórios ou oscilatórios, relacionando-os a seus usos em diferentes contextos."}, {"codigo": "H2", "texto": "Associar a solução de problemas de comunicação, transporte, saúde ou outro, com o correspondente desenvolvimento científico e tecnológico."}, {"codigo": "H3", "texto": "Confrontar interpretações científicas com interpretações baseadas no senso comum, ao longo do tempo ou em diferentes culturas."}, {"codigo": "H4", "texto": "Avaliar propostas de intervenção no ambiente, considerando a qualidade da vida humana ou medidas de conservação, recuperação ou utilização sustentável da biodiversidade."}]}, {"numero": 2, "texto": "Identificar a presença e aplicar as tecnologias associadas às ciências naturais em diferentes contextos.", "habilidades": [{"codigo": "H5", "texto": "Dimensionar circuitos ou dispositivos elétricos de uso cotidiano."}, {"codigo": "H6", "texto": "Relacionar informações para compreender manuais de instalação ou utilização de aparelhos, ou sistemas tecnológicos de uso comum."}, {"codigo": "H7", "texto": "Selecionar testes de controle, parâmetros ou critérios para a comparação de materiais e produtos, tendo em vista a defesa do consumidor, a saúde do trabalhador ou a qualidade de vida."}]}, {"numero": 3, "texto": "Associar intervenções que resultam em degradação ou conservação ambiental a processos produtivos e sociais e a instrumentos ou ações científico-tecnológicos.", "habilidades": [{"codigo": "H8", "texto": "Identificar etapas em processos de obtenção, transformação, utilização ou reciclagem de recursos naturais, energéticos ou matérias-primas, considerando processos biológicos, químicos ou físicos neles envolvidos."}, {"codigo": "H9", "texto": "Compreender a importância dos ciclos biogeoquímicos ou do fluxo energia para a vida, ou da ação de agentes ou fenômenos que podem causar alterações nesses processos."}, {"codigo": "H10", "texto": "Analisar perturbações ambientais, identificando fontes, transporte e(ou) destino dos poluentes ou prevendo efeitos em sistemas naturais, produtivos ou sociais."}, {"codigo": "H11", "texto": "Reconhecer benefícios, limitações e aspectos éticos da biotecnologia, considerando estruturas e processos biológicos envolvidos em produtos biotecnológicos."}, {"codigo": "H12", "texto": "Avaliar impactos em ambientes naturais decorrentes de atividades sociais ou econômicas, considerando interesses contraditórios."}]}, {"numero": 4, "texto": "Compreender interações entre organismos e ambiente, em particular aquelas relacionadas à saúde humana, relacionando conhecimentos científicos, aspectos culturais e características individuais.", "habilidades": [{"codigo": "H13", "texto": "Reconhecer mecanismos de transmissão da vida, prevendo ou explicando a manifestação de características dos seres vivos."}, {"codigo": "H14", "texto": "Identificar padrões em fenômenos e processos vitais dos organismos, como manutenção do equilíbrio interno, defesa, relações com o ambiente, sexualidade, entre outros."}, {"codigo": "H15", "texto": "Interpretar modelos e experimentos para explicar fenômenos ou processos biológicos em qualquer nível de organização dos sistemas biológicos."}, {"codigo": "H16", "texto": "Compreender o papel da evolução na produção de padrões, processos biológicos ou na organização taxonômica dos seres vivos."}]}, {"numero": 5, "texto": "Entender métodos e procedimentos próprios das ciências naturais e aplicá-los em diferentes contextos.", "habilidades": [{"codigo": "H17", "texto": "Relacionar informações apresentadas em diferentes formas de linguagem e representação usadas nas ciências físicas, químicas ou biológicas, como texto discursivo, gráficos, tabelas, relações matemáticas ou linguagem simbólica."}, {"codigo": "H18", "texto": "Relacionar propriedades físicas, químicas ou biológicas de produtos, sistemas ou procedimentos tecnológicos às finalidades a que se destinam."}, {"codigo": "H19", "texto": "Avaliar métodos, processos ou procedimentos das ciências naturais que contribuam para diagnosticar ou solucionar problemas de ordem social, econômica ou ambiental."}]}, {"numero": 6, "texto": "Apropriar-se de conhecimentos da física para, em situações problema, interpretar, avaliar ou planejar intervenções científico- tecnológicas.", "habilidades": [{"codigo": "H20", "texto": "Caracterizar causas ou efeitos dos movimentos de partículas, substâncias, objetos ou corpos celestes."}, {"codigo": "H21", "texto": "Utilizar leis físicas e (ou) químicas para interpretar processos naturais ou tecnológicos inseridos no contexto da termodinâmica e(ou) do eletromagnetismo."}, {"codigo": "H22", "texto": "Compreender fenômenos decorrentes da interação entre a radiação e a matéria em suas manifestações em processos naturais ou tecnológicos, ou em suas implicações biológicas, sociais, econômicas ou ambientais."}, {"codigo": "H23", "texto": "Avaliar possibilidades de geração, uso ou transformação de energia em ambientes específicos, considerando implicações éticas, ambientais, sociais e/ou econômicas."}]}, {"numero": 7, "texto": "Apropriar-se de conhecimentos da química para, em situações problema, interpretar, avaliar ou planejar intervenções científico- tecnológicas.", "habilidades": [{"codigo": "H24", "texto": "Utilizar códigos e nomenclatura da química para caracterizar materiais, substâncias ou transformações químicas."}, {"codigo": "H25", "texto": "Caracterizar materiais ou substâncias, identificando etapas, rendimentos ou implicações biológicas, sociais, econômicas ou ambientais de sua obtenção ou produção."}, {"codigo": "H26", "texto": "Avaliar implicações sociais, ambientais e/ou econômicas na produção ou no consumo de recursos energéticos ou minerais, identificando transformações químicas ou de energia envolvidas nesses processos."}, {"codigo": "H27", "texto": "Avaliar propostas de intervenção no meio ambiente aplicando conhecimentos químicos, observando riscos ou benefícios."}]}, {"numero": 8, "texto": "Apropriar-se de conhecimentos da biologia para, em situações problema, interpretar, avaliar ou planejar intervenções científico- tecnológicas.", "habilidades": [{"codigo": "H28", "texto": "Associar características adaptativas dos organismos com seu modo de vida ou com seus limites de distribuição em diferentes ambientes, em especial em ambientes brasileiros."}, {"codigo": "H29", "texto": "Interpretar experimentos ou técnicas que utilizam seres vivos, analisando implicações para o ambiente, a saúde, a produção de alimentos, matérias primas ou produtos industriais."}, {"codigo": "H30", "texto": "Avaliar propostas de alcance individual ou coletivo, identificando aquelas que visam à preservação e a implementação da saúde individual, coletiva ou do ambiente."}]}]}, "humanas": {"label": "Ciências Humanas e suas Tecnologias", "competencias": [{"numero": 1, "texto": "Compreender os elementos culturais que constituem as identidades", "habilidades": [{"codigo": "H1", "texto": "Interpretar historicamente e/ou geograficamente fontes documentais acerca de aspectos da cultura."}, {"codigo": "H2", "texto": "Analisar a produção da memória pelas sociedades humanas."}, {"codigo": "H3", "texto": "Associar as manifestações culturais do presente aos seus processos históricos."}, {"codigo": "H4", "texto": "Comparar pontos de vista expressos em diferentes fontes sobre determinado aspecto da cultura."}, {"codigo": "H5", "texto": "Identificar as manifestações ou representações da diversidade do patrimônio cultural e artístico em diferentes sociedades."}]}, {"numero": 2, "texto": "Compreender as transformações dos espaços geográficos como produto das relações socioeconômicas e culturais de poder.", "habilidades": [{"codigo": "H6", "texto": "Interpretar diferentes representações gráficas e cartográficas dos espaços geográficos."}, {"codigo": "H7", "texto": "Identificar os significados histórico-geográficos das relações de poder entre as nações"}, {"codigo": "H8", "texto": "Analisar a ação dos estados nacionais no que se refere à dinâmica dos fluxos populacionais e no enfrentamento de problemas de ordem econômico-social."}, {"codigo": "H9", "texto": "Comparar o significado histórico-geográfico das organizações políticas e socioeconômicas em escala local, regional ou mundial."}, {"codigo": "H10", "texto": "Reconhecer a dinâmica da organização dos movimentos sociais e a importância da participação da coletividade na transformação da realidade histórico-geográfica."}]}, {"numero": 3, "texto": "Compreender a produção e o papel histórico das instituições sociais, políticas e econômicas, associando-as aos diferentes grupos, conflitos e movimentos sociais.", "habilidades": [{"codigo": "H11", "texto": "Identificar registros de práticas de grupos sociais no tempo e no espaço."}, {"codigo": "H12", "texto": "Analisar o papel da justiça como instituição na organização das sociedades."}, {"codigo": "H13", "texto": "Analisar a atuação dos movimentos sociais que contribuíram para mudanças ou rupturas em processos de disputa pelo poder."}, {"codigo": "H14", "texto": "Comparar diferentes pontos de vista, presentes em textos analíticos e interpretativos, sobre situação ou fatos de natureza histórico-geográfica acerca das instituições sociais, políticas e econômicas."}, {"codigo": "H15", "texto": "Avaliar criticamente conflitos culturais, sociais, políticos, econômicos ou ambientais ao longo da história."}]}, {"numero": 4, "texto": "Entender as transformações técnicas e tecnológicas e seu impacto nos processos de produção, no desenvolvimento do conhecimento e na vida social.", "habilidades": [{"codigo": "H16", "texto": "Identificar registros sobre o papel das técnicas e tecnologias na organização do trabalho e/ou da vida social."}, {"codigo": "H17", "texto": "Analisar fatores que explicam o impacto das novas tecnologias no processo de territorialização da produção."}, {"codigo": "H18", "texto": "Analisar diferentes processos de produção ou circulação de riquezas e suas implicações sócio-espaciais."}, {"codigo": "H19", "texto": "Reconhecer as transformações técnicas e tecnológicas que determinam as várias formas de uso e apropriação dos espaços rural e urbano."}, {"codigo": "H20", "texto": "Selecionar argumentos favoráveis ou contrários às modificações impostas pelas novas tecnologias à vida social e ao mundo do trabalho."}]}, {"numero": 5, "texto": "Utilizar os conhecimentos históricos para compreender e valorizar os fundamentos da cidadania e da democracia, favorecendo uma atuação consciente do indivíduo na sociedade.", "habilidades": [{"codigo": "H21", "texto": "Identificar o papel dos meios de comunicação na construção da vida social."}, {"codigo": "H22", "texto": "Analisar as lutas sociais e conquistas obtidas no que se refere às mudanças nas legislações ou nas políticas públicas."}, {"codigo": "H23", "texto": "Analisar a importância dos valores éticos na estruturação política das sociedades."}, {"codigo": "H24", "texto": "Relacionar cidadania e democracia na organização das sociedades."}, {"codigo": "H25", "texto": "Identificar estratégias que promovam formas de inclusão social."}]}, {"numero": 6, "texto": "Compreender a sociedade e a natureza, reconhecendo suas interações no espaço em diferentes contextos históricos e geográficos.", "habilidades": [{"codigo": "H26", "texto": "Identificar em fontes diversas o processo de ocupação dos meios físicos e as relações da vida humana com a paisagem."}, {"codigo": "H27", "texto": "Analisar de maneira crítica as interações da sociedade com o meio físico, levando em consideração aspectos históricos e(ou) geográficos."}, {"codigo": "H28", "texto": "Relacionar o uso das tecnologias com os impactos sócio-ambientais em diferentes contextos histórico-geográficos."}, {"codigo": "H29", "texto": "Reconhecer a função dos recursos naturais na produção do espaço geográfico, relacionando-os com as mudanças provocadas pelas ações humanas."}, {"codigo": "H30", "texto": "Avaliar as relações entre preservação e degradação da vida no planeta nas diferentes escalas."}]}]}}, "areaContext": {"linguagens": "CONTEXTO ESPECÍFICO DA ÁREA — LINGUAGENS, CÓDIGOS E SUAS TECNOLOGIAS:\nAs 45 questões da área se distribuem em: língua estrangeira moderna, inglês ou espanhol (~11%); língua portuguesa e leitura de gêneros textuais diversos, como notícia, crônica, charge, propaganda, infográfico, carta, artigo de opinião, tira, verbete (~35%); texto literário de todas as escolas, do romantismo à literatura contemporânea (~21%); artes visuais, música, dança, teatro, cultura afro-brasileira e indígena (~14%); educação física e práticas corporais (~10%); tecnologias da informação e gêneros digitais (~10%).\nTextos-suporte típicos: reportagem digital (g1, BBC, Folha, UOL), texto literário, letra de canção, texto publicitário/cartaz, charge/tira, infográfico, verbete de dicionário, trecho de lei, obra de arte com ficha técnica (autor, técnica, dimensões, data, acervo). É comum o par TEXTO I/TEXTO II em leitura comparativa.\nVerbos de comando típicos: evidenciar, revelar, demonstrar, indicar, ressaltar, apontar, reconhecer, ter como objetivo/propósito/função, constatar-se que/infere-se que, remeter a, contribuir para, caracterizar-se por.\nDistratores típicos: leitura parcial/localizada; generalização ou inversão indevida; contradição sutil (\"distrator espelho\", vocabulário parecido com o correto mas sentido oposto); externalidade plausível (senso comum sobre o tema, não sustentado pelo texto). Raramente há \"pegadinha\" gramatical pura, mesmo em questões de norma culta/variação linguística — o critério de erro é o julgamento sociolinguístico, não a gramática isolada.\nTemas em ascensão: justiça social e representatividade (povos indígenas, cultura afro-brasileira, pessoas com deficiência, diversidade de gênero, saúde mental), patrimônio linguístico e variedades regionais brasileiras (sempre valorizadas, nunca tratadas como \"erro\"), gêneros nativamente digitais (podcast, redes sociais, IA).", "humanas": "CONTEXTO ESPECÍFICO DA ÁREA — CIÊNCIAS HUMANAS E SUAS TECNOLOGIAS (História, Geografia, Filosofia, Sociologia):\nDistribuição aproximada: História (~26%), Geografia (~24%), Filosofia (~22%), Sociologia (~22%), interdisciplinar (~4%).\nTextos-suporte típicos, em ordem de frequência: trecho historiográfico ou jornalístico curto com citação completa; excerto de obra clássica de filosofia/ciências sociais (Aristóteles, Hobbes, Rousseau, Kant, Marx, Foucault, Bauman, Arendt — frequentemente via comentador/divulgador quando o conceito é muito denso); textos comparativos TEXTO I/TEXTO II; gráfico, tabela ou mapa (dados IBGE, INPE); charge ou obra de arte com legenda de crédito; texto legal/normativo (Constituição, declaração da ONU); letra de música ou poema; fotografia histórica ou contemporânea legendada.\nComandos típicos: \"De acordo com o texto...\", \"O texto evidencia/revela/indica...\", \"Está associado(a) a...\", \"Tem como objetivo...\", \"Os textos I e II se aproximam/divergem no seguinte aspecto:\". O comando quase sempre pede que se relacione o texto a um conceito ou processo mais amplo — a resposta correta é uma paráfrase conceitual, nunca cópia literal.\nDistratores típicos: generalização indevida; inversão de causa/efeito; anacronismo (atribuir a um período um conceito de outra época); termo tecnicamente correto mas fora de contexto (confundir autores/correntes teóricas); verdade parcial; inversão de polaridade; distrator de senso comum; excesso de escopo/consequência exagerada.\nTemas em ascensão: raça, gênero, povos indígenas e quilombolas; tecnologia digital como objeto sociológico (vigilância, algoritmos, desinformação); mudanças climáticas e sustentabilidade (quase obrigatório em 2-3 questões de Geografia por prova desde 2020).", "natureza": "CONTEXTO ESPECÍFICO DA ÁREA — CIÊNCIAS DA NATUREZA E SUAS TECNOLOGIAS (Física, Química, Biologia):\nProporção aproximada: Química (~35-38%), Física (~33-36%), Biologia (~27-31%).\nTextos-suporte típicos, em ordem de frequência: notícia/reportagem de divulgação científica (sempre com fonte citada); processo industrial ou tecnológico descrito passo a passo; experimento didático ou de laboratório; fenômeno cotidiano ou crença popular a ser confrontada com a ciência (ex.: mitos sobre raios, crendices); texto científico mais longo citando artigo/paper real; situação-problema puramente numérica (mais rara, mais comum em Física).\nComandos típicos: \"Qual...é/são\" (o mais comum); \"O(A) que representa/indica/decorre de...\"; \"Nessas condições/Com base nesses dados, calcule/estime/é mais próximo(a) de...\" (formato \"valor mais próximo de\", evita gabarito redondo, muito comum em Física/Química); \"Esse processo/fenômeno ocorre porque...\"; \"Qual gráfico representa...\".\nDistratores típicos: erro de unidade ou ordem de grandeza; troca de sinal ou sentido físico; confusão conceitual clássica entre termos próximos (ex.: cátodo/ânodo); cálculo com etapa esquecida ou trocada; resultado \"quase certo\" mas com grandeza incorretamente combinada (ex.: somar decibéis linearmente em vez de logaritmicamente); inversão de causa/efeito ou proporcionalidade; em Biologia, citar um mecanismo biológico real mas inaplicável à situação do enunciado.\nTemas em ascensão: sustentabilidade, energias renováveis, química verde; biotecnologia, biossensores, materiais inteligentes (desde 2023); textos-suporte cada vez mais citando artigos científicos reais e recentes.\nIMPORTANTE: quando a questão pedir gráfico/tabela como recurso visual, gere dados numéricos plausíveis e coerentes (não apenas decorativos) que sejam efetivamente necessários para responder à questão.", "matematica": "CONTEXTO ESPECÍFICO DA ÁREA — MATEMÁTICA E SUAS TECNOLOGIAS:\nBlocos de conteúdo aproximados: números e operações — porcentagem, razão/proporção, juros, PA/PG, combinatória (~30%, quase sempre em contexto financeiro/produção); geometria plana e espacial — áreas, volumes, semelhança, escalas, sólidos (~25%); grandezas e medidas — conversão de unidades, densidade, vazão (~12%); funções e álgebra — 1º/2º grau, exponencial, logarítmica, sistemas (~20%); leitura de gráficos e tabelas (~15%); estatística e probabilidade — média, mediana, moda, desvio padrão, probabilidade simples/condicional (~18%).\nQuestões de matemática pura, sem nenhum contexto aplicado, são raríssimas — use sempre um contexto: financeiro/comercial, saúde, esportivo, engenharia/arquitetura/design, tecnologia/jogos, ambiental/agrícola.\nComandos típicos: \"Qual é o/a valor/quantidade/número/probabilidade de...\", \"...é/será/deverá ser\", \"correto afirmar que/correspondente a\", \"O gráfico/esboço que melhor representa...\", \"Para atender/garantir/atingir [objetivo], [a pessoa/empresa] deverá...\".\nDistratores: SEMPRE erros de raciocínio derivados do processo de resolução, nunca números aleatórios. Padrões: confundir média simples com ponderada; esquecer de elevar a razão de escala ao quadrado (área) ou ao cubo (volume); trocar numerador/denominador; parar em etapa intermediária do cálculo; usar fórmula plausível mas errada (ex.: juros simples em vez de composto); esquecer de converter unidades; aplicar só parte de uma restrição composta; inverter a direção do arredondamento/comparação; reaproveitar um número do enunciado fora de contexto.\nConvenção fixa: forneça sempre aproximações numéricas (\"considere π = 3\", \"utilize 1,4 como aproximação para √2\") sempre que a resposta exata exigisse calculadora — a prova é desenhada para ser resolvida sem calculadora."}, "universalModel": "VOCÊ É UM ELABORADOR OFICIAL DE ITENS NO PADRÃO ENEM. Siga rigorosamente este modelo, comum às quatro áreas do exame, derivado da leitura integral de 11 provas reais (2015-2025):\n\nANATOMIA DA QUESTÃO (sempre três partes):\n1) TEXTO-SUPORTE: quase toda questão parte de um texto-suporte real ou verossímil (reportagem, trecho literário, obra clássica, gráfico, tabela, mapa, charge, texto legal, letra de música, processo técnico/industrial). Termine sempre com uma citação de fonte no formato \"SOBRENOME, Nome. Título. Veículo/Editora, cidade, data.\" ou \"Disponível em: [site]. Acesso em: [data] (adaptado).\" — mesmo quando a fonte é fictícia, o formato deve ser respeitado. Nunca insira um texto-suporte gratuito: cada frase deve servir para ancorar a resposta correta ou alimentar um distrator específico.\n2) COMANDO: curto (1-2 linhas), nunca pede repetição literal do texto. Usa verbos-gatilho como: evidencia, revela, indica, tem como objetivo, propõe, reflete, decorre de, é resultado de, pode-se concluir, corresponde a, é correto afirmar, contribui para, caracteriza-se por. Exige uma operação cognitiva (inferir, relacionar causa/efeito, aplicar conceito a situação nova, comparar fontes, calcular) — nunca decoreba.\n3) CINCO ALTERNATIVAS (A-E): a correta é uma PARÁFRASE CONCEITUAL do texto-suporte (nunca cópia literal de frase). As 4 erradas (distratores) NUNCA são aleatórias — cada uma deve representar um erro de raciocínio específico e catalogável, escolhido dentre estas estratégias (use pelo menos 3 estratégias diferentes entre os 4 distratores de uma mesma questão, nunca repita a mesma lógica 4 vezes):\n   - Leitura parcial / recorte indevido: generaliza um detalhe isolado do texto.\n   - Inversão de causa/efeito ou de polaridade: troca aumenta/diminui, causa/consequência.\n   - Verdade parcial / meia-verdade: correta em outro contexto, mas não responde ao pedido.\n   - Anacronismo / confusão conceitual clássica: aplica conceito de outro período ou confunde termos próximos (ex.: cátodo/ânodo, autores/correntes teóricas).\n   - Senso comum: crença intuitiva que o texto existe para desconstruir.\n   - Erro no processo de resolução (Matemática/Natureza): esquecer etapa de cálculo, trocar média simples por ponderada, erro de conversão de unidade, fórmula plausível mas errada.\n   - Excesso de escopo / generalização indevida: estende para \"todos\"/\"sempre\"/\"nunca\" algo que era específico ou condicional.\n   - Reaproveitamento fora de contexto: usa um número/termo do enunciado só que aplicado a algo diferente do pedido.\n\nCALIBRAÇÃO DE DIFICULDADE:\n- Fácil: comando direto, texto-suporte curto, distratores mais óbvios (leitura parcial/senso comum).\n- Médio: exige uma etapa de inferência, comparação ou cálculo.\n- Difícil: exige combinar duas informações do texto, ou um distrator do tipo \"verdade parcial\"/\"erro de processo\" muito próximo da resposta certa (armadilha fina).\n\nREGRAS OBRIGATÓRIAS:\n- NUNCA copie ou parafraseie de perto uma questão real do ENEM. A questão deve ser inédita, apenas seguindo o estilo, o padrão e o nível de dificuldade.\n- A habilidade e a competência citadas devem realmente corresponder à operação cognitiva exigida pela questão, não apenas ao assunto de superfície.\n- As 5 alternativas devem ter extensão e estrutura sintática parecidas entre si (nenhuma \"denuncia\" a resposta certa pelo tamanho ou forma).\n- Todo comentário (inclusive das alternativas erradas) deve nomear o tipo de distrator usado, não apenas dizer \"está errada\"."};
+</script>
+<script>
+/* ===================== Gerador Inteligente de Simulados ENEM ===================== */
+
+const AREA_META = {
+  linguagens: { label: "Linguagens, Códigos e suas Tecnologias", icon: "📖", desc: "Português, literatura, artes, educação física, línguas estrangeiras",
+    disciplinas: ["Língua Portuguesa","Literatura","Artes","Educação Física","Língua Estrangeira (Inglês/Espanhol)"] },
+  humanas: { label: "Ciências Humanas e suas Tecnologias", icon: "🏛️", desc: "História, geografia, filosofia, sociologia",
+    disciplinas: ["História","Geografia","Filosofia","Sociologia"] },
+  natureza: { label: "Ciências da Natureza e suas Tecnologias", icon: "🧬", desc: "Biologia, física, química",
+    disciplinas: ["Biologia","Física","Química"] },
+  matematica: { label: "Matemática e suas Tecnologias", icon: "📐", desc: "Números, álgebra, geometria, estatística e probabilidade",
+    disciplinas: ["Matemática"] },
+};
+
+// Backend próprio (Supabase Edge Function) que chama a API de imagens da OpenAI
+// (GPT Image 1 / "ChatGPT") com segurança, mantendo a chave fora do navegador do professor.
+const IMAGE_BACKEND_URL = "https://gkceyrkdmnhgqimmrsre.supabase.co/functions/v1/generate-image";
+
+// Backend próprio (Supabase Edge Function) que chama a API da Anthropic (Claude) com
+// segurança — a chave de API fica guardada só nos secrets do servidor, nunca no
+// navegador do professor, e nunca é pedida ao abrir o app.
+const QUESTION_BACKEND_URL = "https://gkceyrkdmnhgqimmrsre.supabase.co/functions/v1/generate-question";
+
+let state = {
+  area: null,
+  disciplina: null,
+  qty: 5,
+  questions: [],
+  apiKey: "",
+  model: "claude-sonnet-5",
+  viewMode: "professor",
+};
+
+/* ---------------- Geração de imagem (Higgsfield / GPT Image 2 via backend) ---------------- */
+async function generateImageViaBackend(promptText){
+  const res = await fetch(IMAGE_BACKEND_URL, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      prompt: `Ilustração educacional realista para uma questão de vestibular (estilo ENEM). Sem texto, legendas ou marcas d'água sobrepostas na imagem. Cena: ${promptText}`,
+      size: "1536x1024",
+    }),
+  });
+  let data = {};
+  try{ data = await res.json(); }catch(e){ /* resposta não-JSON */ }
+  if(!res.ok || data.error){
+    throw new Error(data.error || `Erro HTTP ${res.status} ao gerar imagem.`);
+  }
+  if(!data.imageDataUrl){
+    throw new Error("O backend não retornou a imagem.");
+  }
+  return data.imageDataUrl;
+}
+
+let uidCounter = 1;
+function uid(){ return "q" + (uidCounter++); }
+
+/* ---------------- Armazenamento local (opcional, à prova de falhas) ----------------
+   Algumas telas de pré-visualização (ex.: pré-visualização de artefatos) bloqueiam
+   localStorage. Por isso todo acesso é protegido — se falhar, o app simplesmente
+   volta a pedir a chave a cada sessão, sem quebrar nada. */
+const STORAGE_KEYS = { apiKey: "enem_simulados_api_key", model: "enem_simulados_model" };
+function safeStorageGet(key){
+  try{ return window.localStorage.getItem(key); }catch(e){ return null; }
+}
+function safeStorageSet(key, value){
+  try{ window.localStorage.setItem(key, value); return true; }catch(e){ return false; }
+}
+function safeStorageRemove(key){
+  try{ window.localStorage.removeItem(key); }catch(e){ /* ignora */ }
+}
+
+/* ---------------- Toasts ---------------- */
+function toast(msg, type){
+  type = type || "info";
+  const box = document.getElementById("toastBox");
+  const el = document.createElement("div");
+  el.className = "toast " + type;
+  el.textContent = msg;
+  box.appendChild(el);
+  setTimeout(() => { el.style.opacity = "0"; el.style.transition = "opacity .3s"; setTimeout(() => el.remove(), 300); }, 4200);
+}
+
+/* ---------------- Area / Disciplina ---------------- */
+function renderAreaGrid(){
+  const grid = document.getElementById("areaGrid");
+  grid.innerHTML = "";
+  Object.keys(AREA_META).forEach(key => {
+    const m = AREA_META[key];
+    const tile = document.createElement("div");
+    tile.className = "area-tile" + (state.area === key ? " sel" : "");
+    tile.dataset.area = key;
+    tile.innerHTML = `<span class="ic">${m.icon}</span><h3>${m.label}</h3><p>${m.desc}</p>`;
+    tile.addEventListener("click", () => selectArea(key));
+    grid.appendChild(tile);
+  });
+}
+
+function selectArea(key){
+  state.area = key;
+  state.disciplina = AREA_META[key].disciplinas[0];
+  renderAreaGrid();
+  renderDisciplinaChips();
+  renderQuestionBlocks();
+}
+
+function renderDisciplinaChips(){
+  const wrap = document.getElementById("disciplinaChips");
+  wrap.innerHTML = "";
+  if(!state.area){ wrap.innerHTML = `<span class="hint">Selecione uma área do conhecimento primeiro.</span>`; return; }
+  AREA_META[state.area].disciplinas.forEach(d => {
+    const chip = document.createElement("div");
+    chip.className = "chip" + (state.disciplina === d ? " sel" : "");
+    chip.textContent = d;
+    chip.addEventListener("click", () => { state.disciplina = d; renderDisciplinaChips(); });
+    wrap.appendChild(chip);
+  });
+}
+
+/* ---------------- Quantity stepper ---------------- */
+function setQty(n){
+  n = Math.max(1, Math.min(20, n));
+  state.qty = n;
+  document.getElementById("qtyVal").textContent = n;
+  syncQuestionsArrayLength();
+  renderQuestionBlocks();
+}
+
+function syncQuestionsArrayLength(){
+  while(state.questions.length < state.qty){
+    state.questions.push({
+      id: uid(), tema: "", dificuldade: "Médio", recurso: "nenhum",
+      competenciaNum: null, habilidadeCod: null, instrucoesVisual: "",
+      status: "idle", errorMsg: "", data: null, approved: false,
+    });
+  }
+  while(state.questions.length > state.qty){ state.questions.pop(); }
+}
+
+/* ---------------- Matrix helpers ---------------- */
+function getAreaMatriz(){
+  if(!state.area) return null;
+  return APP_DATA.matriz[state.area];
+}
+function findCompetencia(numero){
+  const m = getAreaMatriz(); if(!m) return null;
+  return m.competencias.find(c => c.numero === numero) || null;
+}
+function findHabilidade(codigo){
+  const m = getAreaMatriz(); if(!m) return null;
+  for(const c of m.competencias){ const h = c.habilidades.find(h => h.codigo === codigo); if(h) return {competencia: c, habilidade: h}; }
+  return null;
+}
+
+function populateCompetenciaSelect(sel, current){
+  const m = getAreaMatriz();
+  sel.innerHTML = "";
+  const optAuto = document.createElement("option");
+  optAuto.value = ""; optAuto.textContent = "Selecionar automaticamente (recomendado)";
+  sel.appendChild(optAuto);
+  if(!m) return;
+  m.competencias.forEach(c => {
+    const opt = document.createElement("option");
+    opt.value = c.numero;
+    opt.textContent = `Competência ${c.numero} — ${truncate(c.texto, 70)}`;
+    if(current === c.numero) opt.selected = true;
+    sel.appendChild(opt);
+  });
+}
+
+function populateHabilidadeSelect(sel, competenciaNum, current){
+  const m = getAreaMatriz();
+  sel.innerHTML = "";
+  const optAuto = document.createElement("option");
+  optAuto.value = ""; optAuto.textContent = "Selecionar automaticamente (recomendado)";
+  sel.appendChild(optAuto);
+  if(!m) return;
+  const comps = competenciaNum ? m.competencias.filter(c => c.numero === competenciaNum) : m.competencias;
+  comps.forEach(c => {
+    const grp = document.createElement("optgroup");
+    grp.label = `Competência ${c.numero}`;
+    c.habilidades.forEach(h => {
+      const opt = document.createElement("option");
+      opt.value = h.codigo;
+      opt.textContent = `${h.codigo} — ${truncate(h.texto, 65)}`;
+      if(current === h.codigo) opt.selected = true;
+      grp.appendChild(opt);
+    });
+    sel.appendChild(grp);
+  });
+}
+
+function truncate(s, n){ return s.length > n ? s.slice(0, n - 1) + "…" : s; }
+
+/* ---------------- Question config blocks (form) ---------------- */
+function renderQuestionBlocks(){
+  const wrap = document.getElementById("questionBlocks");
+  wrap.innerHTML = "";
+  if(!state.area){ wrap.innerHTML = `<p class="hint">Selecione a área do conhecimento para configurar as questões.</p>`; return; }
+  syncQuestionsArrayLength();
+  state.questions.forEach((q, idx) => wrap.appendChild(buildQuestionBlock(q, idx)));
+}
+
+function buildQuestionBlock(q, idx){
+  const el = document.createElement("div");
+  el.className = "qblock";
+  el.innerHTML = `
+    <div class="qb-head">
+      <div class="qb-num"><span class="dot">${idx+1}</span> Questão ${idx+1}</div>
+    </div>
+    <label class="field-label">Tema / conteúdo desta questão</label>
+    <textarea class="in-tema" placeholder="Ex.: sistema circulatório — regulação da pressão arterial durante o exercício">${q.tema}</textarea>
+    <div class="qgrid" style="margin-top:12px;">
+      <div>
+        <label class="field-label">Nível de dificuldade</label>
+        <div class="diff-row">
+          ${["Fácil","Médio","Difícil"].map(d => `<div class="diff-opt${q.dificuldade===d?" sel":""}" data-d="${d}">${d}</div>`).join("")}
+        </div>
+      </div>
+      <div>
+        <label class="field-label">Recurso visual</label>
+        <div class="resource-row">
+          ${resOpt("nenhum","🚫","Sem recurso",q.recurso)}
+          ${resOpt("imagem","🖼️","Imagem",q.recurso)}
+          ${resOpt("grafico","📊","Gráfico",q.recurso)}
+          ${resOpt("tabela","📋","Tabela",q.recurso)}
+        </div>
+      </div>
+      <div></div>
+    </div>
+    <div class="visual-instr-block" style="margin-top:12px;${q.recurso==="nenhum"?"display:none;":""}">
+      <label class="field-label">Instruções opcionais para a criação d${q.recurso==="imagem"?"a imagem":q.recurso==="tabela"?"a tabela":"o gráfico"}</label>
+      <textarea class="in-instr-visual" placeholder="Ex.: mostre o coração em corte transversal, com as quatro câmaras nomeadas; use um gráfico de linha em vez de barras; destaque a coluna de 2020...">${escapeHtml(q.instrucoesVisual||"")}</textarea>
+    </div>
+    <div class="qgrid2">
+      <div>
+        <label class="field-label">Competência de área (opcional)</label>
+        <select class="in-competencia"></select>
+      </div>
+      <div>
+        <label class="field-label">Habilidade (opcional)</label>
+        <select class="in-habilidade"></select>
+      </div>
+    </div>
+  `;
+
+  function resOpt(val, icon, label, current){
+    return `<div class="res-opt${current===val?" sel":""}" data-r="${val}"><span class="ic">${icon}</span>${label}</div>`;
+  }
+
+  const instrBlock = el.querySelector(".visual-instr-block");
+  const instrLabel = instrBlock.querySelector(".field-label");
+
+  el.querySelector(".in-tema").addEventListener("input", e => { q.tema = e.target.value; });
+  el.querySelector(".in-instr-visual").addEventListener("input", e => { q.instrucoesVisual = e.target.value; });
+  el.querySelectorAll(".diff-opt").forEach(d => d.addEventListener("click", () => {
+    q.dificuldade = d.dataset.d;
+    el.querySelectorAll(".diff-opt").forEach(x => x.classList.toggle("sel", x === d));
+  }));
+  el.querySelectorAll(".res-opt").forEach(r => r.addEventListener("click", () => {
+    q.recurso = r.dataset.r;
+    el.querySelectorAll(".res-opt").forEach(x => x.classList.toggle("sel", x === r));
+    instrBlock.style.display = q.recurso === "nenhum" ? "none" : "";
+    instrLabel.textContent = `Instruções opcionais para a criação d${q.recurso==="imagem"?"a imagem":q.recurso==="tabela"?"a tabela":"o gráfico"}`;
+  }));
+
+  const compSel = el.querySelector(".in-competencia");
+  const habSel = el.querySelector(".in-habilidade");
+  populateCompetenciaSelect(compSel, q.competenciaNum);
+  populateHabilidadeSelect(habSel, q.competenciaNum, q.habilidadeCod);
+  compSel.addEventListener("change", () => {
+    q.competenciaNum = compSel.value ? parseInt(compSel.value) : null;
+    q.habilidadeCod = null;
+    populateHabilidadeSelect(habSel, q.competenciaNum, null);
+  });
+  habSel.addEventListener("change", () => {
+    q.habilidadeCod = habSel.value || null;
+    if(q.habilidadeCod && !q.competenciaNum){
+      const found = findHabilidade(q.habilidadeCod);
+      if(found){ q.competenciaNum = found.competencia.numero; populateCompetenciaSelect(compSel, q.competenciaNum); }
+    }
+  });
+
+  return el;
+}
+
+/* ---------------- Prompt building ---------------- */
+function buildSystemPrompt(){
+  return APP_DATA.universalModel + "\n\n" + APP_DATA.areaContext[state.area];
+}
+
+const RECURSO_INSTRUCOES = {
+  nenhum: `Recurso visual: NENHUM. Não inclua gráfico, tabela ou imagem. Explore a situação-problema apenas por meio do texto-suporte. Deixe o campo "visual" como null e "recurso" como "nenhum".`,
+  imagem: `Recurso visual: IMAGEM. A questão deve depender de uma imagem/ilustração pedagogicamente necessária (nunca meramente decorativa) para ser respondida corretamente — por exemplo: esquema anatômico, diagrama de processo, mapa, representação de fenômeno, estrutura, infográfico. Preencha "recurso":"imagem" e "visual" com: {"tipo":"imagem","descricao":"<legenda em português explicando o que a imagem mostra e por que ela é necessária para resolver a questão>","promptImagem":"<descrição em INGLÊS, detalhada, objetiva, no estilo de ilustração científica/educacional plana, limpa, sem nenhum texto ou letra embutida na imagem, adequada para um gerador de imagens>"}. O enunciado e o comando devem fazer referência explícita ao que aparece na imagem.`,
+  grafico: `Recurso visual: GRÁFICO. A questão deve depender de um gráfico com dados numéricos plausíveis e coerentes (cientificamente ou matematicamente consistentes com o texto-suporte), efetivamente necessários para resolver a questão — não apenas decorativos. Preencha "recurso":"grafico" e "visual" com: {"tipo":"grafico","chartType":"bar" ou "line" ou "pie","titulo":"...","labels":["...","..."],"datasets":[{"label":"...","data":[num,num,...]}]}. Os números usados no gráfico devem ser os mesmos que a resolução comentada utiliza.`,
+  tabela: `Recurso visual: TABELA. A questão deve depender de uma tabela com dados relevantes (resultados experimentais, dados populacionais, séries históricas, comparações entre grupos etc.), efetivamente necessários para resolver a questão. Preencha "recurso":"tabela" e "visual" com: {"tipo":"tabela","titulo":"...","colunas":["...","..."],"linhas":[["...","..."],["...","..."]]}.`,
+};
+
+function buildMatrizInstrucoes(q){
+  const m = getAreaMatriz();
+  if(q.habilidadeCod){
+    const found = findHabilidade(q.habilidadeCod);
+    return `A questão DEVE mobilizar exatamente esta competência e habilidade da Matriz de Referência (cite-as literalmente nos campos "competencia" e "habilidade" da resposta):\nCompetência ${found.competencia.numero}: ${found.competencia.texto}\n${found.habilidade.codigo}: ${found.habilidade.texto}`;
+  }
+  if(q.competenciaNum){
+    const c = findCompetencia(q.competenciaNum);
+    const habsTxt = c.habilidades.map(h => `${h.codigo}: ${h.texto}`).join("\n");
+    return `A questão DEVE pertencer a esta competência de área:\nCompetência ${c.numero}: ${c.texto}\nEscolha, dentre as habilidades abaixo, a que melhor corresponde à operação cognitiva exigida pela questão que você vai elaborar, e cite-a literalmente no campo "habilidade":\n${habsTxt}`;
+  }
+  const allTxt = m.competencias.map(c => `Competência ${c.numero}: ${c.texto}\n` + c.habilidades.map(h => `  ${h.codigo}: ${h.texto}`).join("\n")).join("\n\n");
+  return `O professor NÃO especificou competência/habilidade. Analise o tema pedido, a disciplina e o nível de dificuldade, e escolha, dentre TODAS as competências e habilidades oficiais da área abaixo, a única competência e a única habilidade que mais correspondem à operação cognitiva que a questão vai exigir (não apenas ao assunto de superfície). Cite-as literalmente e por completo nos campos "competencia" e "habilidade" da resposta.\n\n${allTxt}`;
+}
+
+const JSON_SCHEMA_TXT = `Responda SOMENTE com um objeto JSON válido (sem markdown, sem texto antes ou depois, sem comentários), exatamente neste formato:
+{
+ "area": "string",
+ "disciplina": "string",
+ "tema": "string",
+ "dificuldade": "Fácil" | "Médio" | "Difícil",
+ "competencia": {"numero": number, "texto": "string (texto oficial completo da competência)"},
+ "habilidade": {"codigo": "HXX", "texto": "string (texto oficial completo da habilidade)"},
+ "recurso": "nenhum" | "imagem" | "grafico" | "tabela",
+ "visual": null ou objeto conforme instruído acima,
+ "textoBase": "string (texto-suporte com contextualização; termine com a citação de fonte no formato ENEM, real ou verossímil)",
+ "comando": "string (o enunciado da pergunta, curto, indireto)",
+ "alternativas": {"A":"string","B":"string","C":"string","D":"string","E":"string"},
+ "gabarito": "A" | "B" | "C" | "D" | "E",
+ "resolucaoComentada": "string (explicação detalhada do raciocínio para chegar à resposta correta)",
+ "analiseAlternativas": {
+   "A": {"status":"correta"|"incorreta","comentario":"string"},
+   "B": {"status":"correta"|"incorreta","comentario":"string"},
+   "C": {"status":"correta"|"incorreta","comentario":"string"},
+   "D": {"status":"correta"|"incorreta","comentario":"string"},
+   "E": {"status":"correta"|"incorreta","comentario":"string"}
+ }
+}
+No campo "comentario" de cada alternativa errada, nomeie explicitamente o tipo de distrator (leitura parcial, inversão de causa/efeito, verdade parcial, anacronismo/confusão conceitual, senso comum, erro de processo, excesso de escopo, reaproveitamento fora de contexto) e explique o raciocínio equivocado que ela representa. Nunca deixe mais de uma alternativa com status "correta".`;
+
+function buildUserPrompt(q){
+  return `Elabore UMA questão inédita, original, no padrão ENEM, com os seguintes parâmetros definidos pelo professor:
+
+Área do conhecimento: ${AREA_META[state.area].label}
+Disciplina: ${state.disciplina}
+Tema/conteúdo solicitado: ${q.tema || "(o professor não detalhou; escolha um tema representativo da disciplina e do nível de dificuldade pedidos)"}
+Nível de dificuldade: ${q.dificuldade}
+
+${RECURSO_INSTRUCOES[q.recurso]}
+
+${buildMatrizInstrucoes(q)}
+
+${JSON_SCHEMA_TXT}`;
+}
+
+const VALIDATION_CHECKLIST = `Revise a questão JSON abaixo (elaborada por você mesmo) contra estes critérios pedagógicos, um a um:
+1. Existe somente uma alternativa correta e inequívoca.
+2. Não há alternativas ambíguas ou defensáveis como corretas além do gabarito.
+3. Os quatro distratores são plausíveis, cada um representando um erro de raciocínio específico (nunca aleatório).
+4. O conteúdo científico/conceitual está correto.
+5. A questão realmente corresponde ao nível de dificuldade solicitado.
+6. A competência indicada é adequada à operação cognitiva exigida pela questão.
+7. A habilidade indicada é adequada à operação cognitiva exigida pela questão.
+8. A questão tem as características estruturais do ENEM: texto-suporte com fonte citada, comando indireto (não pede repetição literal), 5 alternativas com extensão/estrutura parecidas.
+9. Se há gráfico, tabela ou imagem, os dados/descrição são coerentes com o enunciado e efetivamente necessários para a resolução (não decorativos).
+10. Todas as informações necessárias para resolver a questão estão disponíveis no texto-base, no comando ou no recurso visual.
+11. Não há pistas involuntárias (ex.: alternativa correta com tamanho, redação ou grau de detalhe muito diferente das demais) que entreguem a resposta sem raciocínio.
+12. A resposta exige interpretação/raciocínio, não apenas memorização direta de um fato isolado.
+
+Se ALGUM critério não for plenamente atendido, reescreva a questão inteira corrigindo o problema, mantendo o mesmo tema, dificuldade e recurso visual solicitados. Se todos os critérios já estiverem atendidos, apenas devolva a mesma questão.
+
+QUESTÃO A REVISAR:
+__DRAFT_JSON__
+
+${JSON_SCHEMA_TXT}`;
+
+/* ---------------- API call ---------------- */
+async function callClaude(system, userMsg, maxTokens){
+  if(!state.apiKey){ throw new Error("Configure sua chave de API da Anthropic em Configurações antes de gerar questões."); }
+  const resp = await fetch("https://api.anthropic.com/v1/messages", {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      "x-api-key": state.apiKey,
+      "anthropic-version": "2023-06-01",
+      "anthropic-dangerous-direct-browser-access": "true",
+    },
+    body: JSON.stringify({
+      model: state.model,
+      max_tokens: maxTokens || 8000,
+      system: system,
+      messages: [{ role: "user", content: userMsg }],
+      // Modelos mais novos (com "thinking" adaptativo) podem antepor um bloco de
+      // "pensamento" antes do texto. Desativamos explicitamente para garantir que
+      // a resposta seja só o JSON esperado, sem precisar lidar com esse bloco extra.
+      thinking: { type: "disabled" },
+    }),
+  });
+  // Lê como texto primeiro — algumas respostas de erro (ex.: 401 de um proxy/CDN)
+  // podem vir com corpo vazio ou não-JSON, e resp.json() quebraria nesse caso.
+  const rawBody = await resp.text();
+  let data = {};
+  try{ data = rawBody ? JSON.parse(rawBody) : {}; }catch(e){ /* corpo não é JSON — trata abaixo */ }
+
+  if(!resp.ok){
+    let msg = (data && data.error && data.error.message) ? data.error.message : "";
+    if(!msg) msg = rawBody ? rawBody.slice(0, 300) : `Erro HTTP ${resp.status} ${resp.statusText || ""}`.trim();
+    if(resp.status === 401){
+      msg = `Chave de API inválida ou expirada (401). Verifique a chave em Configurações — deve começar com "sk-ant-". Detalhe: ${msg}`;
+    }
+    throw new Error(msg);
+  }
+  // Procura o primeiro bloco de texto (evita pegar um bloco de "thinking" por engano,
+  // caso o modelo insira um mesmo com thinking desativado).
+  const textBlock = Array.isArray(data.content) ? data.content.find(b => b && b.type === "text") : null;
+  const text = textBlock ? (textBlock.text || "") : "";
+  return { text, truncated: data.stop_reason === "max_tokens" };
+}
+
+// Escapa quebras de linha/tabs "crus" que aparecem DENTRO de strings JSON
+// (comum quando a IA escreve um texto longo e esquece de escapar \n) —
+// sem isso, JSON.parse falha com "Bad control character in string literal".
+function sanitizeJsonControlChars(text){
+  let out = "";
+  let inString = false;
+  let escaped = false;
+  for(let i = 0; i < text.length; i++){
+    const ch = text[i];
+    if(inString){
+      if(escaped){ out += ch; escaped = false; continue; }
+      if(ch === "\\"){ out += ch; escaped = true; continue; }
+      if(ch === '"'){ inString = false; out += ch; continue; }
+      if(ch === "\n"){ out += "\\n"; continue; }
+      if(ch === "\r"){ out += "\\r"; continue; }
+      if(ch === "\t"){ out += "\\t"; continue; }
+      out += ch;
+    } else {
+      if(ch === '"'){ inString = true; out += ch; continue; }
+      out += ch;
+    }
+  }
+  return out;
+}
+
+function parseJSONLoose(text){
+  const raw = (text || "").trim();
+
+  const candidates = [raw];
+  const fenced = raw.match(/```(?:json)?\s*([\s\S]*?)```/i);
+  if(fenced){ candidates.push(fenced[1].trim()); }
+  const start = raw.indexOf("{");
+  const end = raw.lastIndexOf("}");
+  if(start !== -1 && end !== -1 && end > start){
+    candidates.push(raw.slice(start, end + 1));
+  }
+
+  let lastErr;
+  for(const cand of candidates){
+    const variants = [
+      cand,
+      cand.replace(/,(\s*[}\]])/g, "$1"),
+      sanitizeJsonControlChars(cand),
+      sanitizeJsonControlChars(cand).replace(/,(\s*[}\]])/g, "$1"),
+    ];
+    for(const v of variants){
+      try{ return JSON.parse(v); } catch(e){ lastErr = e; }
+    }
+  }
+
+  const preview = raw.slice(0, 220).replace(/\s+/g, " ");
+  const detail = lastErr ? lastErr.message : "erro desconhecido";
+  throw new Error(`Não foi possível interpretar a resposta do agente como JSON (${detail}). Início da resposta recebida: "${preview}${raw.length > 220 ? "..." : ""}"`);
+}
+
+// Chama a API e já interpreta o JSON, tentando de novo com mais espaço de saída
+// se a resposta anterior tiver sido cortada por limite de tokens.
+async function callClaudeForJSON(system, userMsg){
+  let { text, truncated } = await callClaude(system, userMsg, 8000);
+  try{
+    return parseJSONLoose(text);
+  }catch(err){
+    if(truncated){
+      const retry = await callClaude(system, userMsg, 12000);
+      return parseJSONLoose(retry.text);
+    }
+    throw err;
+  }
+}
+
+/* ---------------- Generation orchestration ---------------- */
+// A geração roda inteiramente no backend (Supabase Edge Function "generate-question"):
+// o navegador só envia os parâmetros da questão (área, disciplina, tema, dificuldade,
+// recurso, competência/habilidade) e recebe a questão pronta. A chamada à API da
+// Anthropic e a chave usada para isso ficam só no servidor — nunca no navegador.
+async function generateQuestion(q){
+  q.status = "generating"; q.errorMsg = ""; renderResults();
+  try{
+    const validar = document.getElementById("chkValidacao").checked;
+    const resp = await fetch(QUESTION_BACKEND_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        area: state.area,
+        disciplina: state.disciplina,
+        tema: q.tema || "",
+        dificuldade: q.dificuldade,
+        recurso: q.recurso,
+        competenciaNum: q.competenciaNum || null,
+        habilidadeCod: q.habilidadeCod || null,
+        instrucoesVisual: q.instrucoesVisual || "",
+        validar,
+      }),
+    });
+    const rawBody = await resp.text();
+    let payload = {};
+    try{ payload = rawBody ? JSON.parse(rawBody) : {}; }catch(e){ /* corpo não é JSON — trata abaixo */ }
+    if(!resp.ok || payload.error){
+      const msg = payload.error || rawBody.slice(0, 300) || `Erro HTTP ${resp.status} ao gerar a questão.`;
+      throw new Error(msg);
+    }
+    if(!payload.question){
+      throw new Error("O backend não retornou a questão.");
+    }
+
+    q.data = payload.question;
+    q.status = "done";
+  } catch(err){
+    q.status = "error";
+    q.errorMsg = err.message || String(err);
+  }
+  renderResults();
+  updateProgress();
+}
+
+async function runPool(items, worker, concurrency){
+  let i = 0;
+  const runners = new Array(Math.min(concurrency, items.length)).fill(0).map(async () => {
+    while(i < items.length){
+      const idx = i++; await worker(items[idx]);
+    }
+  });
+  await Promise.all(runners);
+}
+
+async function generateAll(){
+  document.getElementById("formPanel").style.display = "none";
+  document.getElementById("resultsPanel").style.display = "block";
+  document.getElementById("genProgressWrap").classList.remove("hidden");
+  state.questions.forEach(q => { q.status = "idle"; q.data = null; q.errorMsg = ""; });
+  renderResults();
+  updateProgress();
+  await runPool(state.questions, generateQuestion, 2);
+  document.getElementById("genProgressWrap").classList.add("hidden");
+  toast("Simulado gerado! Revise, edite ou regenere questões conforme necessário.", "ok");
+}
+
+function updateProgress(){
+  const total = state.questions.length;
+  const done = state.questions.filter(q => q.status === "done" || q.status === "error").length;
+  const pct = total ? Math.round((done/total)*100) : 0;
+  document.getElementById("genProgressFill").style.width = pct + "%";
+  document.getElementById("resultsSummary").textContent =
+    `${AREA_META[state.area].label} · ${state.disciplina} · ${total} questão(ões) · ${done}/${total} concluídas`;
+}
+
+/* ---------------- Results rendering ---------------- */
+function renderResults(){
+  const wrap = document.getElementById("questionResults");
+  wrap.innerHTML = "";
+  state.questions.forEach((q, idx) => wrap.appendChild(renderQuestionCard(q, idx)));
+  document.body.classList.toggle("mode-aluno", state.viewMode === "aluno");
+  document.body.classList.toggle("mode-professor", state.viewMode === "professor");
+  renderSummaryTable();
+}
+
+function renderSummaryTable(){
+  const done = state.questions.filter(q => q.status === "done");
+  const card = document.getElementById("summaryCard");
+  if(!done.length){ card.classList.add("hidden"); return; }
+  card.classList.remove("hidden");
+  const body = document.getElementById("summaryBody");
+  body.innerHTML = "";
+  state.questions.forEach((q, idx) => {
+    if(q.status !== "done") return;
+    const tr = document.createElement("tr");
+    tr.innerHTML = `<td>${idx+1}</td><td>${escapeHtml(q.data.tema||q.tema)}</td><td>${escapeHtml(q.data.habilidade?.codigo||"—")}</td><td>${escapeHtml(q.data.dificuldade||q.dificuldade)}</td><td><strong>${escapeHtml(q.data.gabarito||"—")}</strong></td>`;
+    body.appendChild(tr);
+  });
+}
+
+function escapeHtml(s){ return String(s==null?"":s).replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c])); }
+
+function renderQuestionCard(q, idx){
+  const el = document.createElement("div");
+  el.className = "qcard";
+  const top = document.createElement("div"); top.className = "qcard-top"; el.appendChild(top);
+  const inner = document.createElement("div"); inner.className = "qcard-inner";
+
+  const head = document.createElement("div"); head.className = "qcard-head";
+  head.innerHTML = `
+    <div class="qtitle">
+      <div class="qnum-badge">${idx+1}</div>
+      <div>
+        <h3>${q.data ? escapeHtml(q.data.tema || q.tema || "Questão") : escapeHtml(q.tema || "Questão " + (idx+1))}</h3>
+        <div class="qcard-meta">${state.disciplina} ${q.approved ? " · <span style='color:#4ade80'>✓ aprovada</span>" : ""}</div>
+      </div>
+    </div>
+    <div class="qcard-actions no-print"></div>
+  `;
+  inner.appendChild(head);
+
+  const actions = head.querySelector(".qcard-actions");
+  actions.appendChild(iconBtn("🔄", "Regenerar", () => generateQuestion(q)));
+  actions.appendChild(iconBtn("✏️", "Editar", () => toggleEdit(el, q, idx)));
+  if(q.data){
+    actions.appendChild(iconBtn("⬇️", "Mais fácil", () => { q.dificuldade = "Fácil"; generateQuestion(q); }));
+    actions.appendChild(iconBtn("⬆️", "Mais difícil", () => { q.dificuldade = "Difícil"; generateQuestion(q); }));
+  }
+  actions.appendChild(iconBtn(idx===0?"":"↑", "Mover para cima", () => moveQuestion(idx, -1), idx===0));
+  actions.appendChild(iconBtn(idx===state.questions.length-1?"":"↓", "Mover para baixo", () => moveQuestion(idx, 1), idx===state.questions.length-1));
+  actions.appendChild(iconBtn(q.approved?"✅":"☑️", q.approved?"Aprovada":"Aprovar", () => { q.approved = !q.approved; renderResults(); }));
+  actions.appendChild(iconBtn("🗑️", "Excluir", () => deleteQuestion(idx)));
+
+  // status / body
+  if(q.status === "idle"){
+    const s = document.createElement("div"); s.className = "status-line"; s.textContent = "Aguardando geração...";
+    inner.appendChild(s);
+  } else if(q.status === "generating" || q.status === "validating"){
+    const s = document.createElement("div"); s.className = "status-line";
+    s.innerHTML = `<div class="spinner"></div> O agente está elaborando (e revisando pedagogicamente) esta questão...`;
+    inner.appendChild(s);
+  } else if(q.status === "error"){
+    const s = document.createElement("div"); s.className = "status-line";
+    s.innerHTML = `⚠️ Erro ao gerar: ${escapeHtml(q.errorMsg)}`;
+    inner.appendChild(s);
+  } else if(q.status === "done"){
+    inner.appendChild(buildQuestionBody(q.data, q));
+  }
+
+  // inline edit form (hidden by default)
+  const editWrap = document.createElement("div");
+  editWrap.className = "editrow hidden";
+  editWrap.dataset.editFor = q.id;
+  inner.appendChild(editWrap);
+
+  el.appendChild(inner);
+  return el;
+}
+
+function iconBtn(icon, title, onClick, disabled){
+  const b = document.createElement("button");
+  b.className = "btn ghost sm"; b.title = title; b.textContent = icon;
+  if(disabled){ b.disabled = true; }
+  else { b.addEventListener("click", onClick); }
+  return b;
+}
+
+function moveQuestion(idx, dir){
+  const j = idx + dir;
+  if(j < 0 || j >= state.questions.length) return;
+  const tmp = state.questions[idx]; state.questions[idx] = state.questions[j]; state.questions[j] = tmp;
+  renderResults();
+}
+
+function deleteQuestion(idx){
+  state.questions.splice(idx, 1);
+  state.qty = state.questions.length;
+  document.getElementById("qtyVal").textContent = state.qty;
+  renderResults();
+  updateProgress();
+}
+
+function toggleEdit(cardEl, q, idx){
+  const editWrap = cardEl.querySelector(`[data-edit-for="${q.id}"]`);
+  if(!editWrap.classList.contains("hidden")){ editWrap.classList.add("hidden"); editWrap.innerHTML=""; return; }
+  editWrap.classList.remove("hidden");
+  editWrap.innerHTML = `
+    <div style="width:100%;display:grid;grid-template-columns:1fr;gap:10px;">
+      <div>
+        <label class="field-label">Tema</label>
+        <textarea class="edit-tema">${escapeHtml(q.tema)}</textarea>
+      </div>
+      <div class="qgrid2">
+        <div>
+          <label class="field-label">Dificuldade</label>
+          <select class="edit-dif">
+            ${["Fácil","Médio","Difícil"].map(d=>`<option ${q.dificuldade===d?"selected":""}>${d}</option>`).join("")}
+          </select>
+        </div>
+        <div>
+          <label class="field-label">Recurso visual</label>
+          <select class="edit-rec">
+            <option value="nenhum" ${q.recurso==="nenhum"?"selected":""}>Sem recurso</option>
+            <option value="imagem" ${q.recurso==="imagem"?"selected":""}>Imagem</option>
+            <option value="grafico" ${q.recurso==="grafico"?"selected":""}>Gráfico</option>
+            <option value="tabela" ${q.recurso==="tabela"?"selected":""}>Tabela</option>
+          </select>
+        </div>
+      </div>
+      <div class="visual-instr-block" style="${q.recurso==="nenhum"?"display:none;":""}">
+        <label class="field-label">Instruções opcionais para a criação d${q.recurso==="imagem"?"a imagem":q.recurso==="tabela"?"a tabela":"o gráfico"}</label>
+        <textarea class="edit-instr-visual" placeholder="Ex.: mostre o coração em corte transversal, com as quatro câmaras nomeadas; use um gráfico de linha em vez de barras...">${escapeHtml(q.instrucoesVisual||"")}</textarea>
+      </div>
+      <div class="qgrid2">
+        <div>
+          <label class="field-label">Competência</label>
+          <select class="edit-comp"></select>
+        </div>
+        <div>
+          <label class="field-label">Habilidade</label>
+          <select class="edit-hab"></select>
+        </div>
+      </div>
+      <div style="display:flex;gap:10px;justify-content:flex-end;">
+        <button class="btn sm ghost edit-cancel">Cancelar</button>
+        <button class="btn sm edit-save">Salvar e gerar novamente</button>
+      </div>
+    </div>
+  `;
+  const compSel = editWrap.querySelector(".edit-comp");
+  const habSel = editWrap.querySelector(".edit-hab");
+  const recSel = editWrap.querySelector(".edit-rec");
+  const instrBlock = editWrap.querySelector(".visual-instr-block");
+  const instrLabel = instrBlock.querySelector(".field-label");
+  populateCompetenciaSelect(compSel, q.competenciaNum);
+  populateHabilidadeSelect(habSel, q.competenciaNum, q.habilidadeCod);
+  compSel.addEventListener("change", () => {
+    const val = compSel.value ? parseInt(compSel.value) : null;
+    populateHabilidadeSelect(habSel, val, null);
+  });
+  recSel.addEventListener("change", () => {
+    instrBlock.style.display = recSel.value === "nenhum" ? "none" : "";
+    instrLabel.textContent = `Instruções opcionais para a criação d${recSel.value==="imagem"?"a imagem":recSel.value==="tabela"?"a tabela":"o gráfico"}`;
+  });
+  editWrap.querySelector(".edit-cancel").addEventListener("click", () => { editWrap.classList.add("hidden"); editWrap.innerHTML=""; });
+  editWrap.querySelector(".edit-save").addEventListener("click", () => {
+    q.tema = editWrap.querySelector(".edit-tema").value;
+    q.dificuldade = editWrap.querySelector(".edit-dif").value;
+    q.recurso = recSel.value;
+    q.instrucoesVisual = editWrap.querySelector(".edit-instr-visual").value;
+    q.competenciaNum = compSel.value ? parseInt(compSel.value) : null;
+    q.habilidadeCod = habSel.value || null;
+    editWrap.classList.add("hidden"); editWrap.innerHTML = "";
+    generateQuestion(q);
+  });
+}
+
+function buildQuestionBody(data, q){
+  const wrap = document.createElement("div");
+
+  const metaRow = document.createElement("div");
+  metaRow.style.cssText = "display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px;";
+  metaRow.innerHTML = `
+    <span class="badge dif-${data.dificuldade}">${data.dificuldade}</span>
+    <span class="badge">${escapeHtml(data.habilidade?.codigo||"")}</span>
+    <span class="badge professor-only gabarito-badge">Gabarito: ${escapeHtml(data.gabarito||"")}</span>
+  `;
+  wrap.appendChild(metaRow);
+
+  const tb = document.createElement("div"); tb.className = "texto-base"; tb.textContent = data.textoBase || "";
+  wrap.appendChild(tb);
+
+  if(data.visual && data.visual.tipo){
+    wrap.appendChild(buildVisual(data.visual, q));
+  }
+
+  const cmd = document.createElement("p"); cmd.className = "comando"; cmd.textContent = data.comando || "";
+  wrap.appendChild(cmd);
+
+  const altList = document.createElement("div"); altList.className = "alt-list";
+  ["A","B","C","D","E"].forEach(letter => {
+    const isCorrect = data.gabarito === letter;
+    const item = document.createElement("div");
+    item.className = "alt-item" + (isCorrect ? " correct" : "");
+    const comentario = data.analiseAlternativas && data.analiseAlternativas[letter] ? data.analiseAlternativas[letter].comentario : "";
+    item.innerHTML = `
+      <div class="alt-letter">${letter}</div>
+      <div style="flex:1;">
+        <div>${escapeHtml((data.alternativas && data.alternativas[letter]) || "")}</div>
+        <div class="alt-comment professor-only">${isCorrect ? "✅ CORRETA" : "❌ INCORRETA"} — ${escapeHtml(comentario)}</div>
+      </div>
+    `;
+    altList.appendChild(item);
+  });
+  wrap.appendChild(altList);
+
+  const pedagog = document.createElement("div"); pedagog.className = "pedagog professor-only";
+  pedagog.innerHTML = `
+    <div class="pedagog-grid">
+      <div class="pedagog-item"><div class="lab">Área</div><div class="val">${escapeHtml(AREA_META[state.area].label)}</div></div>
+      <div class="pedagog-item"><div class="lab">Disciplina</div><div class="val">${escapeHtml(data.disciplina||state.disciplina)}</div></div>
+      <div class="pedagog-item"><div class="lab">Dificuldade</div><div class="val">${escapeHtml(data.dificuldade||"")}</div></div>
+      <div class="pedagog-item"><div class="lab">Gabarito</div><div class="val">${escapeHtml(data.gabarito||"")}</div></div>
+    </div>
+    <div class="pedagog-grid">
+      <div class="pedagog-item" style="grid-column:1/-1;"><div class="lab">Competência</div><div class="val">Competência ${escapeHtml(data.competencia?.numero)} — ${escapeHtml(data.competencia?.texto)}</div></div>
+      <div class="pedagog-item" style="grid-column:1/-1;"><div class="lab">Habilidade</div><div class="val">${escapeHtml(data.habilidade?.codigo)} — ${escapeHtml(data.habilidade?.texto)}</div></div>
+    </div>
+    <div class="lab" style="font-size:10.5px;text-transform:uppercase;letter-spacing:.5px;color:var(--ink-2);margin-bottom:6px;">Resolução comentada</div>
+    <div class="resolucao">${escapeHtml(data.resolucaoComentada||"")}</div>
+  `;
+  wrap.appendChild(pedagog);
+
+  return wrap;
+}
+
+// Rótulo em português do tipo de recurso visual, para textos de botão/mensagens.
+function recursoLabel(tipo){
+  return tipo === "imagem" ? "imagem" : tipo === "grafico" ? "gráfico" : tipo === "tabela" ? "tabela" : "recurso visual";
+}
+
+function buildVisual(visual, q){
+  const box = document.createElement("div"); box.className = "visual-box";
+
+  const headerRow = document.createElement("div"); headerRow.className = "visual-header-row";
+  const title = document.createElement("div"); title.className = "visual-title";
+  title.textContent = visual.titulo || (visual.tipo === "imagem" ? "Imagem ilustrativa" : visual.tipo === "grafico" ? "Gráfico" : "Tabela");
+  headerRow.appendChild(title);
+  const redoBtn = document.createElement("button");
+  redoBtn.className = "btn sm ghost no-print visual-redo-btn";
+  redoBtn.textContent = `🔄 Refazer ${recursoLabel(visual.tipo)}`;
+  redoBtn.title = `Gera uma nova versão d${visual.tipo==="imagem"?"a imagem":visual.tipo==="tabela"?"a tabela":"o gráfico"}, mantendo o restante da questão exatamente como está.`;
+  headerRow.appendChild(redoBtn);
+  box.appendChild(headerRow);
+
+  // Instruções opcionais, editáveis a qualquer momento (antes ou depois da geração) —
+  // usadas tanto na criação inicial do recurso visual quanto em cada "refazer".
+  const instrWrap = document.createElement("div"); instrWrap.className = "visual-instr-wrap no-print";
+  instrWrap.innerHTML = `
+    <label class="field-label">Instruções opcionais para o "refazer"</label>
+    <textarea class="visual-instr-input" placeholder="Ex.: use um gráfico de linha em vez de barras; destaque o ano de 2020; mostre em corte transversal...">${escapeHtml(q.instrucoesVisual||"")}</textarea>
+  `;
+  box.appendChild(instrWrap);
+  instrWrap.querySelector(".visual-instr-input").addEventListener("input", e => { q.instrucoesVisual = e.target.value; });
+
+  const body = document.createElement("div"); body.className = "visual-body";
+  box.appendChild(body);
+  renderVisualContent(body, visual);
+
+  redoBtn.addEventListener("click", () => {
+    if(visual.tipo === "imagem"){
+      redoImageVisual(q, visual, body);
+    } else {
+      redoDataVisual(q, body, title, redoBtn);
+    }
+  });
+
+  return box;
+}
+
+// Desenha o conteúdo do recurso visual (imagem/tabela/gráfico) dentro de .visual-body.
+// Extraído à parte para poder ser chamado de novo, no mesmo elemento já existente na
+// tela, quando o professor/aluno clica em "Refazer" — sem precisar recriar o card inteiro.
+function renderVisualContent(body, visual){
+  body.innerHTML = "";
+  if(visual.tipo === "imagem"){
+    const promptText = visual.promptImagem || visual.descricao || "ilustração científica educacional";
+    const holder = document.createElement("div");
+    holder.className = "visual-image-holder";
+    body.appendChild(holder);
+    renderGeneratedImage(holder, promptText, visual.descricao || "");
+  } else if(visual.tipo === "tabela"){
+    const table = document.createElement("table"); table.className = "enem-table";
+    const thead = document.createElement("thead"); const trh = document.createElement("tr");
+    (visual.colunas||[]).forEach(c => { const th = document.createElement("th"); th.textContent = c; trh.appendChild(th); });
+    thead.appendChild(trh); table.appendChild(thead);
+    const tbody = document.createElement("tbody");
+    (visual.linhas||[]).forEach(row => {
+      const tr = document.createElement("tr");
+      row.forEach(cell => { const td = document.createElement("td"); td.textContent = cell; tr.appendChild(td); });
+      tbody.appendChild(tr);
+    });
+    table.appendChild(tbody);
+    body.appendChild(table);
+  } else if(visual.tipo === "grafico"){
+    const canvas = document.createElement("canvas"); canvas.style.maxHeight = "340px";
+    body.appendChild(canvas);
+    setTimeout(() => {
+      try{
+        new Chart(canvas.getContext("2d"), {
+          type: visual.chartType || "bar",
+          data: { labels: visual.labels || [], datasets: (visual.datasets||[]).map((ds,i) => ({
+            label: ds.label, data: ds.data,
+            backgroundColor: chartColor(i, .55), borderColor: chartColor(i, 1), borderWidth: 2, tension: .3,
+          })) },
+          options: {
+            responsive: true,
+            plugins: { legend: { labels: { color: "#c7cde3" } }, title: { display: !!visual.titulo, text: visual.titulo||"", color:"#fff" } },
+            scales: (visual.chartType === "pie") ? {} : {
+              x: { ticks: { color: "#8a92b8" }, grid: { color: "rgba(255,255,255,.06)" } },
+              y: { ticks: { color: "#8a92b8" }, grid: { color: "rgba(255,255,255,.06)" } },
+            },
+          },
+        });
+      } catch(e){ body.innerHTML += `<p class="hint">Não foi possível renderizar o gráfico.</p>`; }
+    }, 30);
+  }
+}
+
+function renderGeneratedImage(holder, promptText, descricao){
+  holder.innerHTML = `
+    <div class="visual-image-loading" style="text-align:center;padding:28px 12px;">
+      <div class="spinner" style="margin:0 auto;"></div>
+      <div class="hint" style="margin-top:10px;">Gerando imagem com IA (ChatGPT · GPT Image 2)... pode levar alguns segundos.</div>
+    </div>
+  `;
+  generateImageViaBackend(promptText).then(dataUrl => {
+    holder.innerHTML = "";
+    const img = document.createElement("img");
+    img.src = dataUrl;
+    img.alt = descricao || "";
+    holder.appendChild(img);
+    if(descricao){
+      const cap = document.createElement("p");
+      cap.style.cssText = "font-size:12px;color:var(--ink-2);margin:10px 0 0;";
+      cap.textContent = descricao;
+      holder.appendChild(cap);
+    }
+  }).catch(err => {
+    holder.innerHTML = `
+      <div style="text-align:center;padding:18px 12px;">
+        <p class="hint" style="color:#f87171;">⚠️ Não foi possível gerar a imagem: ${escapeHtml(err.message || String(err))}</p>
+        <button class="btn sm ghost no-print retry-img-btn">🔄 Tentar novamente</button>
+      </div>
+    `;
+    holder.querySelector(".retry-img-btn").addEventListener("click", () => renderGeneratedImage(holder, promptText, descricao));
+  });
+}
+
+// Botão "Refazer" para imagens: gera uma nova imagem (novo sorteio do modelo de imagem)
+// a partir do mesmo conceito já definido pela questão, combinado com as instruções
+// opcionais atuais do professor/aluno. Não passa de novo pelo Claude — é uma chamada
+// direta e rápida ao backend de imagens, no mesmo local (holder) já exibido na tela.
+function redoImageVisual(q, visual, body){
+  const holder = body.querySelector(".visual-image-holder");
+  if(!holder) return;
+  const instrucoes = (q.instrucoesVisual || "").trim();
+  const basePrompt = visual.promptImagem || visual.descricao || "ilustração científica educacional";
+  const promptText = instrucoes
+    ? `${basePrompt}\n\nInstruções adicionais do professor/aluno para esta nova versão: ${instrucoes}`
+    : basePrompt;
+  renderGeneratedImage(holder, promptText, visual.descricao || "");
+}
+
+// Botão "Refazer" para gráfico/tabela: pede ao backend (que por sua vez chama o Claude)
+// para gerar SÓ um novo recurso visual, mantendo o texto-base, comando, alternativas,
+// gabarito e resolução comentada da questão exatamente como estão — guiado pelas
+// instruções opcionais atuais, se houver.
+async function redoDataVisual(q, body, titleEl, redoBtn){
+  redoBtn.disabled = true;
+  const originalLabel = redoBtn.textContent;
+  redoBtn.textContent = "⏳ Refazendo...";
+  body.innerHTML = `
+    <div style="text-align:center;padding:28px 12px;">
+      <div class="spinner" style="margin:0 auto;"></div>
+      <div class="hint" style="margin-top:10px;">Refazendo ${recursoLabel(q.data.visual.tipo)}...</div>
+    </div>
+  `;
+  try{
+    const resp = await fetch(QUESTION_BACKEND_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        regenerarVisual: true,
+        area: state.area,
+        disciplina: state.disciplina,
+        tema: q.data.tema || q.tema || "",
+        dificuldade: q.data.dificuldade || q.dificuldade,
+        recurso: q.data.visual.tipo,
+        textoBase: q.data.textoBase || "",
+        comando: q.data.comando || "",
+        alternativas: q.data.alternativas || {},
+        gabarito: q.data.gabarito || "",
+        resolucaoComentada: q.data.resolucaoComentada || "",
+        instrucoesVisual: q.instrucoesVisual || "",
+      }),
+    });
+    const rawBody = await resp.text();
+    let payload = {};
+    try{ payload = rawBody ? JSON.parse(rawBody) : {}; }catch(e){ /* corpo não é JSON — trata abaixo */ }
+    if(!resp.ok || payload.error){
+      throw new Error(payload.error || rawBody.slice(0, 300) || `Erro HTTP ${resp.status} ao refazer o recurso visual.`);
+    }
+    if(!payload.visual){
+      throw new Error("O backend não retornou um novo recurso visual.");
+    }
+    q.data.visual = payload.visual;
+    titleEl.textContent = payload.visual.titulo || titleEl.textContent;
+    renderVisualContent(body, payload.visual);
+  } catch(err){
+    // Mantém a versão anterior visível (ela não foi alterada) e só avisa do erro.
+    renderVisualContent(body, q.data.visual);
+    toast(`Não foi possível refazer: ${err.message || String(err)}`, "err");
+  } finally {
+    redoBtn.disabled = false;
+    redoBtn.textContent = originalLabel;
+  }
+}
+
+function chartColor(i, alpha){
+  const palette = [`99,102,241`,`236,72,153`,`16,185,129`,`245,158,11`,`59,130,246`];
+  return `rgba(${palette[i % palette.length]},${alpha})`;
+}
+
+/* ---------------- View toggle / print ---------------- */
+function setViewMode(mode){
+  state.viewMode = mode;
+  document.getElementById("viewAluno").classList.toggle("active", mode === "aluno");
+  document.getElementById("viewProfessor").classList.toggle("active", mode === "professor");
+  document.body.classList.toggle("mode-aluno", mode === "aluno");
+  document.body.classList.toggle("mode-professor", mode === "professor");
+}
+
+function exportHtmlSnapshot(){
+  if(!state.questions.length || !state.questions.some(q => q.status === "done")){
+    toast("Gere ao menos uma questão antes de exportar.", "err");
+    return;
+  }
+  if(document.getElementById("resultsPanel").querySelector(".visual-image-loading")){
+    toast("Aguarde a geração das imagens terminar antes de exportar.", "err");
+    return;
+  }
+  try{
+    const panel = document.getElementById("resultsPanel");
+    const clone = panel.cloneNode(true);
+
+    // Remove non-printable UI (toolbar with buttons) from the static export.
+    clone.querySelectorAll(".no-print").forEach(n => n.remove());
+
+    // Freeze any live <canvas> charts as static images so the exported file
+    // renders correctly without needing Chart.js / JS execution.
+    const liveCanvases = panel.querySelectorAll("canvas");
+    const cloneCanvases = clone.querySelectorAll("canvas");
+    liveCanvases.forEach((liveCanvas, i) => {
+      const cloneCanvas = cloneCanvases[i];
+      if(!cloneCanvas) return;
+      try{
+        const img = document.createElement("img");
+        img.src = liveCanvas.toDataURL("image/png");
+        img.style.cssText = liveCanvas.getAttribute("style") || "max-width:100%;";
+        cloneCanvas.replaceWith(img);
+      }catch(e){ /* canvas tainted or empty — leave as-is */ }
+    });
+
+    const styleTag = document.querySelector("style");
+    const css = styleTag ? styleTag.textContent : "";
+    const modeClass = state.viewMode === "aluno" ? "mode-aluno" : "mode-professor";
+    const titulo = `Simulado ENEM — ${AREA_META[state.area] ? AREA_META[state.area].label : ""} · ${state.disciplina || ""}`;
+
+    const doc = `<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>${escapeHtml(titulo)}</title>
+<style>${css}
+body{background:#0b0f1e;}
+@media print{ body{background:#fff;} }
+</style>
+</head>
+<body class="${modeClass}">
+<div class="wrap">${clone.outerHTML}</div>
+</body>
+</html>`;
+
+    const blob = new Blob([doc], {type: "text/html"});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    const rotulo = state.viewMode === "aluno" ? "aluno" : "professor";
+    const safeName = `Simulado_ENEM_${(state.disciplina||"questoes").replace(/[^a-zA-Z0-9]+/g,"_")}_${rotulo}.html`;
+    a.href = url;
+    a.download = safeName;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 4000);
+    toast("Arquivo HTML exportado com sucesso.", "ok");
+  }catch(err){
+    toast("Não foi possível exportar o arquivo: " + err.message, "err");
+  }
+}
+
+/* ---------------- PDF export (desenho vetorial em caixas coloridas — sem screenshot) ---------------- */
+
+const PDF_PALETTE = {
+  contexto:    { fill: [241, 245, 249], accent: [100, 116, 139], text: [30, 41, 59] },   // slate
+  visual:      { fill: [248, 250, 252], accent: [71, 85, 105],  text: [30, 41, 59] },    // slate escuro
+  pergunta:    { fill: [238, 242, 255], accent: [79, 70, 229],  text: [49, 46, 129] },    // indigo
+  alternativa: { fill: [248, 250, 252], accent: [148, 163, 184],text: [30, 41, 59] },    // neutro
+  correta:     { fill: [236, 253, 245], accent: [16, 185, 129], text: [6, 78, 59] },      // esmeralda
+  habilidade:  { fill: [240, 253, 244], accent: [34, 197, 94],  text: [20, 83, 45] },     // verde
+  gabarito:    { fill: [255, 251, 235], accent: [217, 119, 6],  text: [120, 53, 15] },    // âmbar
+  resposta:    { fill: [236, 254, 255], accent: [8, 145, 178],  text: [22, 78, 99] },     // ciano
+  resolucao:   { fill: [255, 247, 237], accent: [234, 88, 12],  text: [124, 45, 18] },    // laranja
+  comentario:  { fill: [253, 242, 248], accent: [219, 39, 119], text: [131, 24, 67] },    // rosa
+};
+
+// A fonte padrão "helvetica" do jsPDF (Type1/AFM, WinAnsi) não possui glifos para
+// vários símbolos matemáticos/científicos comuns em questões de Física, Química e
+// Matemática (expoentes como m², s³, letras gregas, ≤ ≥ ≠ ≈, µ, √, etc.) — eles
+// aparecem em branco ou como caracteres corrompidos no PDF gerado. Para nunca
+// silenciar informação (ex.: "m/s²" virando "m/s"), sanitizamos esses símbolos
+// para equivalentes em texto simples só no PDF (a versão em HTML na tela usa fontes
+// do sistema/navegador e não precisa disso).
+const PDF_SYMBOL_MAP = {
+  "⁰": "^0", "¹": "^1", "²": "^2", "³": "^3", "⁴": "^4", "⁵": "^5",
+  "⁶": "^6", "⁷": "^7", "⁸": "^8", "⁹": "^9",
+  "₀": "_0", "₁": "_1", "₂": "_2", "₃": "_3", "₄": "_4", "₅": "_5",
+  "₆": "_6", "₇": "_7", "₈": "_8", "₉": "_9",
+  "µ": "u", "μ": "u",
+  "≈": "~", "≠": " diferente de ", "≤": "<=", "≥": ">=",
+  "√": "raiz de ", "∞": "infinito",
+  "Σ": "somatório de ", "∫": "integral de ",
+  "π": "pi", "Δ": "Delta", "δ": "delta", "Ω": "Ohm", "ω": "ômega",
+  "α": "alfa", "β": "beta", "θ": "teta", "λ": "lambda", "φ": "fi",
+  "′": "'", "″": '"',
+};
+const PDF_SYMBOL_REGEX = new RegExp(Object.keys(PDF_SYMBOL_MAP).join("|"), "g");
+function pdfSanitizeText(text){
+  if(text == null) return text;
+  return String(text).replace(PDF_SYMBOL_REGEX, ch => PDF_SYMBOL_MAP[ch]);
+}
+
+function pdfEnsureSpace(doc, ctx, neededHeight){
+  if(ctx.y + neededHeight > ctx.pageHeight - ctx.margin){
+    doc.addPage();
+    ctx.y = ctx.margin;
+  }
+}
+
+// Desenha uma "caixa" colorida com um rótulo (label) em maiúsculas e um corpo de texto,
+// com barra de destaque colorida à esquerda. Quebra de página automática; se o próprio
+// texto for maior que uma página inteira (raro), pagina o conteúdo internamente.
+function pdfDrawBox(doc, ctx, opts){
+  const { margin, pageWidth, pageHeight } = ctx;
+  const contentWidth = pageWidth - margin * 2;
+  const padding = opts.padding != null ? opts.padding : 10;
+  const innerX = margin + padding + 6;
+  const innerWidth = contentWidth - padding * 2 - 6;
+  const fontSize = opts.fontSize || 10.5;
+  const labelSize = 8;
+  const colors = opts.colors;
+  const gap = opts.gap != null ? opts.gap : 10;
+
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(fontSize);
+  const lines = opts.big ? [] : doc.splitTextToSize(pdfSanitizeText(String(opts.text || "").trim()) || "—", innerWidth);
+  const lineHeight = fontSize * 1.34;
+  const labelHeight = opts.label ? 14 : 0;
+  const bodyHeight = opts.big ? 34 : Math.max(lines.length, 1) * lineHeight;
+  const boxHeight = padding * 2 + labelHeight + bodyHeight;
+  const maxPageContent = pageHeight - margin * 2;
+
+  if(!opts.big && boxHeight > maxPageContent){
+    pdfDrawBoxPaginated(doc, ctx, opts, lines, lineHeight, labelHeight, padding, colors, fontSize, labelSize, gap);
+    return;
+  }
+
+  pdfEnsureSpace(doc, ctx, boxHeight);
+  const boxY = ctx.y;
+
+  doc.setFillColor(colors.fill[0], colors.fill[1], colors.fill[2]);
+  doc.roundedRect(margin, boxY, contentWidth, boxHeight, 6, 6, "F");
+  doc.setFillColor(colors.accent[0], colors.accent[1], colors.accent[2]);
+  doc.roundedRect(margin, boxY, 4, boxHeight, 2, 2, "F");
+
+  let cursorY = boxY + padding + 6;
+  if(opts.label){
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(labelSize);
+    doc.setTextColor(colors.accent[0], colors.accent[1], colors.accent[2]);
+    doc.text(String(opts.label).toUpperCase(), innerX, cursorY);
+    cursorY += labelHeight;
+  }
+
+  doc.setTextColor(colors.text[0], colors.text[1], colors.text[2]);
+  if(opts.big){
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(26);
+    doc.text(String(opts.text || "—"), margin + contentWidth / 2, cursorY + 16, { align: "center" });
+  } else {
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(fontSize);
+    lines.forEach((line, li) => {
+      doc.text(line, innerX, cursorY + fontSize * 0.85 + li * lineHeight);
+    });
+  }
+
+  ctx.y = boxY + boxHeight + gap;
+}
+
+// Fallback para textos gigantes (ex.: uma resolução comentada enorme) que sozinhos
+// ultrapassam a altura de uma página — flui o conteúdo por múltiplas páginas.
+function pdfDrawBoxPaginated(doc, ctx, opts, lines, lineHeight, labelHeight, padding, colors, fontSize, labelSize, gap){
+  const { margin, pageWidth, pageHeight } = ctx;
+  const contentWidth = pageWidth - margin * 2;
+  const innerX = margin + padding + 6;
+  let idx = 0;
+  let first = true;
+  while(idx < lines.length || first){
+    if(ctx.y + 60 > pageHeight - margin){ doc.addPage(); ctx.y = margin; }
+    const boxY = ctx.y;
+    const availableHeight = (pageHeight - margin) - boxY;
+    const availableForLines = availableHeight - padding * 2 - (first ? labelHeight : 0);
+    const linesThisPage = Math.max(1, Math.floor(availableForLines / lineHeight));
+    const chunk = lines.slice(idx, idx + linesThisPage);
+    const boxHeight = padding * 2 + (first ? labelHeight : 0) + chunk.length * lineHeight;
+
+    doc.setFillColor(colors.fill[0], colors.fill[1], colors.fill[2]);
+    doc.roundedRect(margin, boxY, contentWidth, boxHeight, 6, 6, "F");
+    doc.setFillColor(colors.accent[0], colors.accent[1], colors.accent[2]);
+    doc.roundedRect(margin, boxY, 4, boxHeight, 2, 2, "F");
+
+    let cursorY = boxY + padding + 6;
+    if(first && opts.label){
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(labelSize);
+      doc.setTextColor(colors.accent[0], colors.accent[1], colors.accent[2]);
+      doc.text(String(opts.label).toUpperCase(), innerX, cursorY);
+      cursorY += labelHeight;
+    }
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(fontSize);
+    doc.setTextColor(colors.text[0], colors.text[1], colors.text[2]);
+    chunk.forEach((line, li) => {
+      doc.text(line, innerX, cursorY + fontSize * 0.85 + li * lineHeight);
+    });
+
+    ctx.y = boxY + boxHeight;
+    idx += chunk.length;
+    first = false;
+    if(idx < lines.length){ doc.addPage(); ctx.y = margin; }
+  }
+  ctx.y += gap;
+}
+
+function pdfGetVisualImageInfo(cardIdx){
+  const card = document.querySelectorAll("#questionResults .qcard")[cardIdx];
+  if(!card) return null;
+  const img = card.querySelector(".visual-image-holder img");
+  if(!img || !img.src) return null;
+  return { dataUrl: img.src, width: img.naturalWidth || 800, height: img.naturalHeight || 500 };
+}
+
+// Os gráficos na tela usam texto claro (legenda, título, eixos) porque o app tem
+// fundo escuro. Isso fica ilegível se capturado direto para o PDF (fundo branco).
+// Por isso, antes de capturar a imagem do gráfico para o PDF, trocamos temporariamente
+// as cores do texto para preto (alto contraste) e as linhas de grade para um cinza
+// bem sutil, capturamos, e devolvemos as cores originais da tela em seguida — a
+// aparência do app na tela não muda, só a imagem exportada para o PDF.
+function pdfGetVisualChartInfo(cardIdx){
+  const card = document.querySelectorAll("#questionResults .qcard")[cardIdx];
+  if(!card) return null;
+  const canvas = card.querySelector(".visual-body canvas");
+  if(!canvas) return null;
+
+  const chart = (window.Chart && typeof Chart.getChart === "function") ? Chart.getChart(canvas) : null;
+  if(!chart){
+    try{
+      return { dataUrl: canvas.toDataURL("image/png"), width: canvas.width, height: canvas.height };
+    }catch(e){ return null; }
+  }
+
+  const opts = chart.options || {};
+  const legendLabels = opts.plugins?.legend?.labels;
+  const title = opts.plugins?.title;
+  const xTicks = opts.scales?.x?.ticks;
+  const yTicks = opts.scales?.y?.ticks;
+  const xGrid = opts.scales?.x?.grid;
+  const yGrid = opts.scales?.y?.grid;
+
+  const original = {
+    legend: legendLabels ? legendLabels.color : undefined,
+    title: title ? title.color : undefined,
+    xTicks: xTicks ? xTicks.color : undefined,
+    yTicks: yTicks ? yTicks.color : undefined,
+    xGrid: xGrid ? xGrid.color : undefined,
+    yGrid: yGrid ? yGrid.color : undefined,
+  };
+
+  try{
+    if(legendLabels) legendLabels.color = "#000000";
+    if(title) title.color = "#000000";
+    if(xTicks) xTicks.color = "#000000";
+    if(yTicks) yTicks.color = "#000000";
+    if(xGrid) xGrid.color = "rgba(0,0,0,.12)";
+    if(yGrid) yGrid.color = "rgba(0,0,0,.12)";
+    chart.update("none");
+
+    return { dataUrl: canvas.toDataURL("image/png"), width: canvas.width, height: canvas.height };
+  }catch(e){
+    return null;
+  }finally{
+    // Importante: NÃO reutilizamos as referências de objeto (xTicks/yTicks/xGrid/yGrid)
+    // capturadas antes do chart.update() acima — nesta versão do Chart.js, update()
+    // regenera internamente os sub-objetos de "scales" (ticks/grid), então a referência
+    // antiga fica "órfã" e escrever nela não muda mais nada que o Chart.js realmente lê.
+    // Por isso resolvemos os objetos de novo, a partir de chart.options atual, na hora
+    // de restaurar. (plugins.legend.labels e plugins.title não têm esse problema, mas
+    // resolvemos de novo por segurança/consistência.)
+    const freshOpts = chart.options || {};
+    const freshLegendLabels = freshOpts.plugins?.legend?.labels;
+    const freshTitle = freshOpts.plugins?.title;
+    const freshXTicks = freshOpts.scales?.x?.ticks;
+    const freshYTicks = freshOpts.scales?.y?.ticks;
+    const freshXGrid = freshOpts.scales?.x?.grid;
+    const freshYGrid = freshOpts.scales?.y?.grid;
+
+    if(freshLegendLabels) freshLegendLabels.color = original.legend;
+    if(freshTitle) freshTitle.color = original.title;
+    if(freshXTicks) freshXTicks.color = original.xTicks;
+    if(freshYTicks) freshYTicks.color = original.yTicks;
+    if(freshXGrid) freshXGrid.color = original.xGrid;
+    if(freshYGrid) freshYGrid.color = original.yGrid;
+    chart.update("none");
+  }
+}
+
+// Desenha o recurso visual (imagem gerada por IA, gráfico ou tabela) em sua própria caixa.
+// Imagem/gráfico: incorpora a imagem já renderizada na tela (mesma proporção). Tabela: desenhada
+// como tabela vetorial de verdade (linhas/colunas nítidas), não como captura de tela.
+function pdfDrawVisualBox(doc, ctx, visual, cardIdx){
+  if(!visual || !visual.tipo) return;
+  const { margin, pageWidth, pageHeight } = ctx;
+  const contentWidth = pageWidth - margin * 2;
+  const colors = PDF_PALETTE.visual;
+  const padding = 10;
+  const innerX = margin + padding + 6;
+  const titleText = pdfSanitizeText(visual.titulo) || (visual.tipo === "imagem" ? "Imagem ilustrativa" : visual.tipo === "grafico" ? "Gráfico" : "Tabela");
+
+  if(visual.tipo === "tabela"){
+    const cols = visual.colunas || [];
+    const rows = visual.linhas || [];
+    if(!cols.length) return;
+    const cellPad = 5;
+    const tableWidth = contentWidth - padding * 2 - 6;
+    const colWidth = tableWidth / cols.length;
+    doc.setFontSize(9);
+    const lineH = 9 * 1.3;
+    const headerWrapped = cols.map(c => doc.splitTextToSize(pdfSanitizeText(String(c)), colWidth - cellPad * 2));
+    const rowsWrapped = rows.map(row => row.map(cell => doc.splitTextToSize(pdfSanitizeText(String(cell)), colWidth - cellPad * 2)));
+    const headerHeight = Math.max(...headerWrapped.map(l => l.length), 1) * lineH + cellPad * 2;
+    const rowHeights = rowsWrapped.map(r => Math.max(...r.map(l => l.length), 1) * lineH + cellPad * 2);
+    const tableHeight = headerHeight + rowHeights.reduce((a, b) => a + b, 0);
+    const boxHeight = padding * 2 + 16 + tableHeight;
+
+    pdfEnsureSpace(doc, ctx, Math.min(boxHeight, pageHeight - ctx.margin * 2));
+    const y = ctx.y;
+    doc.setFillColor(colors.fill[0], colors.fill[1], colors.fill[2]);
+    doc.roundedRect(margin, y, contentWidth, boxHeight, 6, 6, "F");
+    doc.setFillColor(colors.accent[0], colors.accent[1], colors.accent[2]);
+    doc.roundedRect(margin, y, 4, boxHeight, 2, 2, "F");
+    doc.setFont("helvetica", "bold"); doc.setFontSize(8);
+    doc.setTextColor(colors.accent[0], colors.accent[1], colors.accent[2]);
+    doc.text(titleText.toUpperCase(), innerX, y + padding + 6);
+
+    let ty = y + padding + 16;
+    const tx = innerX;
+    doc.setDrawColor(colors.accent[0], colors.accent[1], colors.accent[2]);
+    cols.forEach((c, i) => {
+      // O preenchimento precisa ser reaplicado a cada coluna: no jsPDF, setTextColor()
+      // reusa o mesmo estado interno de "cor de preenchimento" usado por rect(...,"F"),
+      // então o texto preto da coluna anterior "vazava" para o preenchimento da
+      // próxima célula do cabeçalho se a cor branca não fosse reafirmada aqui.
+      doc.setFillColor(255, 255, 255);
+      doc.rect(tx + i * colWidth, ty, colWidth, headerHeight, "FD");
+      // Preto puro (em vez do slate padrão das caixas) para máxima legibilidade dos
+      // dados da tabela, conforme pedido.
+      doc.setFont("helvetica", "bold"); doc.setFontSize(9); doc.setTextColor(0, 0, 0);
+      headerWrapped[i].forEach((line, li) => doc.text(line, tx + i * colWidth + cellPad, ty + cellPad + 7 + li * lineH));
+    });
+    ty += headerHeight;
+    rowsWrapped.forEach((row, ri) => {
+      row.forEach((cellLines, ci) => {
+        doc.setFillColor(252, 252, 253);
+        doc.rect(tx + ci * colWidth, ty, colWidth, rowHeights[ri], "FD");
+        doc.setFont("helvetica", "normal"); doc.setFontSize(9); doc.setTextColor(0, 0, 0);
+        cellLines.forEach((line, li) => doc.text(line, tx + ci * colWidth + cellPad, ty + cellPad + 7 + li * lineH));
+      });
+      ty += rowHeights[ri];
+    });
+    ctx.y = y + boxHeight + 10;
+    return;
+  }
+
+  const info = visual.tipo === "imagem" ? pdfGetVisualImageInfo(cardIdx) : pdfGetVisualChartInfo(cardIdx);
+  if(!info) return; // sem imagem disponível (ex.: falhou a geração) — não bloqueia o PDF
+
+  const maxW = contentWidth - padding * 2 - 6;
+  const maxH = 260;
+  let w = maxW, h = w * (info.height / info.width);
+  if(h > maxH){ h = maxH; w = h * (info.width / info.height); }
+
+  let capLines = [];
+  if(visual.descricao){
+    doc.setFont("helvetica", "normal"); doc.setFontSize(8.5);
+    capLines = doc.splitTextToSize(pdfSanitizeText(visual.descricao), maxW);
+  }
+  const capHeight = capLines.length ? (capLines.length * 8.5 * 1.3 + 10) : 0;
+  const titleHeight = 16;
+  const boxHeight = padding * 2 + titleHeight + h + capHeight;
+
+  pdfEnsureSpace(doc, ctx, boxHeight);
+  const y = ctx.y;
+  doc.setFillColor(colors.fill[0], colors.fill[1], colors.fill[2]);
+  doc.roundedRect(margin, y, contentWidth, boxHeight, 6, 6, "F");
+  doc.setFillColor(colors.accent[0], colors.accent[1], colors.accent[2]);
+  doc.roundedRect(margin, y, 4, boxHeight, 2, 2, "F");
+  doc.setFont("helvetica", "bold"); doc.setFontSize(8);
+  doc.setTextColor(colors.accent[0], colors.accent[1], colors.accent[2]);
+  doc.text(titleText.toUpperCase(), innerX, y + padding + 6);
+
+  const imgX = margin + (contentWidth - w) / 2;
+  const imgY = y + padding + titleHeight;
+  const fmtMatch = /^data:image\/(png|jpe?g|webp);base64,/i.exec(info.dataUrl);
+  const imgFormat = fmtMatch ? fmtMatch[1].toUpperCase().replace("JPG", "JPEG") : "PNG";
+  try{ doc.addImage(info.dataUrl, imgFormat, imgX, imgY, w, h); }catch(e){ /* imagem inválida — ignora silenciosamente */ }
+
+  if(capLines.length){
+    doc.setFont("helvetica", "normal"); doc.setFontSize(8.5);
+    doc.setTextColor(colors.text[0], colors.text[1], colors.text[2]);
+    capLines.forEach((line, li) => doc.text(line, innerX, imgY + h + 10 + li * (8.5 * 1.3)));
+  }
+
+  ctx.y = y + boxHeight + 10;
+}
+
+function pdfDrawQuestionHeader(doc, ctx, q, idx){
+  const { margin, pageWidth } = ctx;
+  const contentWidth = pageWidth - margin * 2;
+  const d = q.data;
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(14);
+  doc.setTextColor(30, 41, 59);
+  const title = pdfSanitizeText(`Questão ${idx + 1}` + (d.tema ? ` — ${d.tema}` : ""));
+  const titleLines = doc.splitTextToSize(title, contentWidth);
+  titleLines.forEach((line, li) => doc.text(line, margin, ctx.y + 12 + li * 16));
+  ctx.y += titleLines.length * 16 + 4;
+
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(9);
+  doc.setTextColor(100, 116, 139);
+  const metaParts = [d.disciplina || state.disciplina, d.dificuldade].filter(Boolean);
+  doc.text(pdfSanitizeText(metaParts.join("   ·   ")), margin, ctx.y + 8);
+  ctx.y += 20;
+}
+
+async function exportPdf(){
+  if(!state.questions.length || !state.questions.some(q => q.status === "done")){
+    toast("Gere ao menos uma questão antes de exportar em PDF.", "err");
+    return;
+  }
+  if(document.getElementById("resultsPanel").querySelector(".visual-image-loading")){
+    toast("Aguarde a geração das imagens terminar antes de exportar em PDF.", "err");
+    return;
+  }
+  if(!window.jspdf){
+    toast("Biblioteca de PDF não carregou (verifique sua conexão com a internet) e tente novamente.", "err");
+    return;
+  }
+
+  const btn = document.getElementById("btnExportPdf");
+  const originalLabel = btn.textContent;
+  btn.disabled = true; btn.textContent = "Gerando PDF...";
+
+  try{
+    const { jsPDF } = window.jspdf;
+    const doc = new jsPDF({ unit: "pt", format: "a4" });
+    const margin = 40;
+    const ctx = {
+      margin,
+      pageWidth: doc.internal.pageSize.getWidth(),
+      pageHeight: doc.internal.pageSize.getHeight(),
+      y: margin,
+    };
+    const isAluno = state.viewMode === "aluno";
+
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(20);
+    doc.setTextColor(30, 41, 59);
+    doc.text("Simulado ENEM", margin, ctx.y + 14);
+    ctx.y += 26;
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(11);
+    doc.setTextColor(71, 85, 105);
+    doc.text(`${AREA_META[state.area] ? AREA_META[state.area].label : ""} · ${state.disciplina || ""}`, margin, ctx.y + 8);
+    ctx.y += 16;
+    doc.text(isAluno ? "Versão do aluno (sem gabarito)" : "Versão do professor (com gabarito e comentários)", margin, ctx.y + 8);
+    ctx.y += 30;
+
+    const doneQuestions = state.questions.map((q, idx) => ({ q, idx })).filter(o => o.q.status === "done");
+    if(!doneQuestions.length){ throw new Error("Nenhuma questão para exportar."); }
+
+    doneQuestions.forEach((o, i) => {
+      const { q, idx } = o;
+      const d = q.data;
+      if(i > 0){ doc.addPage(); ctx.y = margin; }
+
+      pdfDrawQuestionHeader(doc, ctx, q, idx);
+
+      if(d.textoBase){
+        pdfDrawBox(doc, ctx, { label: "Texto de apoio", text: d.textoBase, colors: PDF_PALETTE.contexto, fontSize: 10 });
+      }
+
+      if(d.visual && d.visual.tipo){
+        pdfDrawVisualBox(doc, ctx, d.visual, idx);
+      }
+
+      if(d.comando){
+        pdfDrawBox(doc, ctx, { label: "Pergunta", text: d.comando, colors: PDF_PALETTE.pergunta, fontSize: 11.5 });
+      }
+
+      ["A", "B", "C", "D", "E"].forEach(letter => {
+        const isCorrect = !isAluno && d.gabarito === letter;
+        const altText = (d.alternativas && d.alternativas[letter]) || "";
+        pdfDrawBox(doc, ctx, {
+          label: `Alternativa ${letter}` + (isCorrect ? " — CORRETA" : ""),
+          text: altText,
+          colors: isCorrect ? PDF_PALETTE.correta : PDF_PALETTE.alternativa,
+          fontSize: 10.5,
+          gap: 8,
+        });
+      });
+
+      if(!isAluno){
+        const habText = `Competência ${d.competencia?.numero || "—"}: ${d.competencia?.texto || ""}\n\n${d.habilidade?.codigo || "—"}: ${d.habilidade?.texto || ""}`;
+        pdfDrawBox(doc, ctx, { label: "Habilidade e competência", text: habText, colors: PDF_PALETTE.habilidade, fontSize: 10 });
+
+        pdfDrawBox(doc, ctx, { label: "Gabarito", text: d.gabarito || "—", colors: PDF_PALETTE.gabarito, big: true, gap: 14 });
+
+        const respostaText = (d.alternativas && d.alternativas[d.gabarito]) || "";
+        pdfDrawBox(doc, ctx, { label: "Resposta correta", text: respostaText, colors: PDF_PALETTE.resposta, fontSize: 10.5 });
+
+        pdfDrawBox(doc, ctx, { label: "Resolução comentada", text: d.resolucaoComentada || "", colors: PDF_PALETTE.resolucao, fontSize: 10 });
+
+        const comentarios = ["A", "B", "C", "D", "E"].map(letter => {
+          const info = d.analiseAlternativas && d.analiseAlternativas[letter];
+          if(!info) return "";
+          const status = info.status === "correta" ? "CORRETA" : "INCORRETA";
+          return `${letter} — ${status}: ${info.comentario || ""}`;
+        }).filter(Boolean).join("\n\n");
+        pdfDrawBox(doc, ctx, { label: "Comentários das alternativas", text: comentarios, colors: PDF_PALETTE.comentario, fontSize: 10 });
+      }
+    });
+
+    const rotulo = isAluno ? "aluno" : "professor";
+    const safeName = `Simulado_ENEM_${(state.disciplina||"questoes").replace(/[^a-zA-Z0-9]+/g,"_")}_${rotulo}.pdf`;
+    doc.save(safeName);
+    toast("PDF exportado com sucesso.", "ok");
+  }catch(err){
+    toast("Não foi possível exportar o PDF: " + (err.message || err), "err");
+  }finally{
+    btn.disabled = false; btn.textContent = originalLabel;
+  }
+}
+
+/* ---------------- Init / events ---------------- */
+function init(){
+  renderAreaGrid();
+  renderDisciplinaChips();
+  setQty(5);
+
+  // Recupera chave/modelo salvos neste navegador, se houver (ver STORAGE_KEYS).
+  const savedKey = safeStorageGet(STORAGE_KEYS.apiKey);
+  const savedModel = safeStorageGet(STORAGE_KEYS.model);
+  if(savedKey){
+    state.apiKey = savedKey;
+    const keyInput = document.getElementById("apiKeyInput");
+    if(keyInput) keyInput.value = savedKey;
+  }
+  if(savedModel){
+    state.model = savedModel;
+    const modelInput = document.getElementById("modelInput");
+    if(modelInput) modelInput.value = savedModel;
+  }
+
+  document.getElementById("qtyMinus").addEventListener("click", () => setQty(state.qty - 1));
+  document.getElementById("qtyPlus").addEventListener("click", () => setQty(state.qty + 1));
+
+  document.getElementById("btnGenerate").addEventListener("click", () => {
+    if(!state.area){ toast("Selecione a área do conhecimento.", "err"); return; }
+    if(!state.disciplina){ toast("Selecione a disciplina.", "err"); return; }
+    generateAll();
+  });
+
+  document.getElementById("btnBackToForm").addEventListener("click", () => {
+    document.getElementById("formPanel").style.display = "block";
+    document.getElementById("resultsPanel").style.display = "none";
+  });
+
+  document.getElementById("viewAluno").addEventListener("click", () => setViewMode("aluno"));
+  document.getElementById("viewProfessor").addEventListener("click", () => setViewMode("professor"));
+  document.getElementById("btnPrint").addEventListener("click", () => {
+    if(!state.questions.length || !state.questions.some(q => q.status === "done")){
+      toast("Gere ao menos uma questão antes de imprimir.", "err");
+      return;
+    }
+    if(document.getElementById("resultsPanel").querySelector(".visual-image-loading")){
+      toast("Aguarde a geração das imagens terminar antes de imprimir.", "err");
+      return;
+    }
+    try{
+      if(typeof window.print !== "function") throw new Error("print indisponível");
+      window.print();
+    }catch(err){
+      toast("Seu navegador não abriu a caixa de impressão. Use \"Exportar HTML\" e imprima o arquivo baixado.", "err");
+    }
+  });
+  document.getElementById("btnExport").addEventListener("click", exportHtmlSnapshot);
+  document.getElementById("btnExportPdf").addEventListener("click", exportPdf);
+
+  document.getElementById("btnSettings").addEventListener("click", () => openModal("settingsModal"));
+  document.getElementById("btnCloseSettings").addEventListener("click", () => closeModal("settingsModal"));
+  document.getElementById("btnSaveSettings").addEventListener("click", () => {
+    state.apiKey = document.getElementById("apiKeyInput").value.trim();
+    state.model = document.getElementById("modelInput").value.trim() || state.model;
+    let saved = false;
+    if(state.apiKey){
+      saved = safeStorageSet(STORAGE_KEYS.apiKey, state.apiKey);
+      safeStorageSet(STORAGE_KEYS.model, state.model);
+    }
+    closeModal("settingsModal");
+    if(!state.apiKey){
+      toast("Nenhuma chave informada.", "err");
+    } else if(saved){
+      toast("Chave salva neste navegador — não vai pedir de novo.", "ok");
+    } else {
+      toast("Configurações salvas para esta sessão (este visualizador não permite lembrar a chave entre sessões).", "ok");
+    }
+  });
+
+  const btnForgetKey = document.getElementById("btnForgetKey");
+  if(btnForgetKey){
+    btnForgetKey.addEventListener("click", () => {
+      state.apiKey = "";
+      safeStorageRemove(STORAGE_KEYS.apiKey);
+      safeStorageRemove(STORAGE_KEYS.model);
+      const keyInput = document.getElementById("apiKeyInput");
+      if(keyInput) keyInput.value = "";
+      toast("Chave removida deste navegador.", "ok");
+    });
+  }
+
+  document.getElementById("btnHelp").addEventListener("click", () => openModal("helpModal"));
+  document.getElementById("btnCloseHelp").addEventListener("click", () => closeModal("helpModal"));
+
+  setViewMode("professor");
+
+  // 3D tilt effect on cards (delegated)
+  document.addEventListener("mousemove", e => {
+    const card = e.target.closest && e.target.closest(".qcard, .area-tile");
+    document.querySelectorAll(".qcard.tilt-active, .area-tile.tilt-active").forEach(c => { if(c !== card){ c.style.transform = ""; c.classList.remove("tilt-active"); }});
+    if(!card) return;
+    const r = card.getBoundingClientRect();
+    const px = (e.clientX - r.left) / r.width - .5;
+    const py = (e.clientY - r.top) / r.height - .5;
+    card.classList.add("tilt-active");
+    card.style.transform = `perspective(900px) rotateX(${(-py*4).toFixed(2)}deg) rotateY(${(px*4).toFixed(2)}deg) translateY(-2px)`;
+  });
+  document.addEventListener("mouseleave", () => {
+    document.querySelectorAll(".tilt-active").forEach(c => { c.style.transform = ""; c.classList.remove("tilt-active"); });
+  }, true);
+}
+
+function openModal(id){ document.getElementById(id).classList.add("show"); }
+function closeModal(id){ document.getElementById(id).classList.remove("show"); }
+
+document.addEventListener("DOMContentLoaded", init);
+
+</script>
+</body>
+</html>
