@@ -305,7 +305,9 @@ REGRA DE FORMATAÇÃO DO JSON — vale para TODOS os campos de texto, e o campo 
 - prefira ASPAS SIMPLES dentro dos textos; se precisar mesmo de uma aspa dupla, escape-a como \\" ;
 - nada de LaTeX nem de barra invertida solta: escreva "2π vezes a raiz quadrada de (L/g)", nunca "2\\pi\\sqrt{L/g}";
 - nada de quebra de linha literal dentro de uma string (use \\n);
-- nada de vírgula sobrando antes de } ou ].`;
+- nada de vírgula sobrando antes de } ou ].
+
+COMO ENTREGAR: chame a ferramenta "entregar_questao" passando esse objeto como argumento. Não escreva o JSON no texto da resposta, não use crases e não escreva nada antes ou depois da chamada da ferramenta.`;
 
 // Bloco anti-alucinação: injetado apenas para disciplinas em que o texto-suporte
 // tipicamente cita autor/obra/pesquisa real (ver DISCIPLINAS_FONTES_REAIS_OBRIGATORIAS).
@@ -384,8 +386,9 @@ ${opts.instrucoesVisual
     ? `\nInstruções adicionais do professor para esta nova versão do recurso visual (siga-as com prioridade): ${opts.instrucoesVisual}\n`
     : `\nO professor não deu instruções adicionais desta vez — gere uma variação genuinamente diferente da anterior (ex.: outro tipo de gráfico, outra organização da tabela, outro ângulo/estilo de imagem), mantendo a coerência com a questão.\n`}
 
-Responda SOMENTE com um objeto JSON válido (sem markdown, sem texto antes ou depois, sem comentários), exatamente neste formato:
-{"visual": <objeto do recurso visual, no formato de "visual" instruído acima>}`;
+Entregue o resultado chamando a ferramenta "entregar_visual", com um único argumento neste formato:
+{"visual": <objeto do recurso visual, no formato de "visual" instruído acima>}
+Não escreva o JSON no texto da resposta e não escreva nada antes ou depois da chamada da ferramenta.`;
 }
 
 // PROTOCOLO DE REVISÃO E VALIDAÇÃO — construído a partir da Ficha de Revisão de Item
@@ -511,7 +514,7 @@ function backoffDelay(attempt: number) {
   return Math.min(800 * 2 ** (attempt - 1), 8000) + Math.random() * 400;
 }
 
-async function callClaude(system: string, userMsg: string, maxTokens: number, enableWebSearch = false): Promise<{ text: string; truncated: boolean; usage: any }> {
+async function callClaude(system: string, userMsg: string, maxTokens: number, enableWebSearch = false, ferramenta: any = null): Promise<{ text: string; truncated: boolean; usage: any; ferramentaJSON: string }> {
   let lastErr: any;
   for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
     const controller = new AbortController();
@@ -539,7 +542,20 @@ async function callClaude(system: string, userMsg: string, maxTokens: number, en
           messages: [{ role: "user", content: userMsg }],
           thinking: { type: "disabled" },
           stream: true,
-          ...(enableWebSearch ? { tools: [WEB_SEARCH_TOOL] } : {}),
+          ...(() => {
+            const tools = [
+              ...(enableWebSearch ? [WEB_SEARCH_TOOL] : []),
+              ...(ferramenta ? [ferramenta] : []),
+            ];
+            if (!tools.length) return {};
+            /* Sem busca na web, a entrega pela ferramenta é obrigatória — não há
+               por que deixar espaço para prosa. Com busca ligada, a escolha fica
+               automática: o modelo precisa poder pesquisar ANTES de entregar. */
+            const tool_choice = ferramenta && !enableWebSearch
+              ? { type: "tool", name: ferramenta.name }
+              : { type: "auto" };
+            return { tools, tool_choice };
+          })(),
         }),
         signal: controller.signal,
       });
@@ -571,6 +587,10 @@ async function callClaude(system: string, userMsg: string, maxTokens: number, en
       let stopReason: string | null = null;
       let streamErrorMsg: string | null = null;
       let usage: any = null;
+      // Argumento da NOSSA ferramenta, montado pedaço a pedaço pelo streaming.
+      // A busca na web também é uma ferramenta, então filtramos pelo nome.
+      let ferramentaJSON = "";
+      let blocoEhNossaFerramenta = false;
       while (true) {
         const { value, done } = await reader.read();
         if (done) break;
@@ -586,8 +606,15 @@ async function callClaude(system: string, userMsg: string, maxTokens: number, en
           try { evt = JSON.parse(jsonStr); } catch { continue; }
           if (evt.type === "message_start") {
             usage = { ...(evt.message?.usage || {}) };
+          } else if (evt.type === "content_block_start") {
+            const bloco = evt.content_block || {};
+            blocoEhNossaFerramenta = bloco.type === "tool_use" && !!ferramenta && bloco.name === ferramenta.name;
+          } else if (evt.type === "content_block_stop") {
+            blocoEhNossaFerramenta = false;
           } else if (evt.type === "content_block_delta" && evt.delta?.type === "text_delta") {
             text += evt.delta.text || "";
+          } else if (evt.type === "content_block_delta" && evt.delta?.type === "input_json_delta") {
+            if (blocoEhNossaFerramenta) ferramentaJSON += evt.delta.partial_json || "";
           } else if (evt.type === "message_delta") {
             if (evt.delta?.stop_reason) stopReason = evt.delta.stop_reason;
             if (evt.usage) usage = { ...(usage || {}), ...evt.usage };
@@ -598,7 +625,7 @@ async function callClaude(system: string, userMsg: string, maxTokens: number, en
       }
       clearTimeout(watchdog);
       if (streamErrorMsg) throw new Error(streamErrorMsg);
-      return { text, truncated: stopReason === "max_tokens", usage };
+      return { text, truncated: stopReason === "max_tokens", usage, ferramentaJSON };
     } catch (err: any) {
       clearTimeout(watchdog);
       const isAbort = err?.name === "AbortError";
@@ -615,6 +642,59 @@ async function callClaude(system: string, userMsg: string, maxTokens: number, en
 }
 
 const WEB_SEARCH_TOOL = { type: "web_search_20250305", name: "web_search", max_uses: 5 };
+
+/* ENTREGA POR FERRAMENTA, NÃO POR TEXTO LIVRE.
+
+   Durante muito tempo a questão voltava como texto e era interpretada aqui.
+   Isso funciona quase sempre — e falha justamente nas questões mais ricas: uma
+   aspa não escapada dentro do texto-base, um prefácio em prosa antes do JSON,
+   um rascunho abandonado quando o modelo decide pesquisar no meio da resposta.
+   Cada um desses casos custou uma questão perdida ao professor.
+
+   Pedindo a resposta como CHAMADA DE FERRAMENTA, o JSON deixa de ser texto que
+   o modelo escreve e passa a ser argumento que a API monta e valida: aspas,
+   escapes e fechamento de chaves deixam de ser problema nosso. A leitura do
+   texto continua existindo logo abaixo, como plano B, para o caso de o modelo
+   responder em prosa mesmo assim. */
+const FERRAMENTA_QUESTAO = {
+  name: "entregar_questao",
+  description: "Entrega a questão pronta. Use SEMPRE esta ferramenta para devolver a questão — nunca escreva o JSON no texto da resposta.",
+  input_schema: {
+    type: "object",
+    properties: {
+      area: { type: "string" },
+      disciplina: { type: "string" },
+      tema: { type: "string" },
+      dificuldade: { type: "string" },
+      competencia: { type: "object" },
+      habilidade: { type: "object" },
+      objetoConhecimento: { type: "string" },
+      recurso: { type: "string" },
+      visual: {},
+      textoBase: { type: "string" },
+      comando: { type: "string" },
+      alternativas: { type: "object" },
+      gabarito: { type: "string" },
+      resolucaoComentada: { type: "string" },
+      analiseAlternativas: { type: "object" },
+    },
+    required: [
+      "area", "disciplina", "tema", "dificuldade", "competencia", "habilidade",
+      "objetoConhecimento", "recurso", "textoBase", "comando", "alternativas",
+      "gabarito", "resolucaoComentada", "analiseAlternativas",
+    ],
+  },
+};
+
+const FERRAMENTA_VISUAL = {
+  name: "entregar_visual",
+  description: "Entrega apenas a nova versão do recurso visual da questão.",
+  input_schema: {
+    type: "object",
+    properties: { visual: {} },
+    required: ["visual"],
+  },
+};
 
 function sanitizeJsonControlChars(text: string) {
   let out = "";
@@ -651,34 +731,54 @@ function sanitizeJsonControlChars(text: string) {
    buraco.
 
    A regra de decisão: dentro de uma string, uma aspa só ENCERRA de verdade se
-   o próximo caractere não-branco for `:`, `}`, `]` ou o fim do texto — ou uma
+   o próximo caractere não-branco for `}`, `]` ou o fim do texto — ou uma
    vírgula seguida do começo de um novo valor (`"`, `{`, `[`). Qualquer outra
    coisa depois dela é continuação do texto, então a aspa é escapada. É por
    isso que `"o professor disse "não depende da massa", e os alunos…"` é
    recuperado corretamente: a aspa antes da vírgula é seguida de ` e`, não de
-   uma nova chave. */
+   uma nova chave.
+
+   Um caso à parte é o `:` depois da aspa. Ele só indica fim de CHAVE — nunca
+   fim de um VALOR — porque em JSON válido um dois-pontos jamais segue o valor
+   de uma propriedade (só a chave). Tratar todo `"` seguido de `:` como fim de
+   string quebrava exatamente o caso que motivou o reparo pelo schema: um
+   título citado dentro de um campo de texto, com outro dois-pontos mais
+   adiante na mesma frase — `citado por Hilário Franco Jr. em "As Cruzadas" —
+   fonte real, acadêmica: amplamente usada em vestibulares` fecharia a string
+   ali por engano. Por isso a aspa só é tratada como fim de CHAVE quando a
+   PRÓPRIA STRING começou em posição de chave: logo depois de `{` ou de `,`
+   (ignorando espaços) — nunca no meio do valor de outro campo. */
 function escaparAspasSoltas(text: string) {
   let out = "";
   let inString = false;
   let escaped = false;
+  let inicioString = -1;
   const proximoNaoBranco = (de: number) => {
     let k = de;
     while (k < text.length && /\s/.test(text[k])) k++;
     return { ch: k < text.length ? text[k] : "", i: k };
   };
+  const anteriorNaoBranco = (de: number) => {
+    let k = de;
+    while (k >= 0 && /\s/.test(text[k])) k--;
+    return k >= 0 ? text[k] : "";
+  };
   for (let i = 0; i < text.length; i++) {
     const ch = text[i];
-    if (!inString) { out += ch; if (ch === '"') inString = true; continue; }
+    if (!inString) { out += ch; if (ch === '"') { inString = true; inicioString = i; } continue; }
     if (escaped) { out += ch; escaped = false; continue; }
     if (ch === "\\") { out += ch; escaped = true; continue; }
     if (ch !== '"') { out += ch; continue; }
     const depois = proximoNaoBranco(i + 1);
     let encerra: boolean;
-    if (depois.ch === "" || depois.ch === ":" || depois.ch === "}" || depois.ch === "]") {
+    if (depois.ch === "" || depois.ch === "}" || depois.ch === "]") {
       encerra = true;
     } else if (depois.ch === ",") {
       const seguinte = proximoNaoBranco(depois.i + 1);
       encerra = seguinte.ch === '"' || seguinte.ch === "{" || seguinte.ch === "[" || seguinte.ch === "";
+    } else if (depois.ch === ":") {
+      const antes = anteriorNaoBranco(inicioString - 1);
+      encerra = antes === "{" || antes === ",";
     } else {
       encerra = false;
     }
@@ -708,6 +808,136 @@ function escaparBarrasInvalidas(text: string) {
   return out;
 }
 
+/* REPARO GUIADO PELO SCHEMA — o último recurso, e o mais confiável dos três.
+
+   As duas funções acima decidem caractere a caractere, e por isso têm pontos
+   cegos. O pior deles: um texto que cita duas coisas entre aspas seguidas —
+   `a "Cruzada dos Nobres", "Cruzada Popular" e outras` — tem uma aspa interna
+   seguida de vírgula e de nova aspa, exatamente o desenho de quem fecha um
+   valor e abre a próxima chave. Nenhuma regra local distingue os dois casos.
+
+   O que distingue é o SCHEMA: sabemos os nomes dos campos e a ordem deles. O
+   valor de um campo de texto vai do sinal de dois-pontos até onde COMEÇA o
+   próximo campo conhecido — e tudo que estiver no meio é texto, aspas
+   inclusive. Campos cujo valor é objeto (competencia, alternativas, visual…)
+   passam intactos: não se mexe no que não está quebrado. */
+const CHAVES_DO_SCHEMA = [
+  "area", "disciplina", "tema", "dificuldade", "competencia", "numero", "codigo",
+  "habilidade", "objetoConhecimento", "recurso", "visual", "tipo", "descricao",
+  "promptImagem", "chartType", "titulo", "labels", "datasets", "colunas", "linhas",
+  "textoBase", "comando", "alternativas", "gabarito", "resolucaoComentada",
+  "analiseAlternativas", "status", "comentario", "texto", "data", "label",
+  "A", "B", "C", "D", "E",
+];
+const CHAVES_DO_SCHEMA_SET = new Set(CHAVES_DO_SCHEMA);
+
+function escaparConteudoDeString(bruto: string) {
+  return bruto
+    .replace(/\\(?!["\\/bfnrtu])/g, "\\\\")
+    .replace(/\n/g, "\\n").replace(/\r/g, "\\r").replace(/\t/g, "\\t")
+    .replace(/(?<!\\)"/g, '\\"');
+}
+
+/* Cada objeto de primeiro nível fechado corretamente, do maior para o menor. */
+function objetosBalanceados(text: string): string[] {
+  const achados: string[] = [];
+  let inString = false, escaped = false, profundidade = 0, inicio = -1;
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    if (inString) {
+      if (escaped) { escaped = false; continue; }
+      if (ch === "\\") { escaped = true; continue; }
+      if (ch === '"') inString = false;
+      continue;
+    }
+    if (ch === '"') { inString = true; continue; }
+    if (ch === "{") { if (profundidade === 0) inicio = i; profundidade++; continue; }
+    if (ch === "}") {
+      profundidade--;
+      if (profundidade === 0 && inicio >= 0) { achados.push(text.slice(inicio, i + 1)); inicio = -1; }
+      if (profundidade < 0) profundidade = 0;
+    }
+  }
+  return achados.sort((a, b) => b.length - a.length);
+}
+
+function repararPeloSchema(text: string) {
+  // Onde cada campo conhecido começa: a aspa de abertura do NOME do campo.
+  // Versão solta — aceita qualquer ocorrência de `"chave":`, mesmo que a
+  // palavra apareça citada dentro do valor de OUTRO campo (ver a versão
+  // estrita, abaixo, para o reparo que evita esse falso positivo).
+  const marcas: number[] = [];
+  const re = /"([A-Za-z][A-Za-z0-9_]*)"\s*:/g;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(text)) !== null) {
+    if (CHAVES_DO_SCHEMA_SET.has(m[1])) marcas.push(m.index);
+  }
+  return repararComMarcas(text, marcas);
+}
+
+/* VERSÃO ESTRITA DO REPARO PELO SCHEMA.
+
+   A versão solta acima tem seu próprio ponto cego: palavras genéricas da
+   lista de chaves — "texto", "status", "label", "data", "comentario" — podem
+   aparecer citadas, entre aspas e seguidas de dois-pontos, dentro do valor de
+   OUTRO campo (uma citação, uma observação em prosa). Quando isso acontece, a
+   versão solta marca um limite de campo que não existe e corta o valor real
+   no lugar errado.
+
+   Esta versão só aceita uma ocorrência como limite de campo se a aspa de
+   abertura do NOME estiver, ela mesma, em posição de chave: logo depois de
+   `{` (primeiro campo do objeto) ou de `,` (campo seguinte), ignorando
+   espaços. Nenhuma chave real de JSON aparece em outro lugar — então esse
+   filtro nunca descarta um campo verdadeiro, só os falsos positivos. */
+function repararPeloSchemaEstrito(text: string) {
+  const marcas: number[] = [];
+  const re = /"([A-Za-z][A-Za-z0-9_]*)"\s*:/g;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(text)) !== null) {
+    if (!CHAVES_DO_SCHEMA_SET.has(m[1])) continue;
+    let k = m.index - 1;
+    while (k >= 0 && /\s/.test(text[k])) k--;
+    const antes = k >= 0 ? text[k] : "";
+    if (antes === "{" || antes === ",") marcas.push(m.index);
+  }
+  return repararComMarcas(text, marcas);
+}
+
+function repararComMarcas(text: string, marcas: number[]) {
+  if (marcas.length < 2) return text;
+
+  let saida = "";
+  let cursor = 0;
+  for (let i = 0; i < marcas.length; i++) {
+    const inicioChave = marcas[i];
+    const fimDoTrecho = i + 1 < marcas.length ? marcas[i + 1] : text.length;
+    const trecho = text.slice(inicioChave, fimDoTrecho);
+    const doisPontos = trecho.indexOf(":", trecho.indexOf('"', 1) + 1);
+    if (doisPontos < 0) continue;
+    const nome = trecho.slice(0, doisPontos + 1);
+    let valor = trecho.slice(doisPontos + 1);
+
+    // O que vem depois do valor e antes da próxima chave (vírgula, chaves de
+    // fechamento, espaços) fica de fora do conserto e é copiado como está.
+    const abre = valor.indexOf('"');
+    const soAntes = valor.slice(0, abre < 0 ? valor.length : abre);
+    if (abre < 0 || soAntes.trim() !== "") {
+      // valor não é string (objeto, lista, número, null) — passa intacto
+      saida += text.slice(cursor, fimDoTrecho);
+      cursor = fimDoTrecho;
+      continue;
+    }
+    const fecha = valor.lastIndexOf('"');
+    if (fecha <= abre) { saida += text.slice(cursor, fimDoTrecho); cursor = fimDoTrecho; continue; }
+    const miolo = valor.slice(abre + 1, fecha);
+    const rabo = valor.slice(fecha + 1);
+    saida += text.slice(cursor, inicioChave) + nome + soAntes + '"' + escaparConteudoDeString(miolo) + '"' + rabo;
+    cursor = fimDoTrecho;
+  }
+  saida += text.slice(cursor);
+  return saida;
+}
+
 function parseJSONLoose(text: string) {
   const raw = (text || "").trim();
   const candidates = [raw];
@@ -716,6 +946,12 @@ function parseJSONLoose(text: string) {
   const start = raw.indexOf("{");
   const end = raw.lastIndexOf("}");
   if (start !== -1 && end !== -1 && end > start) candidates.push(raw.slice(start, end + 1));
+  /* Com a busca na web ligada, o modelo às vezes começa o JSON, decide
+     pesquisar e recomeça do zero — sobram dois objetos na mesma resposta, e o
+     recorte "da primeira chave à última" junta o rascunho abandonado com o bom.
+     Por isso cada objeto BALANCEADO também entra como candidato, do maior para
+     o menor: o completo costuma ser o último e o maior. */
+  for (const bloco of objetosBalanceados(raw)) candidates.push(bloco);
 
   const semVirgulaFinal = (v: string) => v.replace(/,(\s*[}\]])/g, "$1");
 
@@ -729,7 +965,16 @@ function parseJSONLoose(text: string) {
       const aspas = escaparAspasSoltas(base);
       const barras = escaparBarrasInvalidas(base);
       const ambos = escaparBarrasInvalidas(aspas);
-      for (const v of [base, aspas, barras, ambos]) {
+      // O reparo pelo schema entra tanto no texto cru quanto no já corrigido
+      // por escaparAspasSoltas: a correção de aspas soltas costuma limpar
+      // aspas falsas que, de outro modo, o schema poderia confundir com um
+      // limite de campo — as duas passagens juntas cobrem mais casos do que
+      // cada uma sozinha.
+      const peloSchema = repararPeloSchema(base);
+      const peloSchemaEstrito = repararPeloSchemaEstrito(base);
+      const peloSchemaDeAspas = repararPeloSchema(aspas);
+      const peloSchemaEstritoDeAspas = repararPeloSchemaEstrito(aspas);
+      for (const v of [base, aspas, barras, ambos, peloSchema, peloSchemaEstrito, peloSchemaDeAspas, peloSchemaEstritoDeAspas]) {
         variantes.push(v, semVirgulaFinal(v));
       }
     }
@@ -737,14 +982,38 @@ function parseJSONLoose(text: string) {
       try { return JSON.parse(v); } catch (e) { lastErr = e; }
     }
   }
-  const preview = raw.slice(0, 220).replace(/\s+/g, " ");
+  const preview = raw.slice(0, 180).replace(/\s+/g, " ");
   const detail = lastErr ? lastErr.message : "erro desconhecido";
-  throw new Error(`Não foi possível interpretar a resposta do modelo como JSON (${detail}). Início da resposta recebida: "${preview}${raw.length > 220 ? "..." : ""}"`);
+  /* Sem um pedaço do texto NO PONTO da falha, cada erro destes vira uma
+     investigação às cegas. A janela abaixo mostra o defeito em vez de descrevê-lo. */
+  const posicao = Number((lastErr?.message || "").match(/position (\d+)/)?.[1] ?? -1);
+  const janela = posicao >= 0
+    ? ` Trecho ao redor da falha: …${raw.slice(Math.max(0, posicao - 130), posicao + 130).replace(/\s+/g, " ")}…`
+    : "";
+  throw new Error(`Não foi possível interpretar a resposta do modelo como JSON (${detail}). Resposta com ${raw.length} caracteres, iniciando em: "${preview}${raw.length > 180 ? "..." : ""}".${janela}`);
 }
 
-async function callClaudeForJSON(system: string, userMsg: string, enableWebSearch = false, usos?: any[]) {
-  const { text, truncated, usage } = await callClaude(system, userMsg, 8000, enableWebSearch);
+/* O argumento da ferramenta chega pronto e válido. Ainda assim ele passa por
+   JSON.parse: um objeto vazio ou um pedaço truncado por limite de tokens não
+   pode ser confundido com uma questão. Devolvendo null, o caminho de texto
+   assume. */
+function lerFerramenta(bruto: string): any | null {
+  const t = (bruto || "").trim();
+  if (!t) return null;
+  try {
+    const obj = JSON.parse(t);
+    if (obj && typeof obj === "object" && Object.keys(obj).length) return obj;
+  } catch { /* veio incompleto — segue pelo texto */ }
+  return null;
+}
+
+async function callClaudeForJSON(system: string, userMsg: string, enableWebSearch = false, usos?: any[], ferramenta: any = FERRAMENTA_QUESTAO) {
+  const primeira = await callClaude(system, userMsg, 8000, enableWebSearch, ferramenta);
+  const { text, truncated, usage } = primeira;
   if (usos && usage) usos.push(usage);
+  // Caminho normal: a resposta veio como argumento de ferramenta, já válido.
+  const daFerramenta = lerFerramenta(primeira.ferramentaJSON);
+  if (daFerramenta) return daFerramenta;
   try {
     return parseJSONLoose(text);
   } catch (err: any) {
@@ -755,18 +1024,18 @@ async function callClaudeForJSON(system: string, userMsg: string, enableWebSearc
        chamada a mais só quando já se perdeu a questão; o caminho feliz
        continua com uma chamada só. */
     if (truncated) {
-      const retry = await callClaude(system, userMsg, 12000, enableWebSearch);
+      const retry = await callClaude(system, userMsg, 12000, enableWebSearch, ferramenta);
       if (usos && retry.usage) usos.push(retry.usage);
-      return parseJSONLoose(retry.text);
+      return lerFerramenta(retry.ferramentaJSON) ?? parseJSONLoose(retry.text);
     }
     const correcao = `${userMsg}
 
 ATENÇÃO — sua resposta anterior não pôde ser lida como JSON. O erro do interpretador foi: ${String(err?.message || err).slice(0, 300)}
 
-Reenvie a MESMA questão, agora como JSON estritamente válido. Verifique, antes de responder: toda aspa dupla que faça parte de um texto está escapada como \\" ; não há barra invertida solta (nada de LaTeX como \\pi ou \\sqrt — escreva por extenso); não há quebra de linha literal dentro de uma string; não há vírgula sobrando antes de } ou ]. Responda SOMENTE com o objeto JSON, sem crase e sem texto em volta.`;
-    const retry = await callClaude(system, correcao, 8000, enableWebSearch);
+Reenvie a MESMA questão, agora como JSON estritamente válido. Verifique, antes de responder: toda aspa dupla que faça parte de um texto está escapada como \\" ; não há barra invertida solta (nada de LaTeX como \\pi ou \\sqrt — escreva por extenso); não há quebra de linha literal dentro de uma string; não há vírgula sobrando antes de } ou ]. Entregue chamando a ferramenta indicada acima, sem crase e sem texto em volta.`;
+    const retry = await callClaude(system, correcao, 8000, enableWebSearch, ferramenta);
     if (usos && retry.usage) usos.push(retry.usage);
-    return parseJSONLoose(retry.text);
+    return lerFerramenta(retry.ferramentaJSON) ?? parseJSONLoose(retry.text);
   }
 }
 
@@ -854,7 +1123,7 @@ function selfTestResponse() {
     buildCalibracaoExtensao.toString(),
     buildMatrizInstrucoes.toString(),
     buildObjetosConhecimento.toString(),
-  ].join("\u0000");
+  ].join(String.fromCharCode(0));
   return jsonResponse({
     selftest: true,
     appDataChars: canonico.length,
@@ -924,7 +1193,7 @@ Deno.serve(async (req: Request) => {
     try {
       const system = buildSystemPrompt(area);
       const userMsg = buildVisualRedoPrompt({ tema, recurso, textoBase, comando, alternativas, gabarito, resolucaoComentada, instrucoesVisual });
-      const data = await callClaudeForJSON(system, userMsg, false, usos);
+      const data = await callClaudeForJSON(system, userMsg, false, usos, FERRAMENTA_VISUAL);
       if (!data || !data.visual) {
         return jsonResponse({ error: "O modelo não retornou um novo recurso visual válido." }, 502);
       }
