@@ -373,6 +373,8 @@ function buildVisualRedoPrompt(opts: {
 }) {
   return `Você elaborou anteriormente a questão de vestibular abaixo (padrão ENEM). O professor pediu para refazer SOMENTE o recurso visual (${opts.recurso}) desta questão — mantenha o texto-suporte, o comando, as alternativas, o gabarito e a resolução comentada exatamente como estão; gere apenas uma NOVA versão do recurso visual, coerente com o restante da questão e com os MESMOS fatos/valores já usados na resolução comentada, a menos que as instruções do professor abaixo peçam explicitamente para mudar dados.
 
+⚠️ REGRA ABSOLUTA DE ASSUNTO: o novo recurso visual tem de retratar EXATAMENTE o mesmo objeto, cenário, disciplina e fenômeno do texto-suporte/comando/resolução comentada abaixo — nunca outro tema, ainda que visualmente parecido (ex.: se a questão é de Matemática sobre um caixa eletrônico, a imagem tem de mostrar um caixa eletrônico, nunca uma cena de física, trânsito ou qualquer outro assunto). Antes de entregar, releia o "promptImagem"/"descricao" (ou os dados do gráfico/tabela) e confirme, item por item, que cada elemento pertence à mesma situação-problema descrita abaixo.
+
 QUESTÃO ATUAL (contexto — não repita nem altere nada disto na sua resposta):
 Tema: ${opts.tema}
 Texto-suporte: ${opts.textoBase}
@@ -417,7 +419,7 @@ F1. O item não atende a nenhuma habilidade da Matriz de Referência, ou atende 
 F2. Há erro conceitual, factual, numérico ou de unidade em qualquer parte do item.
 F3. Há mais de um gabarito defensável, ou nenhuma alternativa é inequivocamente correta.
 F4. Falta justificativa para alguma alternativa, ou alguma justificativa é insuficiente/tautológica.
-F5. Há recurso visual (gráfico/tabela/imagem) ilegível, incoerente com o enunciado, meramente decorativo, ou cujos dados não sustentam a resolução comentada.
+F5. Há recurso visual (gráfico/tabela/imagem) ilegível, incoerente com o enunciado, meramente decorativo, ou cujos dados não sustentam a resolução comentada. ISTO INCLUI, em especial, QUALQUER IMAGEM CUJO ASSUNTO/CENA PERTENÇA A OUTRO TEMA, OUTRA DISCIPLINA OU OUTRO FENÔMENO diferente do que o texto-base, o comando e a resolução comentada de fato descrevem — por exemplo, uma questão de Matemática sobre operação bancária/caixa eletrônico acompanhada de uma imagem de radar de trânsito/física, ou uma questão de Biologia sobre célula acompanhada de uma imagem de astronomia. Esse tipo de incoerência de ASSUNTO (não só de detalhe) é uma FALHA FATAL: releia o "promptImagem" e a "descricao" do zero e confirme, palavra por palavra, que TODO objeto, cenário e grandeza neles descritos é o mesmo objeto, cenário e grandeza do texto-base/comando/resolução — nada de outro domínio do conhecimento, nada de outra situação-problema, ainda que visualmente relacionado ou "parecido". Havendo qualquer dúvida, reescreva o "promptImagem" inteiro a partir da situação-problema real antes de aprovar o item.
 F6. Falta referência bibliográfica quando ela é necessária, ou o objeto de conhecimento declarado não existe na lista oficial da área (foi inventado).
 F7. O enunciado não apresenta problematização satisfatória, ou não explicita UM ÚNICO problema a ser resolvido.
 

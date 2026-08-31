@@ -1991,11 +1991,11 @@ function buildVisual(visual, q){
   renderVisualContent(body, visual);
 
   redoBtn.addEventListener("click", () => {
-    if(visual.tipo === "imagem"){
-      redoImageVisual(q, visual, body);
-    } else {
-      redoDataVisual(q, body, title, redoBtn);
-    }
+    // "Refazer" (qualquer recurso, inclusive imagem) sempre volta a passar pelo
+    // Claude com o texto-base/comando/alternativas/gabarito/resolução reais da
+    // questão (regenerarVisual no backend) — nunca reenvia direto ao gerador de
+    // imagem só o prompt antigo, que poderia estar descrevendo a cena errada.
+    redoVisual(q, body, title, redoBtn);
   });
 
   return box;
@@ -2083,26 +2083,11 @@ function renderGeneratedImage(holder, promptText, descricao){
   });
 }
 
-// Botão "Refazer" para imagens: gera uma nova imagem (novo sorteio do modelo de imagem)
-// a partir do mesmo conceito já definido pela questão, combinado com as instruções
-// opcionais atuais do professor/aluno. Não passa de novo pelo Claude — é uma chamada
-// direta e rápida ao backend de imagens, no mesmo local (holder) já exibido na tela.
-function redoImageVisual(q, visual, body){
-  const holder = body.querySelector(".visual-image-holder");
-  if(!holder) return;
-  const instrucoes = (q.instrucoesVisual || "").trim();
-  const basePrompt = visual.promptImagem || visual.descricao || "ilustração científica educacional";
-  const promptText = instrucoes
-    ? `${basePrompt}\n\nInstruções adicionais do professor/aluno para esta nova versão: ${instrucoes}`
-    : basePrompt;
-  renderGeneratedImage(holder, promptText, visual.descricao || "");
-}
-
-// Botão "Refazer" para gráfico/tabela: pede ao backend (que por sua vez chama o Claude)
+// Botão "Refazer" para imagem/gráfico/tabela: pede ao backend (que por sua vez chama o Claude)
 // para gerar SÓ um novo recurso visual, mantendo o texto-base, comando, alternativas,
 // gabarito e resolução comentada da questão exatamente como estão — guiado pelas
 // instruções opcionais atuais, se houver.
-async function redoDataVisual(q, body, titleEl, redoBtn){
+async function redoVisual(q, body, titleEl, redoBtn){
   redoBtn.disabled = true;
   const originalLabel = redoBtn.textContent;
   redoBtn.textContent = "⏳ Refazendo...";
