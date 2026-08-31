@@ -640,6 +640,20 @@ let currentSession = null;
 // confunde um simulado reaberto com um simulado novo.
 let simuladoAbertoId = null;
 
+// Promessas de geração de imagem ainda em andamento nesta tela. Toda imagem
+// nova (nunca vista antes) entra aqui no instante em que é pedida ao backend;
+// quem precisa ter certeza de que TODAS as imagens já terminaram antes de
+// arquivar o simulado (generateAll, abrir um simulado salvo, refazer um
+// recurso visual) chama aguardaImagensPendentes() antes de salvar.
+let imagePromisesEmAndamento = [];
+async function aguardaImagensPendentes(){
+  if(!imagePromisesEmAndamento.length) return false;
+  const pendentes = imagePromisesEmAndamento;
+  imagePromisesEmAndamento = [];
+  await Promise.allSettled(pendentes);
+  return true;
+}
+
 function initAuth(){
   supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY);
   supabaseClient.auth.onAuthStateChange((_event, session) => {
@@ -943,6 +957,14 @@ async function abrirSimuladoSalvo(id){
     renderResults();
     updateProgress();
     toast(`Simulado "${data.nome}" aberto.`, "ok");
+    /* Todo simulado salvo a partir de agora já guarda as imagens prontas (ver
+       renderGeneratedImage/generateAll), então reabri-lo não deveria gerar
+       imagem nenhuma. Simulados arquivados ANTES desta correção, porém, não
+       têm essa imagem guardada — o render acima teve que pedir uma agora. Uma
+       vez terminada, ela é salva de volta no registro para NUNCA MAIS
+       precisar ser gerada de novo ao reabrir este mesmo simulado. */
+    const gerouImagemNova = await aguardaImagensPendentes();
+    if(gerouImagemNova) await salvarSimuladoAtual();
   }catch(err){
     toast("Não foi possível abrir este simulado: " + String(err && err.message || err), "err");
   }
@@ -1412,6 +1434,17 @@ async function generateQuestion(q){
   updateProgress();
 }
 
+// Usado pelos botões "Regenerar"/"Mais fácil"/"Mais difícil" de uma questão já
+// na tela: gera a questão de novo (com sua nova imagem, se houver), espera a
+// imagem terminar e, se este simulado já estiver arquivado em "Meus
+// Simulados", atualiza o arquivo — senão a edição feita aqui se perderia na
+// próxima vez que o simulado fosse reaberto.
+async function regenerarQuestaoEArquivar(q){
+  await generateQuestion(q);
+  await aguardaImagensPendentes();
+  if(simuladoAbertoId) await salvarSimuladoAtual();
+}
+
 /* Contabilidade de tokens do simulado inteiro. O backend devolve, em cada
    questão, quantos tokens de entrada foram novos, quantos gravaram cache e
    quantos vieram lidos do cache. Somando tudo dá para dizer, ao fim da geração,
@@ -1484,6 +1517,13 @@ async function generateAll(){
   }else{
     toast("Simulado gerado! Revise, edite ou regenere questões conforme necessário.", "ok");
   }
+
+  // As imagens são pedidas ao backend em paralelo ao texto (ver
+  // renderGeneratedImage) e por isso ainda podem estar em andamento aqui.
+  // Espera todas terminarem ANTES de arquivar, para que o simulado guardado
+  // em "Meus Simulados" já leve as imagens prontas — nunca só o texto — e
+  // reabri-lo depois não precise (nem vá) gerar nenhuma imagem de novo.
+  await aguardaImagensPendentes();
 
   // Arquiva automaticamente em "Meus Simulados" (todo simulado gerado fica
   // arquivado). Roda por último e nunca interrompe o fluxo do professor —
@@ -1762,11 +1802,11 @@ function renderQuestionCard(q, idx){
   inner.appendChild(head);
 
   const actions = head.querySelector(".qcard-actions");
-  actions.appendChild(iconBtn("🔄", "Regenerar", () => generateQuestion(q)));
+  actions.appendChild(iconBtn("🔄", "Regenerar", () => regenerarQuestaoEArquivar(q)));
   actions.appendChild(iconBtn("✏️", "Editar", () => toggleEdit(el, q, idx)));
   if(q.data){
-    actions.appendChild(iconBtn("⬇️", "Mais fácil", () => { q.dificuldade = "Fácil"; generateQuestion(q); }));
-    actions.appendChild(iconBtn("⬆️", "Mais difícil", () => { q.dificuldade = "Difícil"; generateQuestion(q); }));
+    actions.appendChild(iconBtn("⬇️", "Mais fácil", () => { q.dificuldade = "Fácil"; regenerarQuestaoEArquivar(q); }));
+    actions.appendChild(iconBtn("⬆️", "Mais difícil", () => { q.dificuldade = "Difícil"; regenerarQuestaoEArquivar(q); }));
   }
   actions.appendChild(iconBtn(idx===0?"":"↑", "Mover para cima", () => moveQuestion(idx, -1), idx===0));
   actions.appendChild(iconBtn(idx===state.questions.length-1?"":"↓", "Mover para baixo", () => moveQuestion(idx, 1), idx===state.questions.length-1));
@@ -2011,7 +2051,7 @@ function renderVisualContent(body, visual){
     const holder = document.createElement("div");
     holder.className = "visual-image-holder";
     body.appendChild(holder);
-    renderGeneratedImage(holder, promptText, visual.descricao || "");
+    renderGeneratedImage(holder, promptText, visual.descricao || "", visual);
   } else if(visual.tipo === "tabela"){
     const table = document.createElement("table"); table.className = "enem-table";
     const thead = document.createElement("thead"); const trh = document.createElement("tr");
@@ -2050,14 +2090,36 @@ function renderVisualContent(body, visual){
   }
 }
 
-function renderGeneratedImage(holder, promptText, descricao){
+// Desenha a imagem de um recurso visual. Se `visual.imagemDataUrl` já existir
+// (imagem já gerada antes e guardada no próprio objeto — inclusive dentro de
+// um simulado arquivado em "Meus Simulados"), mostra ela direto, sem pedir
+// uma imagem nova ao backend: abrir um simulado salvo (ou só re-renderizar a
+// tela, por exemplo ao aprovar/mover outra questão) NUNCA deve gerar imagens
+// novas nem trocar as que já existem. Só quando não há imagem guardada é que
+// uma é pedida ao backend — e, assim que chega, fica salva em `visual`, para
+// a próxima renderização (e o próximo arquivamento) reaproveitarem a mesma.
+function renderGeneratedImage(holder, promptText, descricao, visual){
+  if(visual && visual.imagemDataUrl){
+    holder.innerHTML = "";
+    const img = document.createElement("img");
+    img.src = visual.imagemDataUrl;
+    img.alt = descricao || "";
+    holder.appendChild(img);
+    if(descricao){
+      const cap = document.createElement("p");
+      cap.style.cssText = "font-size:12px;color:var(--ink-2);margin:10px 0 0;";
+      cap.textContent = descricao;
+      holder.appendChild(cap);
+    }
+    return;
+  }
   holder.innerHTML = `
     <div class="visual-image-loading" style="text-align:center;padding:28px 12px;">
       <div class="spinner" style="margin:0 auto;"></div>
       <div class="hint" style="margin-top:10px;">Gerando imagem... cerca de 15 s.</div>
     </div>
   `;
-  generateImageViaBackend(promptText).then(({ dataUrl, uso }) => {
+  const promessa = generateImageViaBackend(promptText).then(({ dataUrl, uso }) => {
     holder.innerHTML = "";
     const img = document.createElement("img");
     img.src = dataUrl;
@@ -2069,6 +2131,9 @@ function renderGeneratedImage(holder, promptText, descricao){
       cap.textContent = descricao;
       holder.appendChild(cap);
     }
+    // Guarda a imagem pronta no próprio recurso visual da questão, para nunca
+    // mais precisar gerar de novo esta mesma figura.
+    if(visual) visual.imagemDataUrl = dataUrl;
     /* Sem seletor de qualidade e sem custo exibido na tela — a geração é
        sempre "low", sem opção de troca. O uso continua contabilizado em
        state.usoImagem (ver somaUsoImagem) para consulta quando pedida. */
@@ -2079,8 +2144,9 @@ function renderGeneratedImage(holder, promptText, descricao){
         <button class="btn sm ghost no-print retry-img-btn">🔄 Tentar novamente</button>
       </div>
     `;
-    holder.querySelector(".retry-img-btn").addEventListener("click", () => renderGeneratedImage(holder, promptText, descricao));
+    holder.querySelector(".retry-img-btn").addEventListener("click", () => renderGeneratedImage(holder, promptText, descricao, visual));
   });
+  imagePromisesEmAndamento.push(promessa);
 }
 
 // Botão "Refazer" para imagem/gráfico/tabela: pede ao backend (que por sua vez chama o Claude)
@@ -2128,6 +2194,12 @@ async function redoVisual(q, body, titleEl, redoBtn){
     q.data.visual = payload.visual;
     titleEl.textContent = payload.visual.titulo || titleEl.textContent;
     renderVisualContent(body, payload.visual);
+    // Se for imagem, renderVisualContent acabou de pedir a imagem nova ao
+    // backend (payload.visual ainda não tem imagemDataUrl). Espera ela ficar
+    // pronta e, se este simulado já estiver arquivado, atualiza o arquivo —
+    // senão o "Refazer" se perderia na próxima vez que o simulado reabrisse.
+    await aguardaImagensPendentes();
+    if(simuladoAbertoId) await salvarSimuladoAtual();
   } catch(err){
     // Mantém a versão anterior visível (ela não foi alterada) e só avisa do erro.
     renderVisualContent(body, q.data.visual);
