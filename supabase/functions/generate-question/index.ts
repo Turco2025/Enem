@@ -582,6 +582,13 @@ async function callClaude(system: string, userMsg: string, maxTokens: number, en
           system: [{ type: "text", text: system, cache_control: { type: "ephemeral" } }],
           messages: [{ role: "user", content: userMsg }],
           thinking: { type: "disabled" },
+          /* EFFORT FIXO EM "medium" PARA TODA E QUALQUER CHAMADA AO SONNET 5.
+             Isto é intencional e definitivo: não deve variar por disciplina,
+             por tipo de chamada (rascunho, validação pedagógica, auditoria de
+             imagem) nem por qualquer outra condição. Não tornar configurável
+             por env var, header, ou parâmetro de request — o pedido foi para
+             fixar em "medium" sempre, sem hipótese de subir nem descer. */
+          output_config: { effort: "medium" },
           stream: true,
           ...(() => {
             const tools = [
