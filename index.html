@@ -1592,7 +1592,10 @@ const QUI_ELEMENTOS = new Set([
 // 1) Códigos de renderização — proibidos sem exceção.
 const QUI_CODIGOS = [
   { re: /\\(?:ce|frac|text|mathrm|cdot|rightarrow|leftarrow|times|pm|sqrt|begin|end)\b/, o: "comando LaTeX" },
-  { re: /\$\$?[^$\n]*\$\$?/,                     o: "cifrão de fórmula matemática" },
+  // Moeda (R$, US$, A$...) não é LaTeX: o cifrão de fórmula só conta quando
+  // NÃO está colado a uma letra antes dele (é assim que "R$ 100,00" e
+  // "US$ 50" deixam de disparar falso-positivo de fórmula matemática).
+  { re: /(?<![A-Za-z])\$\$?[^$\n]*\$\$?/,        o: "cifrão de fórmula matemática" },
   { re: /\\\(|\\\)|\\\[|\\\]/,                   o: "delimitador matemático" },
   { re: /[_^]\{[^}]*\}/,                          o: "índice ou expoente em chaves" },
   { re: /<\/?(?:sub|sup|span|i|b|em|strong|math|mi|mn|msub|msup)\b[^>]*>/i, o: "tag HTML" },
