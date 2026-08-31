@@ -393,6 +393,45 @@ Entregue o resultado chamando a ferramenta "entregar_visual", com um único argu
 Não escreva o JSON no texto da resposta e não escreva nada antes ou depois da chamada da ferramenta.`;
 }
 
+// AUDITORIA FINAL DE COERÊNCIA DA IMAGEM — passo obrigatório, executado depois
+// que o texto da questão já está TOTALMENTE FINALIZADO (rascunho + validação
+// pedagógica, quando ligada). É uma chamada dedicada, com uma única tarefa,
+// para que a checagem de assunto da imagem não fique diluída entre os 35
+// critérios da Ficha de Revisão: aqui o modelo só tem uma pergunta para
+// responder — a cena da imagem é EXATAMENTE a mesma situação-problema do
+// texto finalizado, ou não? — e, sendo "não", é obrigado a reescrever a
+// especificação inteira a partir do zero, usando como referência apenas o
+// texto já pronto (nunca a especificação antiga, que pode estar viesada).
+function buildImageFinalPass(opts: {
+  tema: string; disciplina: string; textoBase: string; comando: string;
+  alternativas: Record<string, string>; gabarito: string; resolucaoComentada: string;
+  descricaoAtual: string; promptImagemAtual: string;
+}) {
+  return `A questão de vestibular abaixo (padrão ENEM, disciplina ${opts.disciplina}) já está com o texto-suporte, o comando, as alternativas, o gabarito e a resolução comentada TOTALMENTE FINALIZADOS e aprovados — não altere absolutamente nada disso. Sua ÚNICA tarefa agora, como AUDITOR DE COERÊNCIA DE IMAGEM, é decidir se a especificação de imagem abaixo retrata EXATA e ESTRITAMENTE o mesmo objeto, cenário, disciplina e fenômeno desta questão — nunca outro assunto, ainda que visualmente parecido ou vagamente relacionado (ex.: uma questão de Matemática sobre determinantes/matrizes NUNCA pode vir acompanhada de uma imagem de usina hidrelétrica, painel de calibração industrial, ponte estaiada ou qualquer outra cena que não seja a situação-problema real descrita abaixo).
+
+QUESTÃO FINALIZADA (contexto fixo — não repita nem altere nada disto na sua resposta):
+Tema: ${opts.tema}
+Texto-suporte: ${opts.textoBase}
+Comando: ${opts.comando}
+Alternativas: ${JSON.stringify(opts.alternativas)}
+Gabarito: ${opts.gabarito}
+Resolução comentada: ${opts.resolucaoComentada}
+
+ESPECIFICAÇÃO DE IMAGEM ATUALMENTE PROPOSTA (pode estar certa ou pode estar errada — audite com desconfiança, não aprove por hábito):
+descricao: ${opts.descricaoAtual}
+promptImagem: ${opts.promptImagemAtual}
+
+PROCEDIMENTO OBRIGATÓRIO:
+1. Releia SOMENTE a questão finalizada acima (ignore a especificação proposta neste primeiro momento) e determine, em termos concretos e específicos, qual é o ÚNICO objeto/cenário/fenômeno real que uma imagem correta teria de retratar para ESTA questão (ex.: "um caixa eletrônico com teclado numérico em ambiente de agência bancária", nunca uma categoria genérica como "tecnologia" ou "um cenário urbano").
+2. Só agora compare, elemento por elemento, com a especificação proposta acima. Se QUALQUER elemento central da cena proposta pertencer a outro objeto, cenário, disciplina ou situação-problema — mesmo que visualmente relacionado, mesmo que "poderia ilustrar um tema parecido" — a especificação está ERRADA.
+3. Havendo erro (ou qualquer dúvida razoável), descarte a especificação proposta por completo e escreva uma especificação NOVA do zero, seguindo à risca o protocolo obrigatório de 8 seções abaixo.
+4. Se, e somente se, a especificação proposta já retratar corretamente a mesma situação-problema em TODOS os aspectos, devolva-a exatamente como está (sem reescrevê-la por reescrever).
+
+${RECURSO_INSTRUCOES.imagem}
+
+Chame a ferramenta "auditar_imagem" com um único argumento: {"aprovado": true ou false (true somente se a especificação original já estava correta e foi devolvida sem reescrita), "descricao": "<descrição final, em português, da imagem que de fato será entregue>", "promptImagem": "<especificação técnica final, em inglês, conforme o protocolo, da imagem que de fato será entregue>"}. Não escreva nada fora da chamada da ferramenta.`;
+}
+
 // PROTOCOLO DE REVISÃO E VALIDAÇÃO — construído a partir da Ficha de Revisão de Item
 // do Inep/MEC (Guia de Elaboração e Revisão de Itens, seção 6: 35 critérios em 5 blocos),
 // acrescida do gate de falhas fatais (Guia, seção 6: motivos de devolução ao elaborador)
@@ -695,6 +734,20 @@ const FERRAMENTA_VISUAL = {
     type: "object",
     properties: { visual: {} },
     required: ["visual"],
+  },
+};
+
+const FERRAMENTA_AUDITORIA_IMAGEM = {
+  name: "auditar_imagem",
+  description: "Entrega o veredito da auditoria de coerência da imagem e a especificação final (mantida ou reescrita) que de fato será usada.",
+  input_schema: {
+    type: "object",
+    properties: {
+      aprovado: { type: "boolean" },
+      descricao: { type: "string" },
+      promptImagem: { type: "string" },
+    },
+    required: ["aprovado", "descricao", "promptImagem"],
   },
 };
 
@@ -1121,6 +1174,7 @@ function selfTestResponse() {
     buildValidationChecklist.toString(),
     buildGabaritoAlvo.toString(),
     buildVisualRedoPrompt.toString(),
+    buildImageFinalPass.toString(),
     buildRegraFontesReais.toString(),
     buildCalibracaoExtensao.toString(),
     buildMatrizInstrucoes.toString(),
@@ -1224,6 +1278,37 @@ Deno.serve(async (req: Request) => {
     if (validar) {
       const valPrompt = buildValidationChecklist(disciplina, dificuldade).replace("__DRAFT_JSON__", JSON.stringify(data));
       data = await callClaudeForJSON(system, valPrompt, webSearch, usos);
+    }
+
+    /* AUDITORIA FINAL DE COERÊNCIA DA IMAGEM — obrigatória, independente do
+       checkbox "validar": o texto da questão já está finalizado neste ponto
+       (rascunho + validação pedagógica, quando ligada), então esta chamada
+       dedicada audita SÓ a imagem contra o texto pronto e reescreve a
+       especificação do zero se detectar qualquer incoerência de assunto.
+       Uma falha aqui (rede, parsing) não pode derrubar a entrega da questão:
+       nesse caso mantém-se a especificação anterior, já revisada acima. */
+    if (recurso === "imagem" && data?.visual?.promptImagem) {
+      try {
+        const auditPrompt = buildImageFinalPass({
+          tema: data.tema || tema,
+          disciplina,
+          textoBase: data.textoBase || "",
+          comando: data.comando || "",
+          alternativas: data.alternativas || {},
+          gabarito: data.gabarito || "",
+          resolucaoComentada: data.resolucaoComentada || "",
+          descricaoAtual: data.visual.descricao || "",
+          promptImagemAtual: data.visual.promptImagem || "",
+        });
+        const auditData = await callClaudeForJSON(system, auditPrompt, false, usos, FERRAMENTA_AUDITORIA_IMAGEM);
+        if (auditData && typeof auditData.promptImagem === "string" && auditData.promptImagem.trim()) {
+          data.visual.descricao = auditData.descricao || data.visual.descricao;
+          data.visual.promptImagem = auditData.promptImagem;
+        }
+      } catch (_e) {
+        // Mantém a especificação já existente — melhor entregar a questão com
+        // a imagem revisada na etapa anterior do que falhar a geração inteira.
+      }
     }
 
     await logGeneration(area, disciplina, tema);
