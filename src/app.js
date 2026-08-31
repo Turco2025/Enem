@@ -1008,6 +1008,23 @@ function quiJuntaFormula(texto){
 const QUI_INF = "₀₁₂₃₄₅₆₇₈₉";
 const QUI_SUP = "⁰¹²³⁴⁵⁶⁷⁸⁹⁺⁻";
 
+// Símbolos oficiais dos elementos químicos (IUPAC) — usados para exigir que um
+// trecho candidato a "fórmula"/"carga" mutilada corresponda de fato a um
+// elemento real, e não a uma variável ou rótulo comum de Matemática, Física ou
+// Geometria (V1, T2, P0, E0, A2...) que por acaso tem a forma de letra
+// maiúscula + dígito. Sem essa checagem, esses rótulos — extremamente comuns
+// fora da Química — eram confundidos com fórmula/carga quebrada e bloqueavam
+// a exportação (PDF/DOCX/HTML/impressão) de simulados que não tinham erro nenhum.
+const QUI_ELEMENTOS = new Set([
+  "H","He","Li","Be","B","C","N","O","F","Ne","Na","Mg","Al","Si","P","S","Cl","Ar",
+  "K","Ca","Sc","Ti","V","Cr","Mn","Fe","Co","Ni","Cu","Zn","Ga","Ge","As","Se","Br","Kr",
+  "Rb","Sr","Y","Zr","Nb","Mo","Tc","Ru","Rh","Pd","Ag","Cd","In","Sn","Sb","Te","I","Xe",
+  "Cs","Ba","La","Ce","Pr","Nd","Pm","Sm","Eu","Gd","Tb","Dy","Ho","Er","Tm","Yb","Lu",
+  "Hf","Ta","W","Re","Os","Ir","Pt","Au","Hg","Tl","Pb","Bi","Po","At","Rn",
+  "Fr","Ra","Ac","Th","Pa","U","Np","Pu","Am","Cm","Bk","Cf","Es","Fm","Md","No","Lr",
+  "Rf","Db","Sg","Bh","Hs","Mt","Ds","Rg","Cn","Nh","Fl","Mc","Lv","Ts","Og",
+]);
+
 // 1) Códigos de renderização — proibidos sem exceção.
 const QUI_CODIGOS = [
   { re: /\\(?:ce|frac|text|mathrm|cdot|rightarrow|leftarrow|times|pm|sqrt|begin|end)\b/, o: "comando LaTeX" },
@@ -1022,14 +1039,21 @@ const QUI_CODIGOS = [
 // 2) Fórmula com índice em algarismo comum: H2O, Fe2O3, Al2(SO4)3.
 const QUI_INDICE_ASCII = /(?:[A-Z][a-z]?\d{1,3}|\)\d{1,3}|\]\d{1,3})(?:[A-Z][a-z]?\d{0,3}|[()\[\]])*/g;
 // 3) Carga escrita fora do padrão: Ca2+, Ca+2, SO4-2, SO₄2-.
+// Quando o gatilho é uma LETRA maiúscula solta (não parêntese/colchete de
+// fecho, nem dígito já subscrito — esses dois são inequívocos por si só), ela
+// só conta como carga se for de fato um símbolo de elemento (QUI_ELEMENTOS) —
+// senão "V1-V2" (diferença de velocidades) ou "P1+P2" (soma de pontos), comuns
+// em Física/Matemática, seriam confundidos com carga química mal escrita.
 const QUI_CARGA_ERRADA = [
-  // Ancoradas em forma de espécie química — símbolo de elemento, parêntese ou
-  // colchete de fecho — para não confundir "carbono-14" ou "Fase-2" com carga.
-  { re: /(?:\b[A-Z][a-z]?|\)|\]|[₀-₉])\d{1,2}[+\-](?![\d\-])/, o: "carga em algarismo comum (use Ca²⁺, não Ca2+)" },
-  { re: /(?:\b[A-Z][a-z]?|\)|\]|[₀-₉])[+\-]\d{1,2}(?![\d])/,    o: "sinal antes do número da carga (use Ca²⁺, não Ca+2)" },
+  { re: /\b([A-Z][a-z]?)\d{1,2}[+\-](?![\d\-])/, o: "carga em algarismo comum (use Ca²⁺, não Ca2+)", precisaElemento: true },
+  { re: /(\)|\])\d{1,2}[+\-](?![\d\-])/,         o: "carga em algarismo comum (use Ca²⁺, não Ca2+)", precisaElemento: false },
+  { re: /([₀-₉])\d{1,2}[+\-](?![\d\-])/,         o: "carga em algarismo comum (use Ca²⁺, não Ca2+)", precisaElemento: false },
+  { re: /\b([A-Z][a-z]?)[+\-]\d{1,2}(?![\d])/,   o: "sinal antes do número da carga (use Ca²⁺, não Ca+2)", precisaElemento: true },
+  { re: /(\)|\])[+\-]\d{1,2}(?![\d])/,           o: "sinal antes do número da carga (use Ca²⁺, não Ca+2)", precisaElemento: false },
+  { re: /([₀-₉])[+\-]\d{1,2}(?![\d])/,           o: "sinal antes do número da carga (use Ca²⁺, não Ca+2)", precisaElemento: false },
   // Só vale para CARGA (o sinal vem depois de uma espécie química). Expoente
   // matemático — 1,5 × 10⁻³ — tem o sinal antes do número e está certo assim.
-  { re: /[A-Za-z\)\]₀-₉][⁺⁻][⁰¹²³⁴⁵⁶⁷⁸⁹]/,                        o: "sinal antes do número da carga (use ²⁺, não ⁺²)" },
+  { re: /([A-Za-z\)\]₀-₉])[⁺⁻][⁰¹²³⁴⁵⁶⁷⁸⁹]/,     o: "sinal antes do número da carga (use ²⁺, não ⁺²)", precisaElemento: false },
 ];
 // 4) Seta montada com caracteres separados — proibida sem exceção. Só acusa
 //    quando a sequência está funcionando COMO seta numa expressão química, isto
@@ -1057,7 +1081,19 @@ function quiEhFormula(tok){
   // dígito colado. Descarta "2025", "Caderno 7" e afins.
   if(!/[A-Z]/.test(tok) || !/\d/.test(tok)) return false;
   if(/^[A-Z]\d{4,}$/.test(tok)) return false;              // código, não fórmula
-  return /[A-Z][a-z]?\d|\)\d|\]\d/.test(tok);
+  // Só conta como fórmula mutilada se houver pelo menos um grupo ELEMENTO+DÍGITO
+  // em que (a) o dígito vale 2 ou mais — um índice químico de valor 1 nunca é
+  // escrito (é "H", nunca "H1") — e (b) a letra é de fato um símbolo oficial de
+  // elemento (QUI_ELEMENTOS). Sem essas duas condições juntas, "E0", "V1", "T2",
+  // "A3" e outros rótulos/variáveis comuns de Matemática e Física seriam
+  // confundidos com fórmula química mutilada e bloqueariam a exportação de um
+  // simulado sem erro nenhum.
+  const grupos = tok.match(/[A-Z][a-z]?\d+/g) || [];
+  return grupos.some(g => {
+    const letra = g.match(/^[A-Z][a-z]?/)[0];
+    const digito = Number(g.match(/\d+/)[0]);
+    return digito >= 2 && QUI_ELEMENTOS.has(letra);
+  });
 }
 
 function quiCamposDaQuestao(q, idx){
@@ -1096,7 +1132,12 @@ function auditaQuimica(questoes){
       const t = campo.texto;
 
       QUI_CODIGOS.forEach(r => { if(r.re.test(t)) registra(campo, r.o); });
-      QUI_CARGA_ERRADA.forEach(r => { if(r.re.test(t)) registra(campo, r.o); });
+      QUI_CARGA_ERRADA.forEach(r => {
+        const m = t.match(r.re);
+        if(!m) return;
+        if(r.precisaElemento && !QUI_ELEMENTOS.has(m[1])) return;
+        registra(campo, r.o);
+      });
       if(QUI_SETA_FALSA.test(t)){
         registra(campo, "seta montada com caracteres separados (use → ← ⇌ ↔ ↑ ↓)");
       }
