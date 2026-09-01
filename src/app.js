@@ -382,7 +382,10 @@ async function abrirSimuladoSalvo(id){
     state.area = dados.area || data.area;
     state.disciplina = dados.disciplina || data.disciplina;
     state.qty = dados.qty || (dados.questions ? dados.questions.length : 1);
-    state.questions = dados.questions || [];
+    state.questions = (dados.questions || []).map(q => {
+      if(q && q.data) q.data = corrigirQuebrasLiterais(q.data);
+      return q;
+    });
     state.gabaritoPlan = dados.gabaritoPlan || null;
     simuladoAbertoId = data.id;
     document.getElementById("chkValidacao").checked = !!data.validacao_dupla;
@@ -824,6 +827,29 @@ function auditaGabaritos(){
   return problemas;
 }
 
+/* QUEBRA DE LINHA LITERAL — rede de segurança do lado do app.
+   O backend (generate-question/index.ts) já corrige isso na origem antes de
+   responder, mas esta cópia local trata da mesma forma qualquer questão que
+   chegue sem passar por ali: simulados salvos ANTES dessa correção (linha
+   385, abrirSimuladoSalvo) e, por segurança, também a resposta recém-gerada
+   (linha 858). Sem isto, o defeito aparece na tela como os dois caracteres
+   "\n" digitados de verdade — foi exatamente o que aconteceu na questão 1
+   reportada pelo professor ("...R$ 190,00.\n\nGRÁFICA MODELO...") — porque
+   a caixa de texto usa white-space:pre-wrap: só uma quebra de linha REAL
+   vira parágrafo; o texto "\n" não. */
+function corrigirQuebrasLiterais(valor){
+  if(typeof valor === "string"){
+    return valor.replace(/\\r\\n/g, "\n").replace(/\\n/g, "\n").replace(/\\r/g, "\n");
+  }
+  if(Array.isArray(valor)) return valor.map(corrigirQuebrasLiterais);
+  if(valor && typeof valor === "object"){
+    const saida = {};
+    for(const k of Object.keys(valor)) saida[k] = corrigirQuebrasLiterais(valor[k]);
+    return saida;
+  }
+  return valor;
+}
+
 async function generateQuestion(q){
   q.status = "generating"; q.errorMsg = ""; updateQuestionCard(q, state.questions.indexOf(q));
   try{
@@ -855,7 +881,7 @@ async function generateQuestion(q){
       throw new Error("O backend não retornou a questão.");
     }
 
-    q.data = payload.question;
+    q.data = corrigirQuebrasLiterais(payload.question);
     // Consumo relatado pelo backend (tokens novos, escritos e lidos do cache).
     // Serve para conferir, em produção, que o cache de prompt está valendo.
     if(payload.uso) somaUso(payload.uso);
@@ -1028,10 +1054,7 @@ const QUI_ELEMENTOS = new Set([
 // 1) Códigos de renderização — proibidos sem exceção.
 const QUI_CODIGOS = [
   { re: /\\(?:ce|frac|text|mathrm|cdot|rightarrow|leftarrow|times|pm|sqrt|begin|end)\b/, o: "comando LaTeX" },
-  // Moeda (R$, US$, A$...) não é LaTeX: o cifrão de fórmula só conta quando
-  // NÃO está colado a uma letra antes dele (é assim que "R$ 100,00" e
-  // "US$ 50" deixam de disparar falso-positivo de fórmula matemática).
-  { re: /(?<![A-Za-z])\$\$?[^$\n]*\$\$?/,        o: "cifrão de fórmula matemática" },
+  { re: /\$\$?[^$\n]*\$\$?/,                     o: "cifrão de fórmula matemática" },
   { re: /\\\(|\\\)|\\\[|\\\]/,                   o: "delimitador matemático" },
   { re: /[_^]\{[^}]*\}/,                          o: "índice ou expoente em chaves" },
   { re: /<\/?(?:sub|sup|span|i|b|em|strong|math|mi|mn|msub|msup)\b[^>]*>/i, o: "tag HTML" },

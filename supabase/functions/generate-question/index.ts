@@ -300,7 +300,7 @@ const JSON_SCHEMA_TXT = `Responda SOMENTE com um objeto JSON válido (sem markdo
  "objetoConhecimento": "string (título do objeto de conhecimento oficial da área, copiado literalmente da lista de OBJETOS DE CONHECIMENTO OFICIAIS apresentada no prompt do sistema — nunca um objeto inventado)",
  "recurso": "nenhum" | "imagem" | "grafico" | "tabela",
  "visual": null ou objeto conforme instruído acima,
- "textoBase": "string (texto-suporte com contextualização; termine com a citação de fonte no formato ENEM — real ou verossímil, EXCETO quando a regra 'PROIBIDO INVENTAR AUTORES OU TEXTOS' abaixo se aplicar à disciplina, caso em que a fonte citada TEM que ser real)",
+ "textoBase": "string (texto-suporte com contextualização; termine com a citação de fonte no formato ENEM — real ou verossímil, EXCETO quando a regra 'PROIBIDO INVENTAR AUTORES OU TEXTOS' abaixo se aplicar à disciplina, caso em que a fonte citada TEM que ser real. Separe o corpo do texto da citação final com uma quebra de parágrafo DE VERDADE — nunca escreva os dois caracteres literais \\n no meio do texto para representar essa quebra; se precisar de uma quebra de linha dentro da própria string JSON, produza-a como quebra de linha real, não como texto \\n)",
  "comando": "string (o enunciado da pergunta, curto, indireto, SEM nenhum ponto de interrogação — é sempre uma frase afirmativa que se completa com as alternativas, nunca uma pergunta direta)",
  "alternativas": {"A":"string","B":"string","C":"string","D":"string","E":"string"},
  "gabarito": "A" | "B" | "C" | "D" | "E",
@@ -1172,6 +1172,38 @@ async function logGeneration(area: string, disciplina: string, tema: string) {
    com o valor calculado no arquivo de origem: batendo, os dados chegaram
    inteiros; não batendo, a implantação é refeita. Nada de segredo é exposto —
    só um número e um hash.                                                     */
+/* QUEBRA DE LINHA LITERAL NO TEXTO GERADO.
+
+   Bug observado: o modelo às vezes escreve os DOIS CARACTERES "\n" (barra
+   invertida + letra n) dentro do próprio texto de um campo — tipicamente
+   entre o texto-suporte e a citação de fonte ao final — em vez de produzir
+   uma quebra de linha de verdade. A instrução em JSON_SCHEMA_TXT (acima)
+   agora pede explicitamente para não fazer isso, mas prompt não é garantia:
+   o app inteiro depende de quebras de linha REAIS nesses campos — a tela
+   usa white-space:pre-wrap (uma quebra real vira parágrafo; texto comum,
+   não) e o PDF/DOCX (enemTextoBase, no app.js) separa a citação do corpo
+   cortando em \n reais. Quando o modelo erra e digita o texto literal
+   "\n", nenhum dos dois funciona: a tela mostra "\n" visível (foi o que o
+   professor reportou) e a exportação trata a citação como parte do corpo.
+
+   Por isso esta função varre TODO o objeto da questão, recursivamente, e
+   troca cada ocorrência da sequência literal \r\n ou \n (os caracteres,
+   não uma quebra real) por uma quebra de linha de verdade — corrigindo o
+   deslize do modelo antes que o dado saia desta função, não importa em
+   qual chamada (rascunho, validação ou refazer visual) ele tenha entrado. */
+function corrigirQuebrasLiterais<T>(valor: T): T {
+  if (typeof valor === "string") {
+    return valor.replace(/\\r\\n/g, "\n").replace(/\\n/g, "\n").replace(/\\r/g, "\n") as unknown as T;
+  }
+  if (Array.isArray(valor)) return valor.map((v) => corrigirQuebrasLiterais(v)) as unknown as T;
+  if (valor && typeof valor === "object") {
+    const saida: any = {};
+    for (const k of Object.keys(valor as any)) saida[k] = corrigirQuebrasLiterais((valor as any)[k]);
+    return saida as T;
+  }
+  return valor;
+}
+
 function fnv1a(texto: string): string {
   let h = 0x811c9dc5;
   for (let i = 0; i < texto.length; i++) {
@@ -1275,7 +1307,7 @@ Deno.serve(async (req: Request) => {
         return jsonResponse({ error: "O modelo não retornou um novo recurso visual válido." }, 502);
       }
       await logGeneration(area, disciplina, `[refazer visual] ${tema}`);
-      return jsonResponse({ visual: data.visual, uso: resumoUso(usos) });
+      return jsonResponse({ visual: corrigirQuebrasLiterais(data.visual), uso: resumoUso(usos) });
     } catch (err) {
       return jsonResponse({ error: `Erro ao refazer o recurso visual: ${String((err as any)?.message || err)}` }, 502);
     }
@@ -1334,7 +1366,7 @@ Deno.serve(async (req: Request) => {
 
     await logGeneration(area, disciplina, tema);
 
-    return jsonResponse({ question: data, uso: resumoUso(usos) });
+    return jsonResponse({ question: corrigirQuebrasLiterais(data), uso: resumoUso(usos) });
   } catch (err) {
     return jsonResponse({ error: `Erro ao gerar questão: ${String((err as any)?.message || err)}` }, 502);
   }
