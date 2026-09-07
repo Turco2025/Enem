@@ -645,7 +645,7 @@ async function callClaude(system: string, userMsg: string, maxTokens: number, en
              ele é lido do cache, a uma fração do preço e sem ser reprocessado.
              A resposta devolve os números de cache no campo "uso", para que dê
              para conferir que está valendo em vez de supor. */
-          system: [{ type: "text", text: system, cache_control: { type: "ephemeral", ttl: "1h" } }],
+          system: [{ type: "text", text: system, cache_control: { type: "ephemeral" } }],
           messages: [{ role: "user", content: userMsg }],
           thinking: { type: "disabled" },
           /* EFFORT FIXO EM "medium" PARA TODA E QUALQUER CHAMADA AO SONNET 5.
