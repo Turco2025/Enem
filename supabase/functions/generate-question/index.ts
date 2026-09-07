@@ -248,9 +248,61 @@ O gerador NÃO conhece a questão, NÃO lê o texto-base, NÃO vê o comando e N
 
 VERIFICAÇÃO ANTES DE ENTREGAR: releia a "descricao", o texto-base, o comando, as alternativas e a resolução e confirme que (i) todo elemento citado como visível consta do ELEMENT INVENTORY; (ii) toda seta tem origem, destino, ponta e direção na seção ARROWS; (iii) todo rótulo tem texto exato, elemento dono e lado; (iv) todo número citado na questão aparece com o MESMO valor na seção NUMBERS; (v) nada foi afirmado na "descricao" que não esteja especificado; (vi) todo dado numérico, toda posição relativa e todo sentido de seta especificados correspondem exatamente ao texto-base, ao comando, às alternativas e à resolução — nenhum deles é genérico ou aproximado; (vii) se a questão envolve circuito elétrico, componente eletrônico ou aparelho técnico, ele foi especificado como objeto real fotografado/renderizado, nunca como esquema abstrato. Nunca descreva na "descricao" um dado que não esteja visível na imagem, nem deixe na imagem um dado essencial que a "descricao" não mencione.`,
 
+  imagem_biologia: `Recurso visual: IMAGEM (BIOLOGIA). A questão deve depender de uma imagem/ilustração pedagogicamente necessária (nunca meramente decorativa) para ser respondida corretamente — esquema anatômico, diagrama de processo, corte, ciclo biológico, cladograma, cadeia/teia alimentar, comparação entre condições, mapa ou infográfico. Preencha "recurso":"imagem" e "visual" com: {"tipo":"imagem","descricao":"<legenda em português explicando o que a imagem mostra e por que ela é necessária para resolver a questão>","promptImagem":"<especificação técnica em INGLÊS, redigida conforme o PROTOCOLO OBRIGATÓRIO — BIOLOGIA abaixo>"}.
+
+🧬 FUNÇÃO PEDAGÓGICA DA IMAGEM (raciocínio interno seu — nunca copie o conteúdo desta seção para dentro do "promptImagem" nem da "descricao"): antes de especificar qualquer elemento, decida com clareza (a) qual conteúdo de Biologia a imagem representa; (b) qual fenômeno, estrutura ou relação o aluno precisa analisar; (c) quais informações têm de estar visíveis para permitir essa análise; (d) quais informações o aluno deve inferir a partir do que estiver visível, sem que estejam escritas na imagem; (e) quais informações NÃO podem aparecer, porque entregariam a resposta; (f) se a imagem é indispensável à resolução ou apenas contextual; (g) qual simplificação didática é cientificamente aceitável sem distorcer o conteúdo. O gabarito e a resolução comentada servem para orientar essas decisões, mas nenhuma palavra deles pode aparecer, literal ou disfarçada, no "promptImagem" nem na "descricao" de um jeito que revele a resposta.
+
+⚠️ PROTOCOLO OBRIGATÓRIO DE ESPECIFICAÇÃO DA IMAGEM — BIOLOGIA
+O gerador NÃO conhece a questão, NÃO lê o texto-base, NÃO vê o comando e NÃO infere nada: desenha exatamente e só o que estiver no "promptImagem". Toda ambiguidade vira erro científico — seta invertida, estrutura confundida com outra homóloga/análoga, compartimento anatômico errado, rótulo no elemento errado, contagem errada de organelas/cromossomos/organismos, número ilegível. Portanto o "promptImagem" NÃO é descrição literária nem frase única: é ESPECIFICAÇÃO TÉCNICA COMPLETA, em inglês, elemento por elemento, com posição, orientação anatômica e direção explícitas, nas 8 seções abaixo, nesta ordem, cada uma com seu título em inglês.
+
+🎯 FIDELIDADE OBRIGATÓRIA AO ENUNCIADO — antes de escrever qualquer seção, releia integralmente o texto-base, o comando, as alternativas e a resolução e extraia TODOS os dados concretos ali contidos: cada estrutura citada, cada organismo, cada valor numérico ou quantidade, cada posição relativa, cada direção de fluxo/processo, cada fenômeno biológico descrito, cada relação entre elementos (o que está dentro/fora, adjacente, comunicante, à esquerda/direita do organismo — não da imagem). Nenhum desses dados pode ficar de fora do "promptImagem", e nenhum dado inventado que contradiga o enunciado ou a literatura científica pode entrar na imagem. Sempre que restar dúvida sobre um detalhe (sentido de uma seta, posição de uma estrutura, quantidade de um elemento), a resposta está na resolução comentada: releia-a antes de decidir.
+
+1. SCENE AND VIEWPOINT — declare, em uma frase, o tipo exato de representação: esquema científico bidimensional, ilustração anatômica, corte transversal ou longitudinal, vista externa ou interna, representação microscópica esquemática, sequência de acontecimentos, ciclo biológico, cladograma/árvore filogenética, cadeia ou teia alimentar, comparação entre condições, ou composição de múltiplos painéis. NÃO peça aparência de fotografia real nem de micrografia real quando o conteúdo for uma construção esquemática (célula, corte de órgão, ciclo, cladograma) — nesse caso declare explicitamente "photorealistic 3D scientific illustration/render of a schematic diagram" (nunca "flat clipart", nunca "cartoon"), preservando ao mesmo tempo a precisão anatômica: use tridimensionalidade só quando ajudar a compreender relações espaciais reais, sem efeitos cinematográficos, iluminação dramática ou texturas que possam alterar a interpretação das estruturas. Cladogramas, árvores filogenéticas e cadeias/teias alimentares são diagramas relacionais abstratos (nós e ramificações/setas) — para esses, use fundo liso ("plain white or neutral background"), no mesmo padrão de exceção já previsto para gráficos e figuras geométricas puras. Para os demais tipos (esquema anatômico, corte, ciclo, comparação), declare a orientação absoluta (ex.: "the plant is upright, roots at the bottom, leaves at the top"), o AMBIENTE (real e coerente com a cena, ex.: "shallow tropical reef" — ou neutro, quando a clareza científica exigir) e reserve deliberadamente uma área visualmente calma do lado em que os rótulos vão entrar. Declare também o FORMATO: proporção da imagem conforme o conteúdo, orientação horizontal ou vertical, margens livres para impedir cortes de elementos, quantidade de painéis e organização em linhas/colunas quando houver comparação ou sequência, área reservada ao desenho principal e áreas reservadas a títulos/rótulos/legendas. Quando houver muitos elementos ou múltiplos painéis, use coordenadas relativas de 0% a 100% (origem no canto superior esquerdo, eixo horizontal crescendo para a direita, eixo vertical crescendo para baixo) para fixar a posição de cada painel/estrutura principal — a conexão correta entre estruturas tem prioridade sobre o cumprimento rígido de uma coordenada. Se a figura representar uma sequência, ciclo ou relação entre organismos (inclusive ciclos parasitários), declare aqui a lista ordenada de etapas, indicando para cada uma: organismo/estrutura presente, estágio de desenvolvimento, ambiente/compartimento e evento representado — em ciclos parasitários, diferencie explicitamente hospedeiros, vetores, ambiente externo, estágios infectantes e diagnósticos, vias de entrada/saída e locais de desenvolvimento, quando pertinente à questão.
+
+2. ELEMENT INVENTORY — lista numerada de TODOS os elementos, cada um com: nome/identificador interno (nunca impresso na imagem, a menos que solicitado), quantidade EXATA ("exactly four mitochondria", "one arrow"), localização, forma, tamanho relativo, orientação, cor e preenchimento, contorno, estruturas internas visíveis, relação com os demais elementos, e quais elementos análogos NÃO podem aparecer. Não escreva "incluir organelas" — liste exatamente quais organelas aparecem e quais características permitem reconhecê-las. Não escreva "vários organismos" quando a quantidade tiver significado biológico na questão — informe o número exato. Diferencie estruturas que exigem contagem rigorosa (cromossomos, cromátides, organelas, organismos de uma população) das que são meramente ilustrativas. Nada fora desta lista pode aparecer.
+
+3. LAYOUT AND POSITION — para CADA elemento, a posição absoluta (left/center/right com top/middle/bottom) e em relação aos vizinhos, com o lado sempre explícito — PROIBIDO "next to", "near" ou "beside" sem dizer de que lado. Em representações anatômicas, celulares ou histológicas, especifique também: o organismo/órgão/tecido/tipo celular retratado; a vista adotada (frontal, dorsal, ventral, lateral, ou outra); o tipo e plano de corte; a orientação dos eixos anatômicos; quais estruturas ficam no interior de outras; quais são adjacentes; quais compartimentos se comunicam e quais barreiras os separam; quais estruturas estão à frente/atrás; e quais partes foram removidas ou tornadas transparentes para permitir a visualização (declare que é um recurso didático). Diferencie SEMPRE a direita/esquerda do organismo da direita/esquerda da imagem — nunca escreva só "lado direito" quando houver risco de confusão. Havendo janela de ampliação, marque claramente sua origem — ela não pode parecer uma estrutura adicional do organismo. Se a questão comparar duas ou mais condições (ex.: estômato aberto/fechado, célula normal/alterada, dois estágios de um processo), use o mesmo enquadramento, o mesmo estilo de desenho, a mesma escala (salvo indicação contrária), posicione estruturas equivalentes em locais correspondentes, use as mesmas cores para elementos equivalentes e modifique APENAS a característica relacionada à comparação — proibido introduzir diferenças decorativas que funcionem como pista involuntária da resposta.
+
+4. ARROWS — a causa mais frequente de erro. Trate CADA seta como uma ficha própria, com todos os campos a seguir declarados por extenso (os códigos S1, S2 etc. são só para sua organização e NUNCA aparecem impressos na imagem): função (identificação, deslocamento, fluxo, transformação, transferência de energia); origem (elemento e ponto exato de onde parte); destino (elemento e ponto exato onde termina); ponta (localização e orientação exatas); trajeto (reto, curvo, em arco ou segmentado); passagem (regiões pelas quais deve passar); restrições (estruturas que não pode atravessar); aparência (cor, espessura, tipo de linha); rótulo (texto exato, se houver) e sua posição; e como evitar sobreposição com outros desenhos/setas. Regras obrigatórias: setas de identificação terminam exatamente na estrutura indicada, sem encostar em outra; linhas de identificação podem não ter ponta quando isso ajudar a clareza; setas de processo ligam explicitamente a origem ao destino correspondente; NUNCA uma seta contínua atravessando várias etapas de forma ambígua; NUNCA seta bidirecional para processo unidirecional — havendo fluxos opostos, use duas setas independentes; nenhuma ponta pode ficar flutuando entre dois destinos possíveis; nenhuma seta atravessa membrana, parede ou outro limite sem que essa passagem faça parte do processo representado; use aparências diferentes para seta de identificação e seta de fluxo quando houver risco de confusão; em ciclos, especifique também a conexão entre a última etapa e a primeira; em cadeias/teias alimentares, a seta de transferência de matéria/energia parte SEMPRE do organismo que serve de alimento e chega ao consumidor; em cladogramas, detalhe os pontos de ramificação e o parentesco representado, sem sugerir que um grupo atual é "mais evoluído" que outro. O sentido de CADA seta tem de corresponder exatamente ao que o texto-base, o comando, as alternativas ou a resolução afirmam sobre aquele fenômeno — havendo dúvida, releia a resolução antes de decidir, e repita a direção com outras palavras ao final da ficha da seta quando o sentido for o que a questão avalia.
+
+5. TEXT LABELS — para CADA rótulo, escreva: o texto EXATO entre ASPAS SIMPLES, o elemento a que pertence, o lado em que fica, alinhamento, tamanho relativo, cor, se há linha de chamada, e uso de itálico/subscrito/sobrescrito quando aplicável (ex.: nomes científicos em itálico). Use aspas simples em TODA a especificação — ela viaja dentro de um campo JSON e aspas duplas não escapadas quebram a resposta. Regras: (a) TODO texto visível deve estar em PORTUGUÊS, com acentuação correta, ainda que a especificação esteja em inglês — inclua "all visible text must be rendered exactly as written above, in Portuguese, with correct accentuation"; (b) proibido inventar títulos, legendas, explicações ou marcas-d'água; (c) proibido nomear estruturas que o próprio enunciado pede para o aluno identificar — isso entregaria a resposta; (d) o rótulo fica FORA do contorno do elemento, nunca sobreposto, e nunca sobre região visualmente complexa; (e) nem rótulo sem elemento, nem elemento essencial sem rótulo; (f) não repita rótulos sem necessidade; (g) se dois rótulos correrem risco de se aproximar, declare os lados opostos; (h) declare tamanho legível ("labels in a clear sans-serif typeface, legible when printed at half page width"); (i) preserve a escrita correta de símbolos, fórmulas e unidades. Se a figura usar letras como "A", "B", "C" para identificar estruturas, defina a posição exata de cada uma e a estrutura indicada, e confirme que esses identificadores coincidem com os usados no enunciado e nas alternativas.
+
+6. NUMBERS, SCALES AND MEASUREMENT MARKS — havendo dado referencial (régua, escala graduada, marcações de tempo/tamanho/concentração, valores em eixo, unidades), liste os valores EXATOS, onde cada um aparece e de que lado do traço fica impresso — sempre os mesmos valores do texto-base, do comando, das alternativas e da resolução, nunca aproximados. Quanto a proporções e ampliações: mantenha proporções biologicamente coerentes; diga quais estruturas podem ser ampliadas por razão didática; se painéis diferentes usam a mesma escala; se o desenho está deliberadamente fora de escala; e se a comparação de tamanhos é relevante para a resposta. NÃO invente barras de escala, medidas ou fatores de ampliação microscópica — use-os só quando os valores forem dados pelo enunciado ou puderem ser determinados de forma confiável a partir dele; em comparações, mantenha o tamanho de referência consistente, pois uma mudança de escala não pode simular uma diferença biológica inexistente. Havendo gráfico ou tabela embutidos na própria imagem, especifique: tipo de gráfico, variáveis dos eixos, unidades, intervalos e marcações, valores/pontos exatos a representar, quantidade de curvas/séries, cores/padrões/símbolos, legendas e tendências relevantes; para tabela, quantidade de linhas/colunas, cabeçalhos, conteúdo exato de cada célula, unidades e ordem dos dados — nunca delegue ao gerador a invenção de dados ou o posicionamento aproximado de valores.
+
+7. STYLE AND LEGIBILITY — a imagem tem DUAS CAMADAS, e as duas são obrigatórias.
+
+   ⛔ REGRA NÃO NEGOCIÁVEL DE REALISMO — vale para toda imagem cuja representação (definida na seção 1) não seja um diagrama relacional abstrato (cladograma, cadeia/teia alimentar, gráfico): ela tem de ser ULTRA-REALISTA ou, no mínimo, SEMI-ULTRA-REALISTA — nunca clipart, nunca desenho chapado tipo livro didático genérico. Mesmo um esquema (célula, corte de órgão, ciclo) deve ser tratado como uma ilustração/render 3D fotorrealista de conteúdo científico — nunca uma imagem plana e simples — SEM, no entanto, recorrer a efeitos cinematográficos, iluminação dramática, texturas ou hiper-realismo que possam distorcer a leitura das estruturas, das proporções ou das relações espaciais definidas nas seções 1 e 3. Peça, em inglês, termos como "photorealistic 3D scientific render, physically-based rendering, anatomically accurate proportions, clean even lighting that preserves structural clarity" — priorizando SEMPRE a legibilidade científica sobre o espetáculo visual.
+
+   ▸ CAMADA 1 — BASE DE ILUSTRAÇÃO CIENTÍFICA REALISTA: renderização 3D fotorrealista, definição alta, foco nítido no assunto, iluminação uniforme que não esconda nenhuma estrutura, profundidade de campo suave apenas quando não comprometer a leitura de nenhum elemento. Peça, em inglês: "ultra-realistic 4K scientific illustration, three-dimensional photorealistic render, sharp focus throughout all labeled structures, even and clear lighting, rich but accurate material textures, museum-quality biology textbook illustration". Nunca chapada, genérica, borrada ou pixelizada — mas também nunca decorativa a ponto de comprometer a exatidão anatômica.
+
+   ▸ CAMADA 2 — CAMADA DE ANOTAÇÃO (precisão): por cima da cena, camada vetorial limpa com as setas (seção 4), os rótulos (seção 5) e as marcações (seção 6), em princípios de UI/UX: hierarquia visual clara, tipografia sans-serif de tamanhos consistentes, mesma cor para o mesmo tipo de elemento, espaçamento generoso, contraste garantido contra o fundo. Peça, em inglês: "clean vector annotation overlay in modern UI/UX infographic style, consistent labeling system, clear visual hierarchy, high contrast between annotation and background, thin leader lines, subtle translucent backing plates wherever the scene behind the text is busy".
+
+   ▸ REGRA DE PRECEDÊNCIA (não negociável): a Camada 1 NUNCA prejudica a Camada 2 nem a exatidão científica. Se a cena ameaçar a leitura de um rótulo, seta ou marcação, a cena cede. Declare no prompt, em inglês: "the realistic rendering must never obscure the annotation layer or distort anatomical accuracy; every label, arrow and structure must remain fully legible and scientifically correct".
+
+   ▸ CORES, PADRÕES E CONVENÇÕES: defina uma paleta funcional — qual cor corresponde a cada estrutura/categoria, qual significado cada cor tem, quais elementos compartilham a mesma cor, quais precisam ser visualmente distintos, e quais padrões/contornos complementam a distinção por cores (a cor nunca é o único meio de transmitir uma informação indispensável). Ao usar cores convencionais (ex.: vermelho/azul em esquema circulatório), declare explicitamente o significado da convenção — NUNCA trate a cor convencional como aparência real do material biológico (não é correto sugerir, por exemplo, que todo vaso arterial carrega sangue mais oxigenado sempre, ou que o sangue venoso é realmente azul). Mantenha a mesma convenção de cores em todos os painéis da mesma figura.
+
+   ▸ FIDELIDADE: o padrão de produção jamais custa exatidão científica. A cena reflete EXATAMENTE a situação-problema — mesma estrutura, mesmo processo, mesmo momento, mesmos valores. PROIBIDO acrescentar elementos espetaculares alheios à questão só para impressionar: tudo que a questão não previu vira ruído ou erro conceitual.
+
+8. NEGATIVE CONSTRAINTS — encerre com duas listas. Primeiro, a lista genérica: "no decorative text, no watermark, no signature, no caption bar, no extra arrows, no additional objects beyond those listed above, no duplicated labels, no cropped or cut-off elements, no text in any language other than Portuguese, no flat clipart or generic cartoon style, no cinematic lighting effects that obscure structures, no blurry, pixelated or low-detail rendering, no annotation hidden or obscured by the scene". Segundo, UMA LISTA ESPECÍFICA PARA ESTA FIGURA, escrita por você a partir do conteúdo real da questão (nunca genérica): inclua, quando pertinentes, restrições como "no duplicated nuclei/organelles/chromosomes beyond the exact count specified", "no compartments connected without an anatomical communication between them", "no reversed flow direction on any arrow", "no structure placed outside its correct anatomical compartment", "no confusing homologous structures with analogous ones", "no missing steps required to interpret the cycle", "no extra organisms or feeding relationships beyond those listed", "no chromosome/chromatid/molecule count inconsistent with the situation described", "no label that reveals the structure the student is asked to identify", "no detail contradicting the textoBase, comando or resolução".
+
+VERIFICAÇÃO ANTES DE ENTREGAR — BIOLOGIA: releia a "descricao", o texto-base, o comando, as alternativas e a resolução e confirme que (i) todo elemento citado como visível consta do ELEMENT INVENTORY, com a quantidade exata; (ii) toda seta tem ficha completa (origem, destino, ponta, trajeto, sentido) na seção ARROWS, e o sentido de cada uma corresponde exatamente ao fenômeno descrito; (iii) todo rótulo tem texto exato, elemento dono e lado, e nenhum rótulo entrega a resposta que o aluno deveria deduzir; (iv) todo número/proporção citado na questão aparece com o MESMO valor na seção NUMBERS, e nenhuma escala foi inventada; (v) a orientação anatômica (vista, plano de corte, dentro/fora, adjacências) está inequívoca; (vi) as cores seguem uma convenção consistente e claramente definida, nunca sugerindo uma aparência real inexistente; (vii) em sequências/ciclos, as etapas estão na ordem correta e a conexão entre a última e a primeira (quando for ciclo) está explícita; (viii) nenhuma simplificação didática altera o significado científico do fenômeno; (ix) a "lista específica desta figura" da seção NEGATIVE CONSTRAINTS reflete riscos concretos do conteúdo, não uma lista genérica; (x) nada foi afirmado na "descricao" que não esteja especificado no "promptImagem", e nenhum dado essencial da imagem ficou de fora da "descricao". Nunca declare a especificação pronta se qualquer um destes pontos falhar — reescreva a seção correspondente antes de entregar.`,
   grafico: `Recurso visual: GRÁFICO. A questão deve depender de um gráfico com dados numéricos plausíveis e coerentes (cientificamente ou matematicamente consistentes com o texto-suporte), efetivamente necessários para resolver a questão — não apenas decorativos. Preencha "recurso":"grafico" e "visual" com: {"tipo":"grafico","chartType":"bar" ou "line" ou "pie","titulo":"...","labels":["...","..."],"datasets":[{"label":"...","data":[num,num,...]}]}. Os números usados no gráfico devem ser os mesmos que a resolução comentada utiliza.`,
   tabela: `Recurso visual: TABELA. A questão deve depender de uma tabela com dados relevantes (resultados experimentais, dados populacionais, séries históricas, comparações entre grupos etc.), efetivamente necessários para resolver a questão. Preencha "recurso":"tabela" e "visual" com: {"tipo":"tabela","titulo":"...","colunas":["...","..."],"linhas":[["...","..."],["...","..."]]}.`,
 };
+
+// Seleciona as instruções de recurso visual a usar. Para Biologia + imagem, usa
+// um protocolo dedicado (RECURSO_INSTRUCOES.imagem_biologia) que incorpora as
+// exigências científicas específicas da disciplina (inventário detalhado de
+// estruturas, ficha por seta, orientação anatômica, convenção de cores, listas
+// de restrições específicas da figura etc.) mantendo as mesmas 8 seções e a
+// mesma exigência de realismo fotográfico/3D já usadas para as demais
+// disciplinas — nunca duas fontes de verdade divergentes para o mesmo campo.
+function instrucoesImagem(recurso: string, disciplina: string): string {
+  if (recurso === "imagem" && (disciplina || "").trim().toLowerCase() === "biologia") {
+    return RECURSO_INSTRUCOES["imagem_biologia"];
+  }
+  return RECURSO_INSTRUCOES[recurso];
+}
 
 function findCompetencia(area: string, numero: number) {
   const m = APP_DATA.matriz[area];
@@ -368,7 +420,7 @@ Nível de dificuldade: ${opts.dificuldade}
 ${buildRegraFontesReais(opts.disciplina)}
 ${buildCalibracaoExtensao(opts.disciplina)}
 
-${RECURSO_INSTRUCOES[opts.recurso]}
+${instrucoesImagem(opts.recurso, opts.disciplina)}
 ${opts.instrucoesVisual ? `\nInstruções adicionais do professor especificamente para o recurso visual (siga-as com prioridade, desde que compatíveis com o pedido acima): ${opts.instrucoesVisual}\n` : ""}
 
 ${buildMatrizInstrucoes(opts.area, opts.competenciaNum, opts.habilidadeCod)}
@@ -381,7 +433,7 @@ ${JSON_SCHEMA_TXT}`;
 // gabarito e resolução comentada intactos, e pede ao modelo apenas uma nova versão do
 // recurso visual, opcionalmente guiada por instruções extras digitadas na hora.
 function buildVisualRedoPrompt(opts: {
-  tema: string; recurso: string; textoBase: string; comando: string;
+  tema: string; disciplina: string; recurso: string; textoBase: string; comando: string;
   alternativas: Record<string, string>; gabarito: string; resolucaoComentada: string;
   instrucoesVisual?: string;
 }) {
@@ -397,7 +449,7 @@ Alternativas: ${JSON.stringify(opts.alternativas)}
 Gabarito: ${opts.gabarito}
 Resolução comentada: ${opts.resolucaoComentada}
 
-${RECURSO_INSTRUCOES[opts.recurso]}
+${instrucoesImagem(opts.recurso, opts.disciplina)}
 ${opts.instrucoesVisual
     ? `\nInstruções adicionais do professor para esta nova versão do recurso visual (siga-as com prioridade): ${opts.instrucoesVisual}\n`
     : `\nO professor não deu instruções adicionais desta vez — gere uma variação genuinamente diferente da anterior (ex.: outro tipo de gráfico, outra organização da tabela, outro ângulo/estilo de imagem), mantendo a coerência com a questão.\n`}
@@ -593,7 +645,7 @@ async function callClaude(system: string, userMsg: string, maxTokens: number, en
              ele é lido do cache, a uma fração do preço e sem ser reprocessado.
              A resposta devolve os números de cache no campo "uso", para que dê
              para conferir que está valendo em vez de supor. */
-          system: [{ type: "text", text: system, cache_control: { type: "ephemeral" } }],
+          system: [{ type: "text", text: system, cache_control: { type: "ephemeral", ttl: "1h" } }],
           messages: [{ role: "user", content: userMsg }],
           thinking: { type: "disabled" },
           /* EFFORT FIXO EM "medium" PARA TODA E QUALQUER CHAMADA AO SONNET 5.
@@ -1301,7 +1353,7 @@ Deno.serve(async (req: Request) => {
     const usos: any[] = [];
     try {
       const system = buildSystemPrompt(area);
-      const userMsg = buildVisualRedoPrompt({ tema, recurso, textoBase, comando, alternativas, gabarito, resolucaoComentada, instrucoesVisual });
+      const userMsg = buildVisualRedoPrompt({ tema, disciplina, recurso, textoBase, comando, alternativas, gabarito, resolucaoComentada, instrucoesVisual });
       const data = await callClaudeForJSON(system, userMsg, false, usos, FERRAMENTA_VISUAL);
       if (!data || !data.visual) {
         return jsonResponse({ error: "O modelo não retornou um novo recurso visual válido." }, 502);
@@ -1331,6 +1383,36 @@ Deno.serve(async (req: Request) => {
     if (validar) {
       const valPrompt = buildValidationChecklist(disciplina, dificuldade).replace("__DRAFT_JSON__", JSON.stringify(data));
       data = await callClaudeForJSON(system, valPrompt, webSearch, usos);
+    }
+
+    /* REVISÃO MATEMÁTICA — agente separado (review-math-question), acionado
+       só para questões de matemática, depois da validação pedagógica e antes
+       da auditoria de imagem (para que esta última já veja o texto corrigido,
+       se houver correção). Corrige SÓ quando encontra lastro no banco de
+       referência (63 livros); sem cobertura, a questão segue como está. Uma
+       falha aqui (rede, parsing, function fora do ar) nunca pode derrubar a
+       entrega da questão — mantém-se o resultado da validação pedagógica. */
+    const revisarMatematica = body.revisarMatematica !== false;
+    if (area === "matematica" && revisarMatematica) {
+      try {
+        const reviewResp = await fetch(`${Deno.env.get("SUPABASE_URL")}/functions/v1/review-math-question`, {
+          method: "POST",
+          headers: {
+            "content-type": "application/json",
+            "authorization": `Bearer ${Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")}`,
+          },
+          body: JSON.stringify({ question: data }),
+        });
+        if (reviewResp.ok) {
+          const reviewData = await reviewResp.json();
+          if (reviewData?.question && typeof reviewData.question === "object") {
+            data = reviewData.question;
+          }
+        }
+      } catch (_e) {
+        // Mantém a questão como veio da validação pedagógica — nunca falha a
+        // geração por causa do revisor de matemática.
+      }
     }
 
     /* AUDITORIA FINAL DE COERÊNCIA DA IMAGEM — obrigatória, independente do

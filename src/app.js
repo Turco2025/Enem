@@ -853,26 +853,40 @@ function corrigirQuebrasLiterais(valor){
 async function generateQuestion(q){
   q.status = "generating"; q.errorMsg = ""; updateQuestionCard(q, state.questions.indexOf(q));
   try{
+    const MAX_TENTATIVAS = 3;
+    let tentativa = 0;
     const validar = document.getElementById("chkValidacao").checked;
-    const resp = await fetch(QUESTION_BACKEND_URL, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", ...authHeaders() },
-      body: JSON.stringify({
-        area: state.area,
-        disciplina: state.disciplina,
-        tema: q.tema || "",
-        dificuldade: q.dificuldade,
-        recurso: q.recurso,
-        competenciaNum: q.competenciaNum || null,
-        habilidadeCod: q.habilidadeCod || null,
-        instrucoesVisual: q.instrucoesVisual || "",
-        gabaritoAlvo: gabaritoAlvoDe(state.questions.indexOf(q)),
-        validar,
-      }),
-    });
-    const rawBody = await resp.text();
-    let payload = {};
-    try{ payload = rawBody ? JSON.parse(rawBody) : {}; }catch(e){ /* corpo não é JSON — trata abaixo */ }
+    let resp, rawBody, payload;
+    while(true){
+      tentativa++;
+      resp = await fetch(QUESTION_BACKEND_URL, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...authHeaders() },
+        body: JSON.stringify({
+          area: state.area,
+          disciplina: state.disciplina,
+          tema: q.tema || "",
+          dificuldade: q.dificuldade,
+          recurso: q.recurso,
+          competenciaNum: q.competenciaNum || null,
+          habilidadeCod: q.habilidadeCod || null,
+          instrucoesVisual: q.instrucoesVisual || "",
+          gabaritoAlvo: gabaritoAlvoDe(state.questions.indexOf(q)),
+          validar,
+        }),
+      });
+      rawBody = await resp.text();
+      payload = {};
+      try{ payload = rawBody ? JSON.parse(rawBody) : {}; }catch(e){ /* corpo não é JSON — trata abaixo */ }
+      const isResourceLimit = resp.status === 546 || payload.code === "WORKER_RESOURCE_LIMIT";
+      if(isResourceLimit && tentativa < MAX_TENTATIVAS){
+        // Falha transitória de recursos do servidor (plano free do Supabase sob carga).
+        // Tenta de novo com espera crescente antes de desistir.
+        await new Promise(function(r){ setTimeout(r, 1500 * tentativa); });
+        continue;
+      }
+      break;
+    }
     if(!resp.ok || payload.error){
       const msg = payload.error || rawBody.slice(0, 300) || `Erro HTTP ${resp.status} ao gerar a questão.`;
       throw new Error(msg);
