@@ -1229,7 +1229,7 @@ function avisoQuimica(problemas){
   const p = problemas[0];
   const onde = p.questao ? ("questão " + p.questao + ", " + p.campo) : p.campo;
   const resto = problemas.length > 1 ? (" (+" + (problemas.length - 1) + " ocorrência" + (problemas.length > 2 ? "s" : "") + ")") : "";
-  return "REVISÃO QUÍMICA NECESSÁRIA: " + onde + " — " + p.ocorrencia + "." + resto;
+  return "REVISÃO DE NOTAÇÃO NECESSÁRIA: " + onde + " — " + p.ocorrencia + "." + resto;
 }
 
 // Porta de saída: nenhum PDF, DOCX, HTML ou impressão sai com fórmula quebrada.
@@ -1237,7 +1237,7 @@ function bloqueiaSeQuimicaInvalida(doneQuestions){
   const problemas = auditaQuimica(doneQuestions.map(o => o.q));
   if(!problemas.length) return false;
   toast(avisoQuimica(problemas) + " Corrija a questão e exporte de novo.", "err");
-  try{ console.warn("[química] problemas encontrados:", problemas); }catch(e){}
+  try{ console.warn("[notação] problemas encontrados:", problemas); }catch(e){}
   return true;
 }
 
