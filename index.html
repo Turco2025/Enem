@@ -385,9 +385,15 @@ body.mode-professor .qcard{box-shadow:0 25px 60px -25px rgba(0,0,0,.6), 0 0 0 1.
     <div class="card card-step5">
       <div class="section-title"><span class="num">5</span> Gerar simulado</div>
       <div class="footer-actions">
-        <label style="display:flex;align-items:center;gap:8px;font-size:13px;color:var(--ink-1);">
+        <!-- Este interruptor controla a revisão matemática independente
+             (review-math-question): uma 2ª chamada à IA que confere contas,
+             fórmulas e gabarito contra 63 livros de referência. Só tem efeito
+             em Matemática (o app o esconde nas outras áreas). Custa ~US$ 0,02
+             por questão; desmarcado, a questão sai só com a geração principal.
+             A auditoria local (sem custo) roda sempre, no card de cada questão. -->
+        <label id="lblRevisaoMat" style="display:none;align-items:center;gap:8px;font-size:13px;color:var(--ink-1);">
           <input type="checkbox" id="chkValidacao" checked style="width:auto;">
-          Validação pedagógica em duas etapas (recomendado)
+          Revisão matemática independente — 2ª chamada à IA (~US$ 0,02 por questão), só para Matemática
         </label>
         <button class="btn" id="btnGenerate">✨ Gerar simulado completo</button>
       </div>
@@ -947,7 +953,7 @@ async function abrirSimuladoSalvo(id){
     state.disciplina = dados.disciplina || data.disciplina;
     state.qty = dados.qty || (dados.questions ? dados.questions.length : 1);
     state.questions = (dados.questions || []).map(q => {
-      if(q && q.data) q.data = corrigirQuebrasLiterais(q.data);
+      if(q && q.data){ q.data = corrigirQuebrasLiterais(q.data); normalizaVisualQuestao(q.data); }
       return q;
     });
     state.gabaritoPlan = dados.gabaritoPlan || null;
@@ -1015,8 +1021,108 @@ const IMG_PREAMBULO_CURTO = `Ilustração educacional para uma questão no padr�
 
 Cena: `;
 
+/* IMAGEM FORA DE ASSUNTO — A CAUSA RAIZ.
+
+   O professor via questões de Matemática com imagem de Física (usina, ponte,
+   aquecedor solar). O log do backend mostrou o motivo: em ~40% das imagens do
+   dia o prompt enviado ao gerador terminava em "Cena: [object Object]". O
+   modelo às vezes entrega "visual.promptImagem" como OBJETO (uma chave por
+   seção do protocolo, ou {"tipo","valor"}) em vez de string; este arquivo
+   fazia String(...) disso, o gerador recebia só o preâmbulo genérico, sem cena
+   nenhuma, e inventava uma imagem "educacional" qualquer — sem jamais ter
+   visto o enunciado. O backend (generate-question v60) agora normaliza isso
+   na origem; aqui fica a garantia do lado do app, que vale também para
+   simulados já arquivados e para qualquer resposta que escape da origem.    */
+const IMG_SECOES = [
+  [/scene|viewpoint|cena/i, "1. SCENE AND VIEWPOINT"],
+  [/inventory|element/i, "2. ELEMENT INVENTORY"],
+  [/layout|position|posi/i, "3. LAYOUT AND POSITION"],
+  [/arrow|seta/i, "4. ARROWS"],
+  [/label|r[oó]tulo/i, "5. TEXT LABELS"],
+  [/number|scale|measure|n[uú]mero|escala|medida/i, "6. NUMBERS, SCALES AND MEASUREMENT MARKS"],
+  [/style|legib|estilo/i, "7. STYLE AND LEGIBILITY"],
+  [/negative|constraint|restri/i, "8. NEGATIVE CONSTRAINTS"],
+];
+const IMG_CHAVES_ENVELOPE = ["promptImagem", "prompt", "valor", "value", "texto", "text", "descricao", "description", "conteudo", "content", "especificacao", "specification"];
+
+// Converte qualquer valor (string, objeto por seção, envelope, lista) em texto
+// corrido — nunca devolve "[object Object]".
+function imgTextoDeEspecificacao(valor, profundidade){
+  profundidade = profundidade || 0;
+  if(valor == null) return "";
+  if(typeof valor === "string") return valor.trim();
+  if(typeof valor === "number" || typeof valor === "boolean") return String(valor);
+  if(Array.isArray(valor)){
+    return valor.map(v => imgTextoDeEspecificacao(v, profundidade + 1)).filter(Boolean).join(profundidade === 0 ? "\n" : "; ");
+  }
+  if(typeof valor === "object"){
+    const chaves = Object.keys(valor);
+    for(const k of IMG_CHAVES_ENVELOPE){
+      const conteudo = valor[k];
+      if(typeof conteudo === "string" && conteudo.trim()){
+        const restantes = chaves.filter(c => c !== k && c !== "tipo" && c !== "type");
+        if(!restantes.length) return conteudo.trim();
+      }
+    }
+    const partes = [];
+    chaves.forEach((k, i) => {
+      const conteudo = imgTextoDeEspecificacao(valor[k], profundidade + 1);
+      if(!conteudo) return;
+      const secao = IMG_SECOES.findIndex(par => par[0].test(k));
+      const titulo = secao >= 0 ? IMG_SECOES[secao][1] : k.replace(/[_-]+/g, " ").replace(/([a-z])([A-Z])/g, "$1 $2").toUpperCase();
+      partes.push({ ordem: secao >= 0 ? secao : 100 + i, texto: titulo + ": " + conteudo });
+    });
+    partes.sort((a, b) => a.ordem - b.ordem);
+    return partes.map(p => p.texto).join(profundidade === 0 ? "\n\n" : "; ");
+  }
+  return "";
+}
+
+// Garante que data.visual tenha "tipo" e que promptImagem/descricao/titulo
+// sejam strings. Aplicado a toda questão que entra no app: recém-gerada,
+// refeita ("Refazer imagem") ou reaberta de "Meus Simulados".
+function normalizaVisualQuestao(data){
+  if(!data || data.visual == null) return data;
+  let v = data.visual;
+  if(typeof v === "string"){
+    const t = v.trim();
+    if(!t){ data.visual = null; return data; }
+    try{
+      const p = JSON.parse(t);
+      v = (p && typeof p === "object" && !Array.isArray(p)) ? p : { tipo: "imagem", promptImagem: t };
+    }catch(e){ v = { tipo: "imagem", promptImagem: t }; }
+  }
+  if(typeof v !== "object" || Array.isArray(v)) return data;
+  if(typeof v.tipo === "string") v.tipo = v.tipo.trim().toLowerCase();
+  if(!v.tipo && ["imagem","grafico","tabela"].includes(data.recurso)) v.tipo = data.recurso;
+  ["promptImagem","descricao","titulo"].forEach(k => {
+    if(v[k] != null && typeof v[k] !== "string") v[k] = imgTextoDeEspecificacao(v[k], 0);
+  });
+  if(typeof v.promptImagem === "string" && !v.promptImagem.trim()) delete v.promptImagem;
+  data.visual = v;
+  return data;
+}
+
+/* Texto que vai ao gerador de imagem. Ordem de preferência: a especificação
+   completa ("promptImagem"); senão a legenda ("descricao") junto com o próprio
+   enunciado da questão — para que, mesmo sem especificação, a imagem seja
+   sobre ESTA questão e nunca sobre um assunto inventado. */
+function montaPromptImagem(visual, dataQuestao){
+  const spec = imgTextoDeEspecificacao(visual && visual.promptImagem, 0);
+  if(spec) return spec;
+  const partes = [];
+  const desc = imgTextoDeEspecificacao(visual && visual.descricao, 0);
+  if(desc) partes.push(desc);
+  if(dataQuestao){
+    const enunciado = [dataQuestao.textoBase, dataQuestao.comando].map(t => String(t || "").trim()).filter(Boolean).join("\n");
+    if(enunciado) partes.push("A imagem deve retratar fielmente a situação descrita neste enunciado, com os mesmos objetos e valores, sem revelar a resposta:\n" + enunciado.slice(0, 1500));
+  }
+  return partes.join("\n\n");
+}
+
 async function generateImageViaBackend(promptText){
-  const texto = String(promptText || "");
+  const texto = imgTextoDeEspecificacao(promptText, 0);
+  if(!texto) throw new Error("A questão veio sem a especificação da imagem. Use \"Refazer imagem\" para gerá-la.");
   const prompt = imgEhEspecificacaoCompleta(texto) ? texto : (IMG_PREAMBULO_CURTO + texto);
 
   const res = await fetch(IMAGE_BACKEND_URL, {
@@ -1109,6 +1215,14 @@ function selectArea(key){
   renderAreaGrid();
   renderDisciplinaChips();
   renderQuestionBlocks();
+  atualizaOpcoesPorArea();
+}
+
+// O interruptor da revisão matemática só aparece onde tem efeito (Matemática);
+// nas outras áreas o backend nem chama o revisor, então não há o que decidir.
+function atualizaOpcoesPorArea(){
+  const lbl = document.getElementById("lblRevisaoMat");
+  if(lbl) lbl.style.display = state.area === "matematica" ? "flex" : "none";
 }
 
 function renderDisciplinaChips(){
@@ -1419,7 +1533,13 @@ async function generateQuestion(q){
   try{
     const MAX_TENTATIVAS = 3;
     let tentativa = 0;
-    const validar = document.getElementById("chkValidacao").checked;
+    /* O checkbox "chkValidacao" controla a única validação real que existe
+       no backend: a revisão matemática independente (review-math-question,
+       uma 2ª chamada à IA, só para Matemática). O backend lê
+       "revisarMatematica" e só desliga a revisão quando recebe false —
+       qualquer outra coisa mantém o comportamento padrão (revisar). Antes,
+       o app enviava "validar", campo que o backend nunca leu. */
+    const revisarMatematica = document.getElementById("chkValidacao").checked;
     let resp, rawBody, payload;
     while(true){
       tentativa++;
@@ -1436,7 +1556,7 @@ async function generateQuestion(q){
           habilidadeCod: q.habilidadeCod || null,
           instrucoesVisual: q.instrucoesVisual || "",
           gabaritoAlvo: gabaritoAlvoDe(state.questions.indexOf(q)),
-          validar,
+          revisarMatematica,
         }),
       });
       rawBody = await resp.text();
@@ -1460,6 +1580,7 @@ async function generateQuestion(q){
     }
 
     q.data = corrigirQuebrasLiterais(payload.question);
+    normalizaVisualQuestao(q.data);
     // Consumo relatado pelo backend (tokens novos, escritos e lidos do cache).
     // Serve para conferir, em produção, que o cache de prompt está valendo.
     if(payload.uso) somaUso(payload.uso);
@@ -1518,7 +1639,17 @@ async function generateAll(){
   document.getElementById("formPanel").style.display = "none";
   document.getElementById("resultsPanel").style.display = "block";
   document.getElementById("genProgressWrap").classList.remove("hidden");
-  state.questions.forEach(q => { q.status = "idle"; q.data = null; q.errorMsg = ""; q.gabaritoStatus = null; });
+  /* Reset completo do estado "órfão" de uma geração anterior antes de começar
+     uma leva nova. Sem isto, trocar de disciplina no formulário (ex.: Física
+     -> Matemática) e clicar em Gerar reaproveita os MESMOS objetos de questão
+     (o array não é recriado do zero — syncQuestionsArrayLength só ajusta o
+     tamanho) e qualquer instrução de imagem digitada para a disciplina
+     anterior ("instrucoesVisual", por questão) sobrevivia e era enviada de
+     novo junto com o tema da disciplina nova — podendo produzir uma imagem de
+     um assunto completamente diferente do da questão (o backend agora também
+     tem uma trava contra isso, mas aqui é onde o problema realmente nasce).
+     "approved" também não deveria sobreviver a uma geração nova. */
+  state.questions.forEach(q => { q.status = "idle"; q.data = null; q.errorMsg = ""; q.gabaritoStatus = null; q.instrucoesVisual = ""; q.approved = false; });
   // Plano de gabaritos sorteado ANTES de gerar: como as questões saem em
   // paralelo, cada uma precisa saber de antemão qual letra é a sua, senão não há
   // como garantir que não se repitam.
@@ -1535,22 +1666,27 @@ async function generateAll(){
      Custa a espera de uma questão e economiza o prompt em todas as outras. */
   const [primeira, ...demais] = state.questions;
   if(primeira) await generateQuestion(primeira);
-  // Concorrência 4: cada questão já roda inteiramente no backend (Supabase Edge
-  // Function), então gerar mais em paralelo reduz bastante o tempo total. O
-  // valor foi mantido em 4 de propósito — subir sem medir troca tempo por
-  // retentativas, e uma questão repetida é uma questão cobrada duas vezes.
-  if(demais.length) await runPool(demais, generateQuestion, 4);
+  // Concorrência 5 (era 4): cada questão já roda inteiramente no backend
+  // (Supabase Edge Function), então gerar mais em paralelo reduz o tempo
+  // total — para 10 questões, 3 rodadas em vez de 4. Não muda o número de
+  // chamadas nem o custo. Se o plano do Supabase devolver 546
+  // (WORKER_RESOURCE_LIMIT) sob carga, generateQuestion já retenta com espera
+  // crescente — e esse erro acontece ANTES de a IA ser chamada, então a
+  // retentativa não é cobrada. Se esses erros aparecerem com frequência no
+  // console, o valor pode voltar para 4.
+  if(demais.length) await runPool(demais, generateQuestion, 5);
   document.getElementById("genProgressWrap").classList.add("hidden");
   const relato = relatoUso();
   if(relato) console.log(relato);
 
   // Auditoria da distribuição do gabarito, com o resultado dito em voz alta.
   const presos = state.questions.filter(q => q.gabaritoStatus === "impossivel").length;
+  // Notação química: só fica registrada no console (depuração) — não bloqueia
+  // mais a exportação nem pede para editar a questão antes de exportar.
   const quimica = auditaQuimica();
+  if(quimica.length) console.warn("[notação] problemas encontrados (exportação NÃO bloqueada):", quimica);
   const problemas = auditaGabaritos();
-  if(quimica.length){
-    toast(avisoQuimica(quimica) + " Edite a questão antes de exportar.", "err");
-  }else if(problemas.length){
+  if(problemas.length){
     toast("Simulado gerado, mas a distribuição do gabarito ficou imperfeita: " + problemas[0] + ". Regenere a questão para corrigir.", "err");
   }else if(presos){
     toast("Simulado gerado. " + presos + " quest" + (presos > 1 ? "ões vieram" : "ão veio") + " com o gabarito fora da posição planejada e não pôde ser reposicionada sem quebrar a ordem numérica das alternativas.", "err");
@@ -1796,13 +1932,18 @@ function avisoQuimica(problemas){
   return "REVISÃO DE NOTAÇÃO NECESSÁRIA: " + onde + " — " + p.ocorrencia + "." + resto;
 }
 
-// Porta de saída: nenhum PDF, DOCX, HTML ou impressão sai com fórmula quebrada.
+/* Porta de saída DESATIVADA a pedido do professor. Antes, nenhum PDF, DOCX,
+   HTML ou impressão saía com fórmula química suspeita — a exportação era
+   bloqueada e pedia para corrigir a questão antes de tentar de novo. Agora a
+   auditoria continua rodando (útil para depuração), mas NUNCA bloqueia: o
+   simulado é exportado imediatamente, sem nenhuma restrição, mesmo que a
+   notação química de alguma questão pareça estranha. */
 function bloqueiaSeQuimicaInvalida(doneQuestions){
-  const problemas = auditaQuimica(doneQuestions.map(o => o.q));
-  if(!problemas.length) return false;
-  toast(avisoQuimica(problemas) + " Corrija a questão e exporte de novo.", "err");
-  try{ console.warn("[notação] problemas encontrados:", problemas); }catch(e){}
-  return true;
+  try{
+    const problemas = auditaQuimica(doneQuestions.map(o => o.q));
+    if(problemas.length) console.warn("[notação] problemas encontrados (exportação NÃO bloqueada):", problemas);
+  }catch(e){}
+  return false;
 }
 
 function updateProgress(){
@@ -1861,6 +2002,129 @@ function renderSummaryTable(){
 }
 
 function escapeHtml(s){ return String(s==null?"":s).replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c])); }
+
+/* AUDITORIA LOCAL — validação de verdade, sem nenhuma chamada de API.
+
+   Confere, no próprio navegador, o que um revisor checaria mecanicamente:
+   gabarito na letra planejada, cinco alternativas distintas, numéricas em
+   ordem crescente, exatamente uma alternativa "correta" na análise e
+   coincidindo com o gabarito, comando sem interrogação e sem "exceto/
+   incorreto", linguagem absolutista nas alternativas, correta muito mais
+   longa que as demais, citação de fonte no texto-base, as 8 seções do
+   protocolo na especificação da imagem, coerência de gráfico/tabela e a
+   notação química (Natureza). É informativa: aparece no card do professor e
+   NUNCA bloqueia geração nem exportação. Devolve [{nivel, texto}]. */
+const ABSOLUTISTAS_RE = /\b(sempre|nunca|jamais|todos|todas|completamente|totalmente|exclusivamente|sem exce[çc][ãa]o|em absoluto)\b/i;
+const SECOES_PROTOCOLO_IMAGEM = [
+  ["SCENE AND VIEWPOINT", /scene\s+and\s+viewpoint/i],
+  ["ELEMENT INVENTORY", /element\s+inventory/i],
+  ["LAYOUT AND POSITION", /layout\s+and\s+position/i],
+  ["ARROWS", /\barrows?\b/i],
+  ["TEXT LABELS", /text\s+labels?/i],
+  ["NUMBERS, SCALES AND MEASUREMENT MARKS", /numbers?,?\s+scales?/i],
+  ["STYLE AND LEGIBILITY", /style\s+and\s+legibility/i],
+  ["NEGATIVE CONSTRAINTS", /negative\s+constraints?/i],
+];
+
+function auditaQuestaoLocal(q){
+  const itens = [];
+  const aviso = t => itens.push({ nivel: "aviso", texto: t });
+  const info  = t => itens.push({ nivel: "info", texto: t });
+  const d = q && q.data;
+  if(!d) return itens;
+  const L = GABARITO_LETRAS;
+  const alts = d.alternativas || {};
+  const txt = k => String((alts && alts[k]) || "").trim();
+
+  // Gabarito
+  if(!L.includes(d.gabarito)) aviso("Gabarito ausente ou fora de A–E.");
+  if(q.gabaritoStatus === "impossivel") aviso("Gabarito fora da letra planejada para esta posição (não pôde ser reposicionado sem quebrar a ordem numérica).");
+
+  // Alternativas: cinco, preenchidas e distintas
+  const vazias = L.filter(k => !txt(k));
+  if(vazias.length) aviso("Alternativa(s) sem texto: " + vazias.join(", ") + ".");
+  const norm = k => txt(k).toLowerCase().replace(/[\s.]+/g, " ").trim();
+  const vistos = new Map();
+  L.forEach(k => { if(txt(k)){ const n = norm(k); if(vistos.has(n)) aviso("Alternativas " + vistos.get(n) + " e " + k + " são iguais."); else vistos.set(n, k); } });
+
+  // Numéricas em ordem crescente
+  const nums = L.map(k => { const m = /^-?\d+(?:[.,]\d+)?/.exec(txt(k).replace(/\.(?=\d{3}\b)/g, "")); return m ? parseFloat(m[0].replace(",", ".")) : null; });
+  if(nums.every(v => v !== null)){
+    for(let i = 1; i < nums.length; i++){ if(nums[i] < nums[i-1]){ aviso("Alternativas numéricas fora da ordem crescente (Guia do Inep)."); break; } }
+  }
+
+  // Análise das alternativas: exatamente uma "correta", e é o gabarito
+  const an = d.analiseAlternativas || {};
+  const corretas = L.filter(k => an[k] && String(an[k].status || "").toLowerCase() === "correta");
+  if(corretas.length !== 1) aviso("Análise das alternativas marca " + corretas.length + " alternativa(s) como correta (esperado: 1).");
+  else if(corretas[0] !== d.gabarito) aviso("Análise marca " + corretas[0] + " como correta, mas o gabarito é " + d.gabarito + ".");
+
+  // Comando
+  const cmd = String(d.comando || "");
+  if(/\?/.test(cmd)) aviso("Comando com ponto de interrogação (deve ser frase afirmativa a completar).");
+  if(/\b(exceto|incorret[ao]s?|fals[ao]s?|errad[ao]s?)\b/i.test(cmd)) aviso("Comando usa 'exceto/incorreto/falso/errado' (vedado pelo Guia do Inep).");
+  if(/^\s*(pode-se afirmar|é correto afirmar)/i.test(cmd)) aviso("Comando começa com 'Pode-se afirmar'/'É correto afirmar' (vedado pelo Guia).");
+
+  // Linguagem absolutista nas alternativas
+  const absol = L.filter(k => ABSOLUTISTAS_RE.test(txt(k)));
+  if(absol.length) info("Linguagem absolutista em " + absol.join(", ") + " — confira se não entrega/denuncia a resposta.");
+
+  // Correta muito mais longa que as demais
+  if(L.includes(d.gabarito) && txt(d.gabarito)){
+    const outras = L.filter(k => k !== d.gabarito && txt(k)).map(k => txt(k).length);
+    if(outras.length){
+      const media = outras.reduce((a, b) => a + b, 0) / outras.length;
+      if(txt(d.gabarito).length > 1.6 * media && txt(d.gabarito).length > 40) info("A alternativa correta é bem mais longa que as demais (pode denunciar a resposta).");
+    }
+  }
+
+  // Texto-base: citação de fonte
+  const tb = String(d.textoBase || "");
+  if(tb && !/(dispon[ií]vel em|adaptad[oa]|acesso em|\bIn:|\b(1[89]|20)\d{2}\b)/i.test(tb)) info("Texto-base sem citação de fonte aparente (autor/obra/ano).");
+
+  // Recurso visual
+  const v = d.visual;
+  if(v && v.tipo === "imagem"){
+    const spec = imgTextoDeEspecificacao(v.promptImagem, 0);
+    if(!spec) aviso("Imagem sem especificação (promptImagem vazio) — use 'Refazer imagem'.");
+    else{
+      const faltam = SECOES_PROTOCOLO_IMAGEM.filter(([, re]) => !re.test(spec)).map(([n]) => n);
+      if(faltam.length) info("Especificação da imagem sem " + faltam.length + " das 8 seções do protocolo: " + faltam.join(", ") + ".");
+    }
+    if(!imgTextoDeEspecificacao(v.descricao, 0)) info("Imagem sem legenda (descricao).");
+  } else if(v && v.tipo === "grafico"){
+    const n = (v.labels || []).length;
+    (v.datasets || []).forEach((ds, i) => { if(!Array.isArray(ds.data) || ds.data.length !== n) aviso("Gráfico: série " + (i + 1) + " tem " + ((ds.data || []).length) + " valores para " + n + " rótulos."); });
+    if(!n) aviso("Gráfico sem rótulos (labels).");
+  } else if(v && v.tipo === "tabela"){
+    const nc = (v.colunas || []).length;
+    (v.linhas || []).forEach((row, i) => { if(!Array.isArray(row) || row.length !== nc) aviso("Tabela: linha " + (i + 1) + " tem " + ((row || []).length) + " células para " + nc + " colunas."); });
+  }
+
+  // Notação química (só Ciências da Natureza) — reaproveita a auditoria existente
+  if(state.area === "natureza"){
+    try{
+      const probs = auditaQuimica([q]);
+      if(probs.length) aviso("Notação química: " + probs.length + " ocorrência(s) suspeita(s) — ex.: " + String(probs[0].ocorrencia || "").slice(0, 80) + ".");
+    }catch(e){ /* nunca interrompe */ }
+  }
+  return itens;
+}
+
+function htmlAuditoriaLocal(q){
+  let itens = [];
+  try{ itens = auditaQuestaoLocal(q); }catch(e){ itens = []; }
+  const avisos = itens.filter(i => i.nivel === "aviso").length;
+  const titulo = itens.length
+    ? (avisos ? avisos + " alerta(s)" : "") + (avisos && itens.length > avisos ? " · " : "") + (itens.length > avisos ? (itens.length - avisos) + " observação(ões)" : "")
+    : "nenhum alerta";
+  const lista = itens.length
+    ? "<ul style=\"margin:4px 0 0;padding-left:18px;\">" + itens.map(i => "<li style=\"margin:2px 0;color:" + (i.nivel === "aviso" ? "#f59e0b" : "var(--ink-2)") + ";\">" + (i.nivel === "aviso" ? "⚠️ " : "ℹ️ ") + escapeHtml(i.texto) + "</li>").join("") + "</ul>"
+    : "<div class=\"hint\" style=\"margin-top:4px;\">✅ Nenhum alerta nas verificações automáticas.</div>";
+  return `
+    <div class="lab" style="font-size:10.5px;text-transform:uppercase;letter-spacing:.5px;color:var(--ink-2);margin:12px 0 2px;">Auditoria local (sem custo) — ${escapeHtml(titulo)}</div>
+    <div style="font-size:12.5px;">${lista}</div>`;
+}
 
 function renderQuestionCard(q, idx){
   const el = document.createElement("div");
@@ -2072,6 +2336,7 @@ function buildQuestionBody(data, q){
     </div>
     <div class="lab" style="font-size:10.5px;text-transform:uppercase;letter-spacing:.5px;color:var(--ink-2);margin-bottom:6px;">Resolução comentada</div>
     <div class="resolucao">${escapeHtml(data.resolucaoComentada||"")}</div>
+    ${htmlAuditoriaLocal(q)}
   `;
   wrap.appendChild(pedagog);
 
@@ -2109,7 +2374,7 @@ function buildVisual(visual, q){
 
   const body = document.createElement("div"); body.className = "visual-body";
   box.appendChild(body);
-  renderVisualContent(body, visual);
+  renderVisualContent(body, visual, q.data);
 
   redoBtn.addEventListener("click", () => {
     // "Refazer" (qualquer recurso, inclusive imagem) sempre volta a passar pelo
@@ -2125,14 +2390,18 @@ function buildVisual(visual, q){
 // Desenha o conteúdo do recurso visual (imagem/tabela/gráfico) dentro de .visual-body.
 // Extraído à parte para poder ser chamado de novo, no mesmo elemento já existente na
 // tela, quando o professor/aluno clica em "Refazer" — sem precisar recriar o card inteiro.
-function renderVisualContent(body, visual){
+function renderVisualContent(body, visual, dataQuestao){
   body.innerHTML = "";
   if(visual.tipo === "imagem"){
-    const promptText = visual.promptImagem || visual.descricao || "ilustração científica educacional";
+    // Nunca um texto genérico: ou a especificação da imagem, ou a legenda +
+    // o enunciado desta questão (ver montaPromptImagem). "[object Object]"
+    // não passa mais por aqui.
+    const promptText = montaPromptImagem(visual, dataQuestao);
+    const descricao = imgTextoDeEspecificacao(visual.descricao, 0);
     const holder = document.createElement("div");
     holder.className = "visual-image-holder";
     body.appendChild(holder);
-    renderGeneratedImage(holder, promptText, visual.descricao || "", visual);
+    renderGeneratedImage(holder, promptText, descricao, visual);
   } else if(visual.tipo === "tabela"){
     const table = document.createElement("table"); table.className = "enem-table";
     const thead = document.createElement("thead"); const trh = document.createElement("tr");
@@ -2179,7 +2448,53 @@ function renderVisualContent(body, visual){
 // novas nem trocar as que já existem. Só quando não há imagem guardada é que
 // uma é pedida ao backend — e, assim que chega, fica salva em `visual`, para
 // a próxima renderização (e o próximo arquivamento) reaproveitarem a mesma.
+/* UMA IMAGEM POR RECURSO VISUAL. O log do backend mostrou pares de imagens
+   idênticas geradas com ~20 s de diferença: o card foi re-renderizado (troca
+   de aba, aprovar/mover outra questão, reabrir simulado) antes de a imagem
+   chegar, e renderGeneratedImage pedia uma segunda — cobrada de novo — para o
+   mesmo recurso visual. Agora o pedido em andamento fica registrado por
+   objeto "visual" e é reaproveitado por qualquer nova renderização até
+   terminar. WeakMap: não vai para o JSON salvo e some junto com o objeto. */
+const imagensEmAndamento = new WeakMap();
+
 function renderGeneratedImage(holder, promptText, descricao, visual){
+  const mostraImagem = (dataUrl) => {
+    holder.innerHTML = "";
+    const img = document.createElement("img");
+    img.src = dataUrl;
+    img.alt = descricao || "";
+    holder.appendChild(img);
+    if(descricao){
+      const cap = document.createElement("p");
+      cap.style.cssText = "font-size:12px;color:var(--ink-2);margin:10px 0 0;";
+      cap.textContent = descricao;
+      holder.appendChild(cap);
+    }
+  };
+  const mostraErro = (err) => {
+    holder.innerHTML = `
+      <div style="text-align:center;padding:18px 12px;">
+        <p class="hint" style="color:#f87171;">⚠️ Não foi possível gerar a imagem: ${escapeHtml(err.message || String(err))}</p>
+        <button class="btn sm ghost no-print retry-img-btn">🔄 Tentar novamente</button>
+      </div>
+    `;
+    holder.querySelector(".retry-img-btn").addEventListener("click", () => renderGeneratedImage(holder, promptText, descricao, visual));
+  };
+  const mostraCarregando = () => {
+    holder.innerHTML = `
+      <div class="visual-image-loading" style="text-align:center;padding:28px 12px;">
+        <div class="spinner" style="margin:0 auto;"></div>
+        <div class="hint" style="margin-top:10px;">Gerando imagem... cerca de 15 s.</div>
+      </div>
+    `;
+  };
+  // Já existe um pedido em voo para ESTE recurso visual: só acompanha o
+  // resultado neste novo elemento da tela — não gera (nem paga) outra imagem.
+  if(visual && imagensEmAndamento.has(visual)){
+    mostraCarregando();
+    imagensEmAndamento.get(visual).then(({ dataUrl }) => mostraImagem(dataUrl)).catch(mostraErro);
+    return;
+  }
   if(visual && visual.imagemDataUrl){
     holder.innerHTML = "";
     const img = document.createElement("img");
@@ -2194,38 +2509,19 @@ function renderGeneratedImage(holder, promptText, descricao, visual){
     }
     return;
   }
-  holder.innerHTML = `
-    <div class="visual-image-loading" style="text-align:center;padding:28px 12px;">
-      <div class="spinner" style="margin:0 auto;"></div>
-      <div class="hint" style="margin-top:10px;">Gerando imagem... cerca de 15 s.</div>
-    </div>
-  `;
-  const promessa = generateImageViaBackend(promptText).then(({ dataUrl, uso }) => {
-    holder.innerHTML = "";
-    const img = document.createElement("img");
-    img.src = dataUrl;
-    img.alt = descricao || "";
-    holder.appendChild(img);
-    if(descricao){
-      const cap = document.createElement("p");
-      cap.style.cssText = "font-size:12px;color:var(--ink-2);margin:10px 0 0;";
-      cap.textContent = descricao;
-      holder.appendChild(cap);
-    }
+  mostraCarregando();
+  const pedido = generateImageViaBackend(promptText);
+  if(visual) imagensEmAndamento.set(visual, pedido);
+  const promessa = pedido.then(({ dataUrl }) => {
+    mostraImagem(dataUrl);
     // Guarda a imagem pronta no próprio recurso visual da questão, para nunca
     // mais precisar gerar de novo esta mesma figura.
     if(visual) visual.imagemDataUrl = dataUrl;
     /* Sem seletor de qualidade e sem custo exibido na tela — a geração é
        sempre "low", sem opção de troca. O uso continua contabilizado em
        state.usoImagem (ver somaUsoImagem) para consulta quando pedida. */
-  }).catch(err => {
-    holder.innerHTML = `
-      <div style="text-align:center;padding:18px 12px;">
-        <p class="hint" style="color:#f87171;">⚠️ Não foi possível gerar a imagem: ${escapeHtml(err.message || String(err))}</p>
-        <button class="btn sm ghost no-print retry-img-btn">🔄 Tentar novamente</button>
-      </div>
-    `;
-    holder.querySelector(".retry-img-btn").addEventListener("click", () => renderGeneratedImage(holder, promptText, descricao, visual));
+  }).catch(mostraErro).finally(() => {
+    if(visual) imagensEmAndamento.delete(visual);
   });
   imagePromisesEmAndamento.push(promessa);
 }
@@ -2273,8 +2569,9 @@ async function redoVisual(q, body, titleEl, redoBtn){
       throw new Error("O backend não retornou um novo recurso visual.");
     }
     q.data.visual = payload.visual;
-    titleEl.textContent = payload.visual.titulo || titleEl.textContent;
-    renderVisualContent(body, payload.visual);
+    normalizaVisualQuestao(q.data);
+    titleEl.textContent = q.data.visual.titulo || titleEl.textContent;
+    renderVisualContent(body, q.data.visual, q.data);
     // Se for imagem, renderVisualContent acabou de pedir a imagem nova ao
     // backend (payload.visual ainda não tem imagemDataUrl). Espera ela ficar
     // pronta e, se este simulado já estiver arquivado, atualiza o arquivo —
@@ -2283,7 +2580,7 @@ async function redoVisual(q, body, titleEl, redoBtn){
     if(simuladoAbertoId) await salvarSimuladoAtual();
   } catch(err){
     // Mantém a versão anterior visível (ela não foi alterada) e só avisa do erro.
-    renderVisualContent(body, q.data.visual);
+    renderVisualContent(body, q.data.visual, q.data);
     toast(`Não foi possível refazer: ${err.message || String(err)}`, "err");
   } finally {
     redoBtn.disabled = false;
@@ -5012,6 +5309,7 @@ function init(){
   renderAreaGrid();
   renderDisciplinaChips();
   setQty(1);
+  atualizaOpcoesPorArea();
 
   // Recupera chave/modelo salvos neste navegador, se houver (ver STORAGE_KEYS).
   const savedKey = safeStorageGet(STORAGE_KEYS.apiKey);

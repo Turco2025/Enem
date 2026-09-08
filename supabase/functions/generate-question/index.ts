@@ -220,7 +220,7 @@ function buildSystemPrompt(area: string) {
 
 const RECURSO_INSTRUCOES: Record<string, string> = {
   nenhum: `Recurso visual: NENHUM. Não inclua gráfico, tabela ou imagem. Explore a situação-problema apenas por meio do texto-suporte. Deixe o campo "visual" como null e "recurso" como "nenhum".`,
-  imagem: `Recurso visual: IMAGEM. A questão deve depender de uma imagem/ilustração pedagogicamente necessária (nunca meramente decorativa) para ser respondida corretamente — por exemplo: esquema anatômico, diagrama de processo, mapa, representação de fenômeno, estrutura, infográfico. Preencha "recurso":"imagem" e "visual" com: {"tipo":"imagem","descricao":"<legenda em português explicando o que a imagem mostra e por que ela é necessária para resolver a questão>","promptImagem":"<especificação técnica em INGLÊS, redigida conforme o PROTOCOLO OBRIGATÓRIO abaixo>"}.
+  imagem: `Recurso visual: IMAGEM. A questão deve depender de uma imagem/ilustração pedagogicamente necessária (nunca meramente decorativa) para ser respondida corretamente — por exemplo: esquema anatômico, diagrama de processo, mapa, representação de fenômeno, estrutura, infográfico. Preencha "recurso":"imagem" e "visual" com: {"tipo":"imagem","descricao":"<legenda em português explicando o que a imagem mostra e por que ela é necessária para resolver a questão>","promptImagem":"<especificação técnica em INGLÊS, redigida conforme o PROTOCOLO OBRIGATÓRIO abaixo>"}. ⚠️ TIPO DO CAMPO — leia com atenção: "promptImagem" e "descricao" são, cada um, UMA ÚNICA STRING de texto corrido. As 8 seções do protocolo ficam DENTRO dessa string, uma após a outra, cada uma iniciada pelo seu título numerado (ex.: "1. SCENE AND VIEWPOINT: ..."), separadas por quebra de linha. NUNCA entregue "promptImagem" como objeto JSON — nem uma chave por seção, nem {"tipo":..., "valor":...}, nem qualquer outro aninhamento. O gerador de imagens só recebe TEXTO: um objeto chega a ele vazio, e a imagem sai sobre um assunto aleatório, sem nenhuma relação com a questão.
 
 ⚠️ PROTOCOLO OBRIGATÓRIO DE ESPECIFICAÇÃO DA IMAGEM
 O gerador NÃO conhece a questão, NÃO lê o texto-base, NÃO vê o comando e NÃO infere nada: desenha exatamente e só o que estiver no "promptImagem". Toda ambiguidade vira erro — seta invertida, rótulo no elemento errado, elemento ausente, número ilegível. Portanto o "promptImagem" NÃO é descrição literária nem frase única: é ESPECIFICAÇÃO TÉCNICA COMPLETA, em inglês, elemento por elemento, com posição e direção explícitas, nas 8 seções abaixo, nesta ordem, cada uma com seu título em inglês:
@@ -255,7 +255,7 @@ O gerador NÃO conhece a questão, NÃO lê o texto-base, NÃO vê o comando e N
 
 VERIFICAÇÃO ANTES DE ENTREGAR: releia a "descricao", o texto-base, o comando, as alternativas e a resolução e confirme que (i) todo elemento citado como visível consta do ELEMENT INVENTORY; (ii) toda seta tem origem, destino, ponta e direção na seção ARROWS; (iii) todo rótulo tem texto exato, elemento dono e lado; (iv) todo número citado na questão aparece com o MESMO valor na seção NUMBERS; (v) nada foi afirmado na "descricao" que não esteja especificado; (vi) todo dado numérico, toda posição relativa e todo sentido de seta especificados correspondem exatamente ao texto-base, ao comando, às alternativas e à resolução — nenhum deles é genérico ou aproximado; (vii) se a questão envolve circuito elétrico, componente eletrônico ou aparelho técnico, ele foi especificado como objeto real fotografado/renderizado, nunca como esquema abstrato. Nunca descreva na "descricao" um dado que não esteja visível na imagem, nem deixe na imagem um dado essencial que a "descricao" não mencione.`,
 
-  imagem_biologia: `Recurso visual: IMAGEM (BIOLOGIA). A questão deve depender de uma imagem/ilustração pedagogicamente necessária (nunca meramente decorativa) para ser respondida corretamente — esquema anatômico, diagrama de processo, corte, ciclo biológico, cladograma, cadeia/teia alimentar, comparação entre condições, mapa ou infográfico. Preencha "recurso":"imagem" e "visual" com: {"tipo":"imagem","descricao":"<legenda em português explicando o que a imagem mostra e por que ela é necessária para resolver a questão>","promptImagem":"<especificação técnica em INGLÊS, redigida conforme o PROTOCOLO OBRIGATÓRIO — BIOLOGIA abaixo>"}.
+  imagem_biologia: `Recurso visual: IMAGEM (BIOLOGIA). A questão deve depender de uma imagem/ilustração pedagogicamente necessária (nunca meramente decorativa) para ser respondida corretamente — esquema anatômico, diagrama de processo, corte, ciclo biológico, cladograma, cadeia/teia alimentar, comparação entre condições, mapa ou infográfico. Preencha "recurso":"imagem" e "visual" com: {"tipo":"imagem","descricao":"<legenda em português explicando o que a imagem mostra e por que ela é necessária para resolver a questão>","promptImagem":"<especificação técnica em INGLÊS, redigida conforme o PROTOCOLO OBRIGATÓRIO — BIOLOGIA abaixo>"}. ⚠️ TIPO DO CAMPO — leia com atenção: "promptImagem" e "descricao" são, cada um, UMA ÚNICA STRING de texto corrido. As 8 seções do protocolo ficam DENTRO dessa string, uma após a outra, cada uma iniciada pelo seu título numerado (ex.: "1. SCENE AND VIEWPOINT: ..."), separadas por quebra de linha. NUNCA entregue "promptImagem" como objeto JSON — nem uma chave por seção, nem {"tipo":..., "valor":...}, nem qualquer outro aninhamento. O gerador de imagens só recebe TEXTO: um objeto chega a ele vazio, e a imagem sai sobre um assunto aleatório, sem nenhuma relação com a questão.
 
 🧬 FUNÇÃO PEDAGÓGICA DA IMAGEM (raciocínio interno seu — nunca copie o conteúdo desta seção para dentro do "promptImagem" nem da "descricao"): antes de especificar qualquer elemento, decida com clareza (a) qual conteúdo de Biologia a imagem representa; (b) qual fenômeno, estrutura ou relação o aluno precisa analisar; (c) quais informações têm de estar visíveis para permitir essa análise; (d) quais informações o aluno deve inferir a partir do que estiver visível, sem que estejam escritas na imagem; (e) quais informações NÃO podem aparecer, porque entregariam a resposta; (f) se a imagem é indispensável à resolução ou apenas contextual; (g) qual simplificação didática é cientificamente aceitável sem distorcer o conteúdo. O gabarito e a resolução comentada servem para orientar essas decisões, mas nenhuma palavra deles pode aparecer, literal ou disfarçada, no "promptImagem" nem na "descricao" de um jeito que revele a resposta.
 
@@ -445,27 +445,69 @@ function buildAncoragemVisual(area: string, disciplina: string, tema: string, re
 🔒 ANCORAGEM DE ASSUNTO DO RECURSO VISUAL — releia com atenção mesmo já tendo lido a disciplina e o tema no início deste prompt: esta questão específica é de ${AREA_LABELS[area]}, disciplina ${disciplina}, sobre "${temaTxt}". ESCREVA O CAMPO "visual" POR ÚLTIMO — só depois de já ter escrito e finalizado "textoBase", "comando", "alternativas", "gabarito" e "resolucaoComentada". A especificação da imagem (campo "promptImagem"/"descricao", ou os dados de gráfico/tabela) tem de ser derivada EXATA e EXCLUSIVAMENTE do cenário, dos objetos, dos personagens e dos valores que você mesmo acabou de escrever nesses campos, para ESTA questão — nunca decidida antes de escrevê-los, nunca o assunto de uma disciplina diferente, nunca um exemplo genérico deste protocolo, e nunca uma instrução deixada para uma questão anterior. Se a "Instrução adicional do professor" logo acima (quando houver) pedir um cenário visivelmente incompatível com "${disciplina}" ou com o tema acima, IGNORE especificamente essa parte incompatível da instrução — nunca mude o assunto da imagem, e nunca invente uma questão diferente só para justificar a instrução.`;
 }
 
+/* CUSTO: O QUE É FIXO VAI PARA O CACHE.
+
+   Medido na v60 com o código real: o prompt do USUÁRIO de uma questão com
+   imagem tinha ~24 mil caracteres em Matemática e ~36 mil em Biologia —
+   maior que o próprio prompt do sistema — e era pago a preço cheio em toda
+   questão, porque só o sistema tinha cache_control. Só que quase tudo ali é
+   texto idêntico de uma questão para a outra: a regra de fontes reais, a
+   calibração de extensão, o protocolo de imagem (8 seções), a lista completa
+   de competências da área e o esquema JSON. O que de fato varia cabe em
+   poucas linhas: área, disciplina, tema, nível, instrução do professor,
+   ancoragem de assunto, letra do gabarito e (quando escolhida) a
+   competência/habilidade.
+
+   A partir da v61 o texto fixo viaja em buildBlocoFixo(), como SEGUNDO bloco
+   do prompt do sistema, com seu próprio cache_control — o primeiro bloco
+   (modelo universal + contexto da área) continua igual e continua cacheado.
+   O modelo lê EXATAMENTE as mesmas frases, na mesma ordem relativa entre
+   elas; nenhuma instrução foi cortada, resumida ou reescrita. O que muda é
+   quem paga: cache lido (US$ 0,20/M) em vez de entrada nova (US$ 2/M).
+   O prompt do usuário fica só com o que é desta questão. */
+function buildBlocoFixo(opts: {
+  area: string; disciplina: string; recurso: string;
+  competenciaNum: number | null; habilidadeCod: string | null;
+}) {
+  // A lista completa da Matriz só é fixa quando o professor NÃO escolheu
+  // competência/habilidade; escolhida, o trecho é específico e fica no
+  // prompt do usuário (buildUserPrompt), exatamente como antes.
+  const matrizFixa = (!opts.competenciaNum && !opts.habilidadeCod)
+    ? `\n\n${buildMatrizInstrucoes(opts.area, null, null)}`
+    : "";
+  return `═══════ INSTRUÇÕES FIXAS DESTA CONFIGURAÇÃO (disciplina ${opts.disciplina}, recurso visual: ${opts.recurso}) ═══════
+As instruções abaixo valem para a questão pedida no prompt do usuário e devem ser seguidas integralmente junto com ele.
+${buildRegraFontesReais(opts.disciplina)}
+${buildCalibracaoExtensao(opts.disciplina)}
+
+${instrucoesImagem(opts.recurso, opts.disciplina)}${matrizFixa}
+
+${JSON_SCHEMA_TXT}`;
+}
+
 function buildUserPrompt(opts: {
   area: string; disciplina: string; tema: string; dificuldade: string;
   recurso: string; competenciaNum: number | null; habilidadeCod: string | null;
   instrucoesVisual?: string; gabaritoAlvo?: string | null;
 }) {
+  // Trecho específico da Matriz (só quando o professor escolheu
+  // competência/habilidade) — o caso "automático" está no bloco fixo.
+  const matrizEspecifica = (opts.competenciaNum || opts.habilidadeCod)
+    ? `\n\n${buildMatrizInstrucoes(opts.area, opts.competenciaNum, opts.habilidadeCod)}`
+    : "";
   return `Elabore UMA questão inédita, original, no padrão ENEM, com os seguintes parâmetros definidos pelo professor:
 
 Área do conhecimento: ${AREA_LABELS[opts.area]}
 Disciplina: ${opts.disciplina}
 Tema/conteúdo solicitado: ${opts.tema || "(o professor não detalhou; escolha um tema representativo da disciplina e do nível de dificuldade pedidos)"}
 Nível de dificuldade: ${opts.dificuldade}
-${buildRegraFontesReais(opts.disciplina)}
-${buildCalibracaoExtensao(opts.disciplina)}
+Recurso visual pedido: ${opts.recurso}
 
-${instrucoesImagem(opts.recurso, opts.disciplina)}
-${opts.instrucoesVisual ? `\nInstrução adicional do professor especificamente para o recurso visual (siga-a com prioridade, desde que compatível com o pedido acima e com a ANCORAGEM DE ASSUNTO logo abaixo): ${opts.instrucoesVisual}\n` : ""}
-${buildAncoragemVisual(opts.area, opts.disciplina, opts.tema, opts.recurso)}
-
-${buildMatrizInstrucoes(opts.area, opts.competenciaNum, opts.habilidadeCod)}
+Siga integralmente as INSTRUÇÕES FIXAS DESTA CONFIGURAÇÃO que estão no prompt do sistema (regra de fontes, calibração de extensão, instruções do recurso visual, Matriz de Referência e formato de entrega) — elas fazem parte deste pedido.
+${opts.instrucoesVisual ? `\nInstrução adicional do professor especificamente para o recurso visual (siga-a com prioridade, desde que compatível com as instruções do recurso visual no prompt do sistema e com a ANCORAGEM DE ASSUNTO logo abaixo): ${opts.instrucoesVisual}\n` : ""}
+${buildAncoragemVisual(opts.area, opts.disciplina, opts.tema, opts.recurso)}${matrizEspecifica}
 ${buildGabaritoAlvo(opts.gabaritoAlvo || null)}
-${JSON_SCHEMA_TXT}`;
+Entregue a questão chamando a ferramenta "entregar_questao", no formato descrito no prompt do sistema.`;
 }
 
 // Prompt usado quando o professor/aluno pede para refazer SÓ o recurso visual de uma
@@ -520,7 +562,9 @@ function backoffDelay(attempt: number) {
   return Math.min(800 * 2 ** (attempt - 1), 8000) + Math.random() * 400;
 }
 
-async function callClaude(system: string, userMsg: string, maxTokens: number, enableWebSearch = false, ferramenta: any = null): Promise<{ text: string; truncated: boolean; usage: any; ferramentaJSON: string }> {
+type SistemaPrompt = string | Array<{ type: "text"; text: string; cache_control?: { type: "ephemeral" } }>;
+
+async function callClaude(system: SistemaPrompt, userMsg: string, maxTokens: number, enableWebSearch = false, ferramenta: any = null): Promise<{ text: string; truncated: boolean; usage: any; ferramentaJSON: string }> {
   let lastErr: any;
   for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
     const controller = new AbortController();
@@ -544,7 +588,12 @@ async function callClaude(system: string, userMsg: string, maxTokens: number, en
              ele é lido do cache, a uma fração do preço e sem ser reprocessado.
              A resposta devolve os números de cache no campo "uso", para que dê
              para conferir que está valendo em vez de supor. */
-          system: [{ type: "text", text: system, cache_control: { type: "ephemeral" } }],
+          /* Na v61 o sistema pode vir como LISTA de blocos, cada um com seu
+             cache_control (até 4 pontos de cache por chamada): bloco 1 = modelo
+             universal + contexto da área; bloco 2 = instruções fixas desta
+             configuração (ver buildBlocoFixo). Uma string simples continua
+             aceita e vira um bloco único, como sempre foi. */
+          system: Array.isArray(system) ? system : [{ type: "text", text: system, cache_control: { type: "ephemeral" } }],
           messages: [{ role: "user", content: userMsg }],
           thinking: { type: "disabled" },
           /* EFFORT FIXO EM "medium" PARA TODA E QUALQUER CHAMADA AO SONNET 5.
@@ -690,6 +739,30 @@ const WEB_SEARCH_TOOL = { type: "web_search_20250305", name: "web_search", max_u
    alternativas, gabarito, resolução comentada e análise das alternativas) —
    a imagem passa a ser especificada com base no que já foi efetivamente
    escrito para ESTA questão, nunca decidida antes e às cegas. */
+/* SCHEMA DO CAMPO "visual". Até a v59 ele era "{}" — sem tipo nenhum —, e o
+   modelo, lendo no protocolo "8 seções, cada uma com seu título", às vezes
+   entregava "promptImagem" como um OBJETO com uma chave por seção (ou
+   {"tipo","valor"}, ou {"tipo","descricao"}), em vez de uma string. Aqui os
+   campos internos ganham tipo explícito (string) e uma descrição que diz isso
+   com todas as letras. Não há "type" no nível de cima de propósito: com
+   recurso "nenhum" o campo vem como null e continua válido. A rede de
+   segurança definitiva é normalizarVisual(), mais abaixo — o schema só reduz
+   a chance de precisar dela. */
+const VISUAL_SCHEMA = {
+  description: 'Recurso visual da questão, ou null quando recurso = "nenhum". Para imagem: {"tipo":"imagem","descricao":"<string>","promptImagem":"<string>"}. "promptImagem" é OBRIGATORIAMENTE uma única string de texto corrido contendo as 8 seções numeradas em sequência — NUNCA um objeto com uma chave por seção. Para gráfico: {"tipo":"grafico","chartType","titulo","labels","datasets"}. Para tabela: {"tipo":"tabela","titulo","colunas","linhas"}.',
+  properties: {
+    tipo: { type: "string", description: '"imagem", "grafico" ou "tabela"' },
+    descricao: { type: "string", description: "Legenda em português (string única)." },
+    promptImagem: { type: "string", description: "Especificação técnica em inglês, as 8 seções numeradas em UMA ÚNICA STRING de texto corrido — nunca um objeto." },
+    titulo: { type: "string" },
+    chartType: { type: "string" },
+    labels: { type: "array" },
+    datasets: { type: "array" },
+    colunas: { type: "array" },
+    linhas: { type: "array" },
+  },
+};
+
 const FERRAMENTA_QUESTAO = {
   name: "entregar_questao",
   description: "Entrega a questão pronta. Use SEMPRE esta ferramenta para devolver a questão — nunca escreva o JSON no texto da resposta.",
@@ -710,7 +783,7 @@ const FERRAMENTA_QUESTAO = {
       gabarito: { type: "string" },
       resolucaoComentada: { type: "string" },
       analiseAlternativas: { type: "object" },
-      visual: {},
+      visual: VISUAL_SCHEMA,
     },
     required: [
       "area", "disciplina", "tema", "dificuldade", "competencia", "habilidade",
@@ -725,7 +798,7 @@ const FERRAMENTA_VISUAL = {
   description: "Entrega apenas a nova versão do recurso visual da questão.",
   input_schema: {
     type: "object",
-    properties: { visual: {} },
+    properties: { visual: VISUAL_SCHEMA },
     required: ["visual"],
   },
 };
@@ -1041,7 +1114,7 @@ function lerFerramenta(bruto: string): any | null {
   return null;
 }
 
-async function callClaudeForJSON(system: string, userMsg: string, enableWebSearch = false, usos?: any[], ferramenta: any = FERRAMENTA_QUESTAO) {
+async function callClaudeForJSON(system: SistemaPrompt, userMsg: string, enableWebSearch = false, usos?: any[], ferramenta: any = FERRAMENTA_QUESTAO) {
   const primeira = await callClaude(system, userMsg, 8000, enableWebSearch, ferramenta);
   const { text, truncated, usage } = primeira;
   if (usos && usage) usos.push(usage);
@@ -1162,6 +1235,106 @@ function corrigirQuebrasLiterais<T>(valor: T): T {
   return valor;
 }
 
+/* IMAGEM FORA DE ASSUNTO — A CAUSA RAIZ, COMPROVADA NO BANCO.
+
+   O professor relatou questões de Matemática saindo com imagens de Física
+   (usina hidrelétrica, ponte estaiada, aquecedor solar) — em até metade de
+   uma leva de 10. Não era cache, não era instrução residual, não era a ordem
+   dos campos. Era o TIPO de um campo.
+
+   O que o banco mostrou (tabela image_generation_log, 08/09/2026): 27 das 69
+   imagens do dia foram pedidas ao gerador com o prompt terminando em
+   "Cena: [object Object]" — ou seja, SEM NENHUMA DESCRIÇÃO da cena. E nos
+   simulados arquivados (tabela simulados), exatamente as questões com imagem
+   errada tinham "visual.promptImagem" gravado como OBJETO, não como string:
+   ora uma chave por seção ({"sceneAndViewpoint":…, "elementInventory":…}),
+   ora {"tipo":"texto","valor":…}, ora {"tipo":"imagem","descricao":…}. O
+   modelo, lendo no protocolo "8 seções, cada uma com seu título", às vezes
+   estruturava a especificação como JSON em vez de texto — e o schema da
+   ferramenta ("visual: {}", sem tipo) não o impedia.
+
+   O app fazia String(promptImagem) → "[object Object]", mandava para o
+   gerador só o preâmbulo genérico ("ilustração educacional para uma questão
+   no padrão ENEM…") e o gerador, sem cena nenhuma, inventava uma cena
+   "educacional" qualquer — quase sempre com cara de Física. Por isso a
+   imagem não tinha relação com o enunciado: ela nunca soube do enunciado.
+
+   Esta função garante que "promptImagem", "descricao" e "titulo" saiam daqui
+   SEMPRE como string. Se vieram como objeto, o conteúdo é preservado e
+   convertido em texto corrido, com as seções na ordem do protocolo — nada se
+   perde, e nenhuma chamada a mais é feita. */
+const SECOES_IMAGEM: Array<[RegExp, string]> = [
+  [/scene|viewpoint|cena/i, "1. SCENE AND VIEWPOINT"],
+  [/inventory|element/i, "2. ELEMENT INVENTORY"],
+  [/layout|position|posi/i, "3. LAYOUT AND POSITION"],
+  [/arrow|seta/i, "4. ARROWS"],
+  [/label|r[oó]tulo/i, "5. TEXT LABELS"],
+  [/number|scale|measure|n[uú]mero|escala|medida/i, "6. NUMBERS, SCALES AND MEASUREMENT MARKS"],
+  [/style|legib|estilo/i, "7. STYLE AND LEGIBILITY"],
+  [/negative|constraint|restri/i, "8. NEGATIVE CONSTRAINTS"],
+];
+const CHAVES_ENVELOPE = ["promptImagem", "prompt", "valor", "value", "texto", "text", "descricao", "description", "conteudo", "content", "especificacao", "specification"];
+
+function textoDeEspecificacao(valor: unknown, profundidade = 0): string {
+  if (valor == null) return "";
+  if (typeof valor === "string") return valor.trim();
+  if (typeof valor === "number" || typeof valor === "boolean") return String(valor);
+  if (Array.isArray(valor)) {
+    return valor.map((v) => textoDeEspecificacao(v, profundidade + 1)).filter(Boolean).join(profundidade === 0 ? "\n" : "; ");
+  }
+  if (typeof valor === "object") {
+    const obj = valor as Record<string, unknown>;
+    const chaves = Object.keys(obj);
+    // Envelope de um único texto: {"tipo":"texto","valor":"…"}, {"tipo":"imagem","descricao":"…"} etc.
+    for (const k of CHAVES_ENVELOPE) {
+      const conteudo = obj[k];
+      if (typeof conteudo === "string" && conteudo.trim()) {
+        const restantes = chaves.filter((c) => c !== k && c !== "tipo" && c !== "type");
+        if (!restantes.length) return conteudo.trim();
+      }
+    }
+    // Uma chave por seção: reordena pelas 8 seções do protocolo e junta em texto corrido.
+    const partes: Array<{ ordem: number; texto: string }> = [];
+    chaves.forEach((k, i) => {
+      const conteudo = textoDeEspecificacao(obj[k], profundidade + 1);
+      if (!conteudo) return;
+      const secao = SECOES_IMAGEM.findIndex(([re]) => re.test(k));
+      const titulo = secao >= 0
+        ? SECOES_IMAGEM[secao][1]
+        : k.replace(/[_-]+/g, " ").replace(/([a-z])([A-Z])/g, "$1 $2").toUpperCase();
+      partes.push({ ordem: secao >= 0 ? secao : 100 + i, texto: `${titulo}: ${conteudo}` });
+    });
+    partes.sort((a, b) => a.ordem - b.ordem);
+    return partes.map((p) => p.texto).join(profundidade === 0 ? "\n\n" : "; ");
+  }
+  return "";
+}
+
+function normalizarVisual(visual: unknown, recurso: string): any {
+  if (visual == null) return null;
+  let v: any = visual;
+  if (typeof v === "string") {
+    const t = v.trim();
+    if (!t) return null;
+    try {
+      const parsed = JSON.parse(t);
+      if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) v = parsed;
+      else return recurso === "imagem" ? { tipo: "imagem", promptImagem: t } : v;
+    } catch {
+      return recurso === "imagem" ? { tipo: "imagem", promptImagem: t } : v;
+    }
+  }
+  if (typeof v !== "object" || Array.isArray(v)) return v;
+  const saida: any = { ...v };
+  if (typeof saida.tipo === "string") saida.tipo = saida.tipo.trim().toLowerCase();
+  if (!saida.tipo && ["imagem", "grafico", "tabela"].includes(recurso)) saida.tipo = recurso;
+  for (const campo of ["promptImagem", "descricao", "titulo"]) {
+    if (saida[campo] != null && typeof saida[campo] !== "string") saida[campo] = textoDeEspecificacao(saida[campo]);
+  }
+  if (typeof saida.promptImagem === "string" && !saida.promptImagem.trim()) delete saida.promptImagem;
+  return saida;
+}
+
 function fnv1a(texto: string): string {
   let h = 0x811c9dc5;
   for (let i = 0; i < texto.length; i++) {
@@ -1182,6 +1355,7 @@ function selfTestResponse() {
     JSON_SCHEMA_TXT,
     buildSystemPrompt.toString(),
     buildUserPrompt.toString(),
+    buildBlocoFixo.toString(),
     buildGabaritoAlvo.toString(),
     buildVisualRedoPrompt.toString(),
     buildRegraFontesReais.toString(),
@@ -1263,7 +1437,7 @@ Deno.serve(async (req: Request) => {
         return jsonResponse({ error: "O modelo não retornou um novo recurso visual válido." }, 502);
       }
       await logGeneration(area, disciplina, `[refazer visual] ${tema}`);
-      return jsonResponse({ visual: corrigirQuebrasLiterais(data.visual), uso: resumoUso(usos) });
+      return jsonResponse({ visual: corrigirQuebrasLiterais(normalizarVisual(data.visual, recurso)), uso: resumoUso(usos) });
     } catch (err) {
       return jsonResponse({ error: `Erro ao refazer o recurso visual: ${String((err as any)?.message || err)}` }, 502);
     }
@@ -1278,10 +1452,15 @@ Deno.serve(async (req: Request) => {
 
   const usos: any[] = [];
   try {
-    const system = buildSystemPrompt(area);
+    const system: SistemaPrompt = [
+      { type: "text", text: buildSystemPrompt(area), cache_control: { type: "ephemeral" } },
+      { type: "text", text: buildBlocoFixo({ area, disciplina, recurso, competenciaNum, habilidadeCod }), cache_control: { type: "ephemeral" } },
+    ];
     const userMsg = buildUserPrompt({ area, disciplina, tema, dificuldade, recurso, competenciaNum, habilidadeCod, instrucoesVisual, gabaritoAlvo });
     const webSearch = precisaFontesReais(disciplina);
     let data = await callClaudeForJSON(system, userMsg, webSearch, usos);
+    // "promptImagem"/"descricao" sempre como string — ver normalizarVisual().
+    if (data && typeof data === "object") data.visual = normalizarVisual(data.visual, recurso);
 
     /* REVISÃO MATEMÁTICA — agente separado (review-math-question), acionado
        só para questões de matemática, logo depois do rascunho. Corrige SÓ
@@ -1325,6 +1504,8 @@ Deno.serve(async (req: Request) => {
 
     await logGeneration(area, disciplina, tema);
 
+    // De novo, depois da revisão matemática: idempotente, e garante o tipo na saída.
+    if (data && typeof data === "object") data.visual = normalizarVisual(data.visual, recurso);
     return jsonResponse({ question: corrigirQuebrasLiterais(data), uso: resumoUso(usos) });
   } catch (err) {
     return jsonResponse({ error: `Erro ao gerar questão: ${String((err as any)?.message || err)}` }, 502);

@@ -107,21 +107,27 @@ function buildQueryText(q: any): string {
   return partes.join("\n").slice(0, 6000);
 }
 
+/* CUSTO (v3): até a v2 a ferramenta EXIGIA os cinco campos da questão em toda
+   resposta — inclusive quando "alterado" era false, caso em que o código
+   abaixo (questionFinal) descarta tudo e usa a questão original. Eram ~1.000
+   tokens de saída pagos e jogados fora na maioria das revisões. Agora os
+   campos só são obrigatórios quando há correção; o julgamento do revisor
+   (o que ele confere e quando corrige) não mudou em nada. */
 const FERRAMENTA_REVISAO = {
   name: "entregar_revisao",
-  description: "Entrega o veredito da revisão matemática e os campos finais (mantidos ou corrigidos) que de fato serão usados.",
+  description: "Entrega o veredito da revisão matemática. Se alterado=false, envie SOMENTE alterado e resumo (a questão original é mantida integralmente). Se alterado=true, envie também os cinco campos finais completos (textoBase, comando, alternativas, gabarito, resolucaoComentada).",
   input_schema: {
     type: "object",
     properties: {
-      alterado: { type: "boolean" },
-      resumo: { type: "string" },
-      textoBase: { type: "string" },
-      comando: { type: "string" },
-      alternativas: { type: "object" },
-      gabarito: { type: "string" },
-      resolucaoComentada: { type: "string" },
+      alterado: { type: "boolean", description: "true somente se houve correção matemática real e fundamentada nos trechos." },
+      resumo: { type: "string", description: "Explicação curta do veredito." },
+      textoBase: { type: "string", description: "Obrigatório apenas se alterado=true." },
+      comando: { type: "string", description: "Obrigatório apenas se alterado=true." },
+      alternativas: { type: "object", description: "Obrigatório apenas se alterado=true." },
+      gabarito: { type: "string", description: "Obrigatório apenas se alterado=true." },
+      resolucaoComentada: { type: "string", description: "Obrigatório apenas se alterado=true." },
     },
-    required: ["alterado", "resumo", "textoBase", "comando", "alternativas", "gabarito", "resolucaoComentada"],
+    required: ["alterado", "resumo"],
   },
 };
 
@@ -130,7 +136,7 @@ function buildSystemPrompt(): string {
 
 REGRA INEGOCIÁVEL: você só pode alterar algo se a correção estiver fundamentada em um dos trechos de referência fornecidos abaixo. Se os trechos não abordarem especificamente o ponto que está em dúvida, ou se você não tiver certeza absoluta de que há um erro matemático real, devolva a questão exatamente como recebeu (alterado: false) e explique no resumo por que não havia lastro suficiente para corrigir. NUNCA corrija por "achismo" ou por preferência de estilo de resolução — apenas erro matemático real e comprovável.
 
-Ao corrigir, altere o MÍNIMO necessário: normalmente apenas a resolucaoComentada e/ou o gabarito (quando o gabarito não corresponde ao resultado correto) e, só se estritamente necessário, o texto de uma alternativa. Nunca reescreva a questão inteira. Sempre devolva os cinco campos (textoBase, comando, alternativas, gabarito, resolucaoComentada) por completo, alterados ou idênticos aos originais.
+Ao corrigir, altere o MÍNIMO necessário: normalmente apenas a resolucaoComentada e/ou o gabarito (quando o gabarito não corresponde ao resultado correto) e, só se estritamente necessário, o texto de uma alternativa. Nunca reescreva a questão inteira. Se "alterado" for true, devolva os cinco campos (textoBase, comando, alternativas, gabarito, resolucaoComentada) por completo — os que você não mudou, idênticos aos originais. Se "alterado" for false, envie SOMENTE "alterado" e "resumo": NÃO repita os campos da questão, que será mantida exatamente como recebida.
 
 Responda SEMPRE usando a ferramenta entregar_revisao — nunca em texto livre.`;
 }
@@ -164,7 +170,7 @@ ${campos.resolucaoComentada}
 TRECHOS RECUPERADOS DO BANCO DE REFERÊNCIA (use como lastro exclusivo para qualquer correção)
 ${trechosTxt}
 
-Verifique: a resolução comentada bate matematicamente? O gabarito corresponde ao resultado correto? Alguma fórmula/propriedade foi aplicada de forma incorreta, à luz dos trechos acima? Se sim e houver lastro claro nos trechos, corrija o mínimo necessário. Se não houver erro real, ou os trechos não sustentarem uma correção específica, devolva tudo inalterado.`;
+Verifique: a resolução comentada bate matematicamente? O gabarito corresponde ao resultado correto? Alguma fórmula/propriedade foi aplicada de forma incorreta, à luz dos trechos acima? Se sim e houver lastro claro nos trechos, corrija o mínimo necessário (alterado: true, com os cinco campos). Se não houver erro real, ou os trechos não sustentarem uma correção específica, responda apenas alterado: false e o resumo — sem repetir a questão.`;
 }
 
 async function callClaudeForReview(system: string, userMsg: string): Promise<any> {
