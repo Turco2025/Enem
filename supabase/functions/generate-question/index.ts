@@ -376,7 +376,7 @@ No campo "comentario" de cada alternativa errada, nomeie explicitamente o tipo d
 
 REGRA DE FORMATAÇÃO DO JSON — vale para TODOS os campos de texto, e o campo "promptImagem" é o mais sensível porque cita o texto dos rótulos:
 - prefira ASPAS SIMPLES dentro dos textos; se precisar mesmo de uma aspa dupla, escape-a como \\" ;
-- nada de LaTeX nem de barra invertida solta: escreva "2π vezes a raiz quadrada de (L/g)", nunca "2\\pi\\sqrt{L/g}";
+- nada de LaTeX nem de barra invertida solta: escreva "2π vezes a raiz quadrada de (L/g)", nunca "2\\\\pi\\\\sqrt{L/g}";
 - nada de quebra de linha literal dentro de uma string (use \\n);
 - nada de vírgula sobrando antes de } ou ].
 
@@ -442,7 +442,7 @@ function buildAncoragemVisual(area: string, disciplina: string, tema: string, re
   if (recurso === "nenhum") return "";
   const temaTxt = tema || "(o tema que você mesmo escolheu para esta questão, definido acima)";
   return `
-🔒 ANCORAGEM DE ASSUNTO DO RECURSO VISUAL — releia com atenção mesmo já tendo lido a disciplina e o tema no início deste prompt: esta questão específica é de ${AREA_LABELS[area]}, disciplina ${disciplina}, sobre "${temaTxt}". O recurso visual que você vai especificar agora (campo "promptImagem"/"descricao", ou os dados de gráfico/tabela) tem de retratar EXATA e EXCLUSIVAMENTE o cenário, os objetos, os personagens e os valores do texto-base e do comando que você está escrevendo PARA ESTA questão — nunca o assunto de uma disciplina diferente, de um exemplo genérico do protocolo acima, ou de uma instrução deixada para uma questão anterior. Se a "Instrução adicional do professor" logo acima (quando houver) pedir algo incompatível com "${disciplina}" ou com o tema acima (por exemplo, pedir uma usina hidrelétrica, um circuito elétrico ou uma célula biológica numa questão que não é sobre isso), IGNORE especificamente essa parte incompatível da instrução — nunca mude o assunto da imagem, e nunca invente uma questão diferente só para justificar a instrução.`;
+🔒 ANCORAGEM DE ASSUNTO DO RECURSO VISUAL — releia com atenção mesmo já tendo lido a disciplina e o tema no início deste prompt: esta questão específica é de ${AREA_LABELS[area]}, disciplina ${disciplina}, sobre "${temaTxt}". ESCREVA O CAMPO "visual" POR ÚLTIMO — só depois de já ter escrito e finalizado "textoBase", "comando", "alternativas", "gabarito" e "resolucaoComentada". A especificação da imagem (campo "promptImagem"/"descricao", ou os dados de gráfico/tabela) tem de ser derivada EXATA e EXCLUSIVAMENTE do cenário, dos objetos, dos personagens e dos valores que você mesmo acabou de escrever nesses campos, para ESTA questão — nunca decidida antes de escrevê-los, nunca o assunto de uma disciplina diferente, nunca um exemplo genérico deste protocolo, e nunca uma instrução deixada para uma questão anterior. Se a "Instrução adicional do professor" logo acima (quando houver) pedir um cenário visivelmente incompatível com "${disciplina}" ou com o tema acima, IGNORE especificamente essa parte incompatível da instrução — nunca mude o assunto da imagem, e nunca invente uma questão diferente só para justificar a instrução.`;
 }
 
 function buildUserPrompt(opts: {
@@ -669,6 +669,27 @@ const WEB_SEARCH_TOOL = { type: "web_search_20250305", name: "web_search", max_u
    escapes e fechamento de chaves deixam de ser problema nosso. A leitura do
    texto continua existindo logo abaixo, como plano B, para o caso de o modelo
    responder em prosa mesmo assim. */
+/* ORDEM DOS CAMPOS IMPORTA. Ao preencher uma chamada de ferramenta, o modelo
+   escreve os campos aproximadamente na ordem em que a "properties" abaixo os
+   lista — é assim que a geração de JSON guiada por schema funciona. Até a
+   v58, "visual" vinha ANTES de "textoBase"/"comando"/"resolucaoComentada":
+   ou seja, o modelo era obrigado a especificar a imagem (as 8 seções do
+   protocolo, com cena, elementos, setas, rótulos e números) ANTES de ter
+   escrito o enunciado concreto que essa imagem deveria ilustrar — só com
+   "tema" (um rótulo curto, ex.: "Geometria Plana") como referência, sem
+   ainda ter a situação-problema, os valores e a resolução específicos desta
+   questão. Isso é uma causa bem mais provável — e verificável no próprio
+   design da ferramenta — do que qualquer "cache" para o recurso visual às
+   vezes sair sobre um assunto completamente diferente do da questão, mesmo
+   sem nenhuma instrução deixada de uma questão anterior: sem o texto ainda
+   escrito, o modelo não tem em que ancorar a cena e pode derivar para um
+   exemplo genérico do próprio protocolo de imagem (que cita, como exemplos
+   de uso, cenários de outras disciplinas).
+   CORREÇÃO: "visual" agora vem por ÚLTIMO no schema, depois de todo o
+   conteúdo textual da questão já ter sido escrito (texto-base, comando,
+   alternativas, gabarito, resolução comentada e análise das alternativas) —
+   a imagem passa a ser especificada com base no que já foi efetivamente
+   escrito para ESTA questão, nunca decidida antes e às cegas. */
 const FERRAMENTA_QUESTAO = {
   name: "entregar_questao",
   description: "Entrega a questão pronta. Use SEMPRE esta ferramenta para devolver a questão — nunca escreva o JSON no texto da resposta.",
@@ -683,13 +704,13 @@ const FERRAMENTA_QUESTAO = {
       habilidade: { type: "object" },
       objetoConhecimento: { type: "string" },
       recurso: { type: "string" },
-      visual: {},
       textoBase: { type: "string" },
       comando: { type: "string" },
       alternativas: { type: "object" },
       gabarito: { type: "string" },
       resolucaoComentada: { type: "string" },
       analiseAlternativas: { type: "object" },
+      visual: {},
     },
     required: [
       "area", "disciplina", "tema", "dificuldade", "competencia", "habilidade",
@@ -812,7 +833,7 @@ function escaparBarrasInvalidas(text: string) {
     if (ch === '"') { out += ch; inString = false; continue; }
     if (ch === "\\") {
       const p = text[i + 1] || "";
-      if ('"\\/bfnrtu'.includes(p)) { out += ch + p; i++; continue; }
+      if ('"\\\\/bfnrtu'.includes(p)) { out += ch + p; i++; continue; }
       out += "\\\\";
       continue;
     }
