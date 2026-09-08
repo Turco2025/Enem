@@ -209,7 +209,13 @@ no campo correspondente o aviso "REVISÃO QUÍMICA NECESSÁRIA: a fórmula ou eq
 não pôde ser validada com segurança."`;
 
 function buildSystemPrompt(area: string) {
-  return APP_DATA.universalModel + "\n\n" + APP_DATA.areaContext[area] + buildObjetosConhecimento(area) + NOTACAO_QUIMICA;
+  /* NOTACAO_QUIMICA só entra quando a área é Ciências da Natureza (Física,
+     Química, Biologia) — é a única área onde fórmulas/equações/notação
+     química podem aparecer de verdade. Nas outras três áreas (Linguagens,
+     Humanas, Matemática) esse bloco nunca tinha utilidade nenhuma e só
+     inflava todo prompt do sistema à toa, em toda e qualquer chamada. */
+  const notacao = area === "natureza" ? NOTACAO_QUIMICA : "";
+  return APP_DATA.universalModel + "\n\n" + APP_DATA.areaContext[area] + buildObjetosConhecimento(area) + notacao;
 }
 
 const RECURSO_INSTRUCOES: Record<string, string> = {
@@ -763,7 +769,7 @@ function escaparAspasSoltas(text: string) {
 
 /* Barra invertida que não inicia um escape válido. Aparece quando o modelo
    escorrega para notação de LaTeX no meio de uma explicação de física ou de
-   matemática (`T = 2\pi\sqrt{L/g}`): `\p` e `\s` não são escapes de JSON. */
+   matemática (`T = 2\\pi\\sqrt{L/g}`): `\\p` e `\\s` não são escapes de JSON. */
 function escaparBarrasInvalidas(text: string) {
   let out = "";
   let inString = false;
@@ -807,7 +813,7 @@ const CHAVES_DO_SCHEMA_SET = new Set(CHAVES_DO_SCHEMA);
 
 function escaparConteudoDeString(bruto: string) {
   return bruto
-    .replace(/\\(?!["\\/bfnrtu])/g, "\\\\")
+    .replace(/\\(?!["\\\/bfnrtu])/g, "\\\\")
     .replace(/\n/g, "\\n").replace(/\r/g, "\\r").replace(/\t/g, "\\t")
     .replace(/(?<!\\)"/g, '\\"');
 }
@@ -1069,7 +1075,7 @@ async function logGeneration(area: string, disciplina: string, tema: string) {
    carregado, calculados sobre a forma canônica JSON.stringify. Basta comparar
    com o valor calculado no arquivo de origem: batendo, os dados chegaram
    inteiros; não batendo, a implantação é refeita. Nada de segredo é exposto —
-   só um número e um hash.                                                     */
+   só um número e um hash. */
 /* QUEBRA DE LINHA LITERAL NO TEXTO GERADO.
 
    Bug observado: o modelo às vezes escreve os DOIS CARACTERES "\n" (barra
@@ -1231,6 +1237,14 @@ Deno.serve(async (req: Request) => {
        mantém-se o resultado do rascunho. */
     const revisarMatematica = body.revisarMatematica !== false;
     if (area === "matematica" && revisarMatematica) {
+      /* Relógio de segurança nesta ponta também: a review-math-question faz
+         embedding + busca vetorial + uma chamada não streaming à Anthropic, e
+         agora tem seu próprio timeout interno em cada uma dessas etapas —
+         mas, sem um limite aqui também, uma trava ali (ou na própria rede
+         entre as duas funções) ainda seguraria a entrega desta questão
+         indefinidamente. 60 s é folgado para o que a revisão faz. */
+      const reviewController = new AbortController();
+      const reviewWatchdog = setTimeout(() => reviewController.abort(), 60_000);
       try {
         const reviewResp = await fetch(`${Deno.env.get("SUPABASE_URL")}/functions/v1/review-math-question`, {
           method: "POST",
@@ -1239,6 +1253,7 @@ Deno.serve(async (req: Request) => {
             "authorization": `Bearer ${Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")}`,
           },
           body: JSON.stringify({ question: data }),
+          signal: reviewController.signal,
         });
         if (reviewResp.ok) {
           const reviewData = await reviewResp.json();
@@ -1248,7 +1263,9 @@ Deno.serve(async (req: Request) => {
         }
       } catch (_e) {
         // Mantém a questão como veio do rascunho — nunca falha a geração por
-        // causa do revisor de matemática.
+        // causa do revisor de matemática (inclui timeout de 60 s acima).
+      } finally {
+        clearTimeout(reviewWatchdog);
       }
     }
 

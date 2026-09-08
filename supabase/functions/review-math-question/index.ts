@@ -60,22 +60,38 @@ function campoRevisavel(q: any) {
 }
 
 async function embedText(text: string): Promise<number[]> {
-  const resp = await fetch("https://api.openai.com/v1/embeddings", {
-    method: "POST",
-    headers: {
-      "content-type": "application/json",
-      "authorization": `Bearer ${OPENAI_API_KEY}`,
-    },
-    body: JSON.stringify({ model: EMBEDDING_MODEL, input: [text] }),
-  });
-  if (!resp.ok) {
-    const errText = await resp.text().catch(() => "");
-    throw new Error(`OpenAI embeddings HTTP ${resp.status}: ${errText.slice(0, 300)}`);
+  /* Relógio de segurança: sem isto, uma trava de rede aqui ficaria pendurada
+     indefinidamente — e como quem chama esta função (generate-question)
+     também não tinha timeout próprio nessa ponta, o efeito seria travar a
+     entrega da questão inteira, o oposto do que este revisor promete ("nunca
+     pode derrubar a entrega"). 20 s é generoso para um embedding, que
+     normalmente responde em menos de 1 s. */
+  const controller = new AbortController();
+  const watchdog = setTimeout(() => controller.abort(), 20_000);
+  try {
+    const resp = await fetch("https://api.openai.com/v1/embeddings", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "authorization": `Bearer ${OPENAI_API_KEY}`,
+      },
+      body: JSON.stringify({ model: EMBEDDING_MODEL, input: [text] }),
+      signal: controller.signal,
+    });
+    if (!resp.ok) {
+      const errText = await resp.text().catch(() => "");
+      throw new Error(`OpenAI embeddings HTTP ${resp.status}: ${errText.slice(0, 300)}`);
+    }
+    const data = await resp.json();
+    const item = (data.data || [])[0];
+    if (!item?.embedding) throw new Error("OpenAI embeddings: resposta sem embedding.");
+    return item.embedding;
+  } catch (err: any) {
+    if (err?.name === "AbortError") throw new Error("OpenAI embeddings: sem resposta em 20 s.");
+    throw err;
+  } finally {
+    clearTimeout(watchdog);
   }
-  const data = await resp.json();
-  const item = (data.data || [])[0];
-  if (!item?.embedding) throw new Error("OpenAI embeddings: resposta sem embedding.");
-  return item.embedding;
 }
 
 function buildQueryText(q: any): string {
@@ -152,31 +168,44 @@ Verifique: a resolução comentada bate matematicamente? O gabarito corresponde 
 }
 
 async function callClaudeForReview(system: string, userMsg: string): Promise<any> {
-  const resp = await fetch("https://api.anthropic.com/v1/messages", {
-    method: "POST",
-    headers: {
-      "content-type": "application/json",
-      "x-api-key": ANTHROPIC_API_KEY!,
-      "anthropic-version": "2023-06-01",
-    },
-    body: JSON.stringify({
-      model: MODEL,
-      max_tokens: 4000,
-      system,
-      thinking: { type: "disabled" },
-      messages: [{ role: "user", content: userMsg }],
-      tools: [FERRAMENTA_REVISAO],
-      tool_choice: { type: "tool", name: "entregar_revisao" },
-    }),
-  });
-  if (!resp.ok) {
-    const errText = await resp.text().catch(() => "");
-    throw new Error(`Anthropic HTTP ${resp.status}: ${errText.slice(0, 300)}`);
+  /* Mesmo relógio de segurança que a embedText, pelo mesmo motivo: esta
+     chamada não é streaming e não tinha nenhum limite de tempo próprio. 45 s
+     é folgado para uma resposta de até 4000 tokens sem streaming. */
+  const controller = new AbortController();
+  const watchdog = setTimeout(() => controller.abort(), 45_000);
+  try {
+    const resp = await fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "x-api-key": ANTHROPIC_API_KEY!,
+        "anthropic-version": "2023-06-01",
+      },
+      body: JSON.stringify({
+        model: MODEL,
+        max_tokens: 4000,
+        system,
+        thinking: { type: "disabled" },
+        messages: [{ role: "user", content: userMsg }],
+        tools: [FERRAMENTA_REVISAO],
+        tool_choice: { type: "tool", name: "entregar_revisao" },
+      }),
+      signal: controller.signal,
+    });
+    if (!resp.ok) {
+      const errText = await resp.text().catch(() => "");
+      throw new Error(`Anthropic HTTP ${resp.status}: ${errText.slice(0, 300)}`);
+    }
+    const data = await resp.json();
+    const toolUse = (data.content || []).find((b: any) => b.type === "tool_use" && b.name === "entregar_revisao");
+    if (!toolUse?.input) throw new Error("Resposta do Claude sem tool_use de entregar_revisao.");
+    return toolUse.input;
+  } catch (err: any) {
+    if (err?.name === "AbortError") throw new Error("Anthropic: sem resposta em 45 s.");
+    throw err;
+  } finally {
+    clearTimeout(watchdog);
   }
-  const data = await resp.json();
-  const toolUse = (data.content || []).find((b: any) => b.type === "tool_use" && b.name === "entregar_revisao");
-  if (!toolUse?.input) throw new Error("Resposta do Claude sem tool_use de entregar_revisao.");
-  return toolUse.input;
 }
 
 Deno.serve(async (req: Request) => {

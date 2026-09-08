@@ -123,6 +123,13 @@ Deno.serve(async (req: Request) => {
       prompt,
       size,
       quality,
+      /* MODERAÇÃO "low" — decisão deliberada: o padrão da OpenAI ("auto") é
+         mais restritivo e pode bloquear, por engano, imagens científicas
+         legítimas (ex.: anatomia humana em questões de Biologia). Com "low"
+         a barreira de conteúdo fica mais permissiva, reduzindo falsos
+         positivos nesse tipo de imagem educacional — sem abrir mão da
+         moderação, só afrouxando o limiar. */
+      moderation: "low",
       n: 1,
     };
     if (outputFormatPedido) corpo.output_format = outputFormatPedido;
@@ -180,12 +187,6 @@ Deno.serve(async (req: Request) => {
     const outputFormat = data.output_format || "png";
     const imageDataUrl = `data:image/${outputFormat};base64,${b64}`;
 
-    try {
-      await supabase.from("image_generation_log").insert({ prompt: prompt.slice(0, 500) });
-    } catch (_e) {
-      // best-effort logging
-    }
-
     /* O custo da imagem é verificável, não estimado: a OpenAI devolve, em
        "usage", quantos tokens de texto entraram e quantos tokens de imagem
        saíram. Multiplicando pelos preços vigentes (US$ 5 e US$ 30 por milhão)
@@ -195,6 +196,23 @@ Deno.serve(async (req: Request) => {
     const tokensEntrada = Number(uso.input_tokens) || 0;
     const tokensSaida = Number(uso.output_tokens) || 0;
     const custoUSD = Number(((tokensEntrada * 5 + tokensSaida * 30) / 1e6).toFixed(5));
+
+    /* O log agora guarda os mesmos números que já eram calculados e devolvidos
+       ao app (segundos, tokens, custo) — antes só o prompt ficava registrado,
+       e não havia como consultar depois quanto as imagens custaram de fato ao
+       longo do tempo. Registro best-effort: uma falha aqui nunca pode impedir
+       a entrega da imagem já gerada. */
+    try {
+      await supabase.from("image_generation_log").insert({
+        prompt: prompt.slice(0, 500),
+        segundos,
+        tokens_entrada: tokensEntrada,
+        tokens_saida: tokensSaida,
+        custo_usd: custoUSD,
+      });
+    } catch (_e) {
+      // best-effort logging
+    }
 
     return jsonResponse({
       imageDataUrl,
