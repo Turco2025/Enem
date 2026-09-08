@@ -19,17 +19,17 @@ const CORS_HEADERS = {
 // Chave da Anthropic (Claude), guardada em segurança do lado do servidor —
 // nunca é exposta ao navegador nem a quem chama esta função.
 const ANTHROPIC_API_KEY = Deno.env.get("ANTHROPIC_API_KEY");
-/* MODELO FIXO EM "claude-sonnet-5" PARA TODA E QUALQUER CHAMADA DESTA FUNÇÃO.
+/* MODELO FIXO EM "claude-sonnet-4-6" PARA TODA E QUALQUER CHAMADA DESTA FUNÇÃO.
    Isto é intencional e definitivo: o professor exige EXCLUSIVAMENTE o Claude
-   Sonnet 5 — nunca Claude Sonnet 4.5 nem qualquer outro modelo — custe o que
+   Sonnet 4.6 — nunca Claude Sonnet 5 nem qualquer outro modelo — custe o que
    custar. A variável de ambiente ANTHROPIC_MODEL NÃO é mais lida: mesmo que
    ela exista nos secrets deste projeto Supabase com outro valor (por exemplo
-   apontando para Sonnet 4.5), esse valor é ignorado de propósito, para que
+   apontando para Sonnet 5), esse valor é ignorado de propósito, para que
    nenhuma configuração externa consiga trocar o modelo sem editar este
    arquivo. Para usar outro modelo no futuro, o pedido tem que ser explícito
    e o valor tem que ser trocado aqui, nunca por env var, header ou parâmetro
    de request. */
-const MODEL = "claude-sonnet-5";
+const MODEL = "claude-sonnet-4-6";
 // SEM TETO DIÁRIO (decisão do professor): ausente, 0 ou negativo = ilimitado.
 // Para reativar um limite depois, basta definir MAX_DAILY_QUESTIONS com um número
 // positivo nos secrets do projeto Supabase — não é preciso reimplantar a função.
@@ -648,7 +648,7 @@ async function callClaude(system: string, userMsg: string, maxTokens: number, en
           system: [{ type: "text", text: system, cache_control: { type: "ephemeral" } }],
           messages: [{ role: "user", content: userMsg }],
           thinking: { type: "disabled" },
-          /* EFFORT FIXO EM "medium" PARA TODA E QUALQUER CHAMADA AO SONNET 5.
+          /* EFFORT FIXO EM "medium" PARA TODA E QUALQUER CHAMADA AO SONNET 4.6.
              Isto é intencional e definitivo: não deve variar por disciplina,
              por tipo de chamada (rascunho, validação pedagógica, auditoria de
              imagem) nem por qualquer outra condição. Não tornar configurável
