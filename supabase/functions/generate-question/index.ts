@@ -19,17 +19,18 @@ const CORS_HEADERS = {
 // Chave da Anthropic (Claude), guardada em segurança do lado do servidor —
 // nunca é exposta ao navegador nem a quem chama esta função.
 const ANTHROPIC_API_KEY = Deno.env.get("ANTHROPIC_API_KEY");
-/* MODELO FIXO EM "claude-sonnet-4-6" PARA TODA E QUALQUER CHAMADA DESTA FUNÇÃO.
-   Isto é intencional e definitivo: o professor exige EXCLUSIVAMENTE o Claude
-   Sonnet 4.6 — nunca Claude Sonnet 5 nem qualquer outro modelo — custe o que
-   custar. A variável de ambiente ANTHROPIC_MODEL NÃO é mais lida: mesmo que
-   ela exista nos secrets deste projeto Supabase com outro valor (por exemplo
-   apontando para Sonnet 5), esse valor é ignorado de propósito, para que
+/* MODELO FIXO EM "claude-sonnet-5" PARA TODA E QUALQUER CHAMADA DESTA FUNÇÃO.
+   Isto é intencional e definitivo: por decisão de custo, o professor exige
+   EXCLUSIVAMENTE o Claude Sonnet 5 — nunca Claude Sonnet 4.6 nem qualquer
+   outro modelo — mesmo que isso signifique abrir mão de capacidade do 4.6.
+   A variável de ambiente ANTHROPIC_MODEL NÃO é mais lida: mesmo que ela
+   exista nos secrets deste projeto Supabase com outro valor (por exemplo
+   apontando para Sonnet 4.6), esse valor é ignorado de propósito, para que
    nenhuma configuração externa consiga trocar o modelo sem editar este
    arquivo. Para usar outro modelo no futuro, o pedido tem que ser explícito
    e o valor tem que ser trocado aqui, nunca por env var, header ou parâmetro
    de request. */
-const MODEL = "claude-sonnet-4-6";
+const MODEL = "claude-sonnet-5";
 // SEM TETO DIÁRIO (decisão do professor): ausente, 0 ou negativo = ilimitado.
 // Para reativar um limite depois, basta definir MAX_DAILY_QUESTIONS com um número
 // positivo nos secrets do projeto Supabase — não é preciso reimplantar a função.
@@ -55,7 +56,7 @@ const AREA_LABELS: Record<string, string> = {
 // ou registros históricos/culturais reais — nestas disciplinas é proibido "inventar"
 // autores/textos/estudos que não existem; o modelo deve usar apenas fontes reais e,
 // em caso de dúvida, pesquisar na internet antes de escrever a questão (ver
-// buildUserPrompt/buildValidationChecklist). Comparação por substring, em minúsculas,
+// buildUserPrompt). Comparação por substring, em minúsculas,
 // para cobrir variações do rótulo (ex.: "Língua Estrangeira (Inglês/Espanhol)").
 const DISCIPLINAS_FONTES_REAIS_OBRIGATORIAS = [
   "literatura", "língua portuguesa", "artes", "língua estrangeira",
@@ -459,147 +460,6 @@ Entregue o resultado chamando a ferramenta "entregar_visual", com um único argu
 Não escreva o JSON no texto da resposta e não escreva nada antes ou depois da chamada da ferramenta.`;
 }
 
-// AUDITORIA FINAL DE COERÊNCIA DA IMAGEM — passo obrigatório, executado depois
-// que o texto da questão já está TOTALMENTE FINALIZADO (rascunho + validação
-// pedagógica, quando ligada). É uma chamada dedicada, com uma única tarefa,
-// para que a checagem de assunto da imagem não fique diluída entre os 35
-// critérios da Ficha de Revisão: aqui o modelo só tem uma pergunta para
-// responder — a cena da imagem é EXATAMENTE a mesma situação-problema do
-// texto finalizado, ou não? — e, sendo "não", é obrigado a reescrever a
-// especificação inteira a partir do zero, usando como referência apenas o
-// texto já pronto (nunca a especificação antiga, que pode estar viesada).
-function buildImageFinalPass(opts: {
-  tema: string; disciplina: string; textoBase: string; comando: string;
-  alternativas: Record<string, string>; gabarito: string; resolucaoComentada: string;
-  descricaoAtual: string; promptImagemAtual: string;
-}) {
-  return `A questão de vestibular abaixo (padrão ENEM, disciplina ${opts.disciplina}) já está com o texto-suporte, o comando, as alternativas, o gabarito e a resolução comentada TOTALMENTE FINALIZADOS e aprovados — não altere absolutamente nada disso. Sua ÚNICA tarefa agora, como AUDITOR DE COERÊNCIA DE IMAGEM, é decidir se a especificação de imagem abaixo retrata EXATA e ESTRITAMENTE o mesmo objeto, cenário, disciplina e fenômeno desta questão — nunca outro assunto, ainda que visualmente parecido ou vagamente relacionado (ex.: uma questão de Matemática sobre determinantes/matrizes NUNCA pode vir acompanhada de uma imagem de usina hidrelétrica, painel de calibração industrial, ponte estaiada ou qualquer outra cena que não seja a situação-problema real descrita abaixo).
-
-QUESTÃO FINALIZADA (contexto fixo — não repita nem altere nada disto na sua resposta):
-Tema: ${opts.tema}
-Texto-suporte: ${opts.textoBase}
-Comando: ${opts.comando}
-Alternativas: ${JSON.stringify(opts.alternativas)}
-Gabarito: ${opts.gabarito}
-Resolução comentada: ${opts.resolucaoComentada}
-
-ESPECIFICAÇÃO DE IMAGEM ATUALMENTE PROPOSTA (pode estar certa ou pode estar errada — audite com desconfiança, não aprove por hábito):
-descricao: ${opts.descricaoAtual}
-promptImagem: ${opts.promptImagemAtual}
-
-PROCEDIMENTO OBRIGATÓRIO:
-1. Releia SOMENTE a questão finalizada acima (ignore a especificação proposta neste primeiro momento) e determine, em termos concretos e específicos, qual é o ÚNICO objeto/cenário/fenômeno real que uma imagem correta teria de retratar para ESTA questão (ex.: "um caixa eletrônico com teclado numérico em ambiente de agência bancária", nunca uma categoria genérica como "tecnologia" ou "um cenário urbano").
-2. Só agora compare, elemento por elemento, com a especificação proposta acima. Se QUALQUER elemento central da cena proposta pertencer a outro objeto, cenário, disciplina ou situação-problema — mesmo que visualmente relacionado, mesmo que "poderia ilustrar um tema parecido" — a especificação está ERRADA.
-3. Havendo erro (ou qualquer dúvida razoável), descarte a especificação proposta por completo e escreva uma especificação NOVA do zero, seguindo à risca o protocolo obrigatório de 8 seções abaixo.
-4. Se, e somente se, a especificação proposta já retratar corretamente a mesma situação-problema em TODOS os aspectos, devolva-a exatamente como está (sem reescrevê-la por reescrever).
-
-${RECURSO_INSTRUCOES.imagem}
-
-Chame a ferramenta "auditar_imagem" com um único argumento: {"aprovado": true ou false (true somente se a especificação original já estava correta e foi devolvida sem reescrita), "descricao": "<descrição final, em português, da imagem que de fato será entregue>", "promptImagem": "<especificação técnica final, em inglês, conforme o protocolo, da imagem que de fato será entregue>"}. Não escreva nada fora da chamada da ferramenta.`;
-}
-
-// PROTOCOLO DE REVISÃO E VALIDAÇÃO — construído a partir da Ficha de Revisão de Item
-// do Inep/MEC (Guia de Elaboração e Revisão de Itens, seção 6: 35 critérios em 5 blocos),
-// acrescida do gate de falhas fatais (Guia, seção 6: motivos de devolução ao elaborador)
-// e das regras adicionais obrigatórias definidas pelo professor responsável.
-// Critérios condicionais: fontes reais (disciplinas que exigem autor/obra real) e
-// extensão calibrada (disciplinas com amostra em CALIBRACAO_EXTENSAO).
-function buildValidationChecklist(disciplina: string, dificuldade: string): string {
-  const criterioFontesReais = precisaFontesReais(disciplina)
-    ? `\n2.6 FONTE REAL OBRIGATÓRIA NESTA DISCIPLINA: todo autor, obra, pesquisador, teoria, evento histórico ou fonte citada no textoBase é real, verificável e corretamente atribuída — não inventada nem "hipotética". Se houver qualquer dúvida sobre existência, autoria, título exato, data ou conteúdo, use a ferramenta web_search para confirmar; se não for possível confirmar, substitua por autor/obra/estudo real e comprovadamente existente sobre o mesmo tema, com a fonte real citada no formato ABNT/ENEM.`
-    : "";
-  const calKey = findCalibracaoKey(disciplina);
-  const criterioExtensao = calKey
-    ? (() => {
-        const cal = CALIBRACAO_EXTENSAO[calKey];
-        return `\n5.9 EXTENSÃO CALIBRADA PELA MÉDIA REAL DO ENEM: o tamanho de textoBase (meta ~${cal.texto[2]} caracteres, faixa típica ${cal.texto[0]}–${cal.texto[1]}), de comando (meta ~${cal.comando[2]}, faixa ${cal.comando[0]}–${cal.comando[1]}) e de cada alternativa A-E (meta ~${cal.item[2]} cada, faixa ${cal.item[0]}–${cal.item[1]}) está compatível com a média real de "${calKey}" no ENEM, e o item cabe no tempo médio de três minutos de resolução previsto pelo Guia do Inep. Se algum campo estiver muito fora dessas faixas, ajuste-o preservando o conteúdo pedagógico — sem preenchimento artificial nem corte de informação necessária.`;
-      })()
-    : "";
-
-  return `Você é agora o REVISOR TÉCNICO-PEDAGÓGICO do item abaixo, que você mesmo elaborou. Aplique o PROTOCOLO OBRIGATÓRIO DE REVISÃO E VALIDAÇÃO baseado na Ficha de Revisão de Item do Inep/MEC, analisando CADA critério um a um, de forma ao mesmo tempo global e detalhada. Nenhum item pode ser aprovado com qualquer critério não atendido.
-
-═══════ ETAPA 1 — GATE DE FALHAS FATAIS (verifique ANTES de tudo) ═══════
-Conforme o Guia do Inep, o item é DEVOLVIDO PARA REFORMULAÇÃO se apresentar qualquer um destes problemas. Encontrando QUALQUER um deles, você é OBRIGADO a REESCREVER O ITEM INTEIRO — correção pontual é proibida neste caso:
-F1. O item não atende a nenhuma habilidade da Matriz de Referência, ou atende a mais de uma (o item deve contemplar UMA ÚNICA habilidade).
-F2. Há erro conceitual, factual, numérico ou de unidade em qualquer parte do item.
-F3. Há mais de um gabarito defensável, ou nenhuma alternativa é inequivocamente correta.
-F4. Falta justificativa para alguma alternativa, ou alguma justificativa é insuficiente/tautológica.
-F5. Há recurso visual (gráfico/tabela/imagem) ilegível, incoerente com o enunciado, meramente decorativo, ou cujos dados não sustentam a resolução comentada. ISTO INCLUI, em especial, QUALQUER IMAGEM CUJO ASSUNTO/CENA PERTENÇA A OUTRO TEMA, OUTRA DISCIPLINA OU OUTRO FENÔMENO diferente do que o texto-base, o comando e a resolução comentada de fato descrevem — por exemplo, uma questão de Matemática sobre operação bancária/caixa eletrônico acompanhada de uma imagem de radar de trânsito/física, ou uma questão de Biologia sobre célula acompanhada de uma imagem de astronomia. Esse tipo de incoerência de ASSUNTO (não só de detalhe) é uma FALHA FATAL: releia o "promptImagem" e a "descricao" do zero e confirme, palavra por palavra, que TODO objeto, cenário e grandeza neles descritos é o mesmo objeto, cenário e grandeza do texto-base/comando/resolução — nada de outro domínio do conhecimento, nada de outra situação-problema, ainda que visualmente relacionado ou "parecido". Havendo qualquer dúvida, reescreva o "promptImagem" inteiro a partir da situação-problema real antes de aprovar o item.
-F6. Falta referência bibliográfica quando ela é necessária, ou o objeto de conhecimento declarado não existe na lista oficial da área (foi inventado).
-F7. O enunciado não apresenta problematização satisfatória, ou não explicita UM ÚNICO problema a ser resolvido.
-
-═══════ ETAPA 2 — FICHA DE REVISÃO (5 blocos) ═══════
-
-▸ BLOCO 1 — ASPECTOS FORMAIS
-1.1 O item indica a habilidade da Matriz (código e texto oficial completo).
-1.2 O item indica a competência de área (número e texto oficial completo).
-1.3 O item indica o nível de dificuldade, e este é o solicitado ("${dificuldade}").
-1.4 O item indica o objeto de conhecimento (campo "objetoConhecimento"), copiado literalmente de um item da lista oficial da área apresentada no prompt do sistema.
-1.5 O item indica o gabarito de forma explícita e única.
-1.6 O item apresenta texto-base.
-1.7 O item apresenta referência bibliográfica completa do texto-base, no formato ABNT/ENEM (ou NA quando o texto-base for situação hipotética formulada pelo elaborador, o que só é permitido nas disciplinas em que fonte fictícia é autorizada).
-1.8 O item apresenta enunciado (comando).
-1.9 O item apresenta exatamente 5 alternativas (A-E).
-1.10 O item apresenta justificativa para CADA uma das 5 alternativas.
-
-▸ BLOCO 2 — COMPOSIÇÃO DO TEXTO-BASE
-2.1 O texto-base é adequado em termos de coesão e coerência.
-2.2 A referência utilizada é fidedigna — recuperável em pesquisa na Internet ou em material impresso de ampla divulgação — e não é livro didático (fonte proibida pelo Guia).
-2.3 O vocabulário e as situações utilizadas são NACIONALMENTE conhecidos (sem regionalismos ou referências locais que desfavoreçam parte dos candidatos).
-2.4 Havendo imagem/gráfico/tabela, é pertinente, de boa qualidade, legível e efetivamente necessária à resolução (nunca decorativa); todo dado citado como visível está de fato representado. AUDITORIA GEOMÉTRICA DO "promptImagem" (quando o recurso for imagem): a especificação traz as 8 seções obrigatórias do protocolo; CADA seta declara ponto de origem, ponto de destino, posição da ponta e direção na tela — nenhuma seta genérica do tipo "arrow between A and B"; CADA rótulo traz o texto exato entre aspas, o elemento a que pertence e o lado em que fica, e todo texto visível está em português; CADA número citado no texto-base, no comando, nas alternativas ou na resolução comentada aparece com o MESMO valor na especificação da imagem; não há elemento essencial sem rótulo nem rótulo sem elemento. A especificação traz as DUAS CAMADAS da seção 7 e a regra de precedência. E a cena corresponde EXATAMENTE à situação-problema: nenhum elemento espetacular acrescentado só por impacto visual, nada contradizendo o texto-base, o comando ou a resolução. Se qualquer um desses pontos falhar, REESCREVA o "promptImagem" completo seguindo o protocolo, sem alterar o conteúdo pedagógico do item.
-2.5 O texto-base contém TODAS as informações necessárias à resolução e está livre de elementos meramente acessórios que gerem ambiguidade ou consumam tempo de leitura sem função; não exige informação simplesmente decorada (fórmula, data, nome, termo isolado).${criterioFontesReais}
-
-▸ BLOCO 3 — COMPOSIÇÃO DO ENUNCIADO
-3.1 O enunciado apresenta claramente o que deve ser solucionado.
-3.2 A problematização proposta pelo enunciado é satisfatória e explicita UM ÚNICO problema.
-3.3 O vocabulário e as situações do enunciado são nacionalmente conhecidos.
-3.4 O enunciado NÃO apresenta informações adicionais ou complementares ao texto-base — ele considera exatamente a totalidade das informações já oferecidas. (Se algum dado necessário à resolução aparece só no comando, mova-o para o texto-base.)
-3.5 O enunciado NÃO contém os termos "falso", "exceto", "incorreto", "não", "errado" nem qualquer formulação por negação.
-3.6 O enunciado NÃO contém termos absolutos ("sempre", "nunca", "todo", "totalmente", "absolutamente", "completamente", "somente").
-3.7 O enunciado NÃO usa as sentenças proibidas "Pode-se afirmar que" / "É correto afirmar que" nem equivalentes; usa termos impessoais ("considere-se", "calcula-se", "argumenta-se", "estima-se").
-3.8 O enunciado NÃO contém ponto de interrogação (?) — é sempre frase declarativa que se completa com as alternativas. Se encontrar "?", reescreva na forma declarativa (ex.: "Qual é o valor de x?" vira "O valor de x corresponde a").
-
-▸ BLOCO 4 — COMPOSIÇÃO DAS ALTERNATIVAS E DAS JUSTIFICATIVAS
-4.1 As alternativas relacionam-se com o enunciado e o texto-base, sem configurar proposições independentes.
-4.2 Há gabarito, e a indicação do gabarito é correta.
-4.3 O gabarito é ÚNICO — nenhuma outra alternativa é defensável como correta.
-4.5 Se foi exigida uma POSIÇÃO OBRIGATÓRIA do gabarito, a alternativa correta está exatamente nessa letra e a ordem lógica das alternativas continua respeitada. Se não estiver, reescreva os distratores até que as duas coisas valham ao mesmo tempo — nunca entregue o gabarito em outra posição.
-4.4 O gabarito é claro e NÃO é mais atrativo que os distratores (não é o mais completo, o mais qualificado, o mais detalhado nem o mais bem redigido).
-4.5 Os quatro distratores são PLAUSÍVEIS: cada um retrata uma hipótese de raciocínio efetivamente utilizada por um estudante na busca da solução (preferencialmente um erro comum de ensino-aprendizagem), é tecnicamente bem elaborado e não é absurdo, grosseiro nem facilmente eliminável.
-4.6 Os distratores são claros, SEM INDUÇÃO AO ERRO — nenhum é uma "pegadinha" que faz o candidato errar por desatenção a um detalhe, em vez de por não dominar a habilidade testada.
-4.7 As alternativas apresentam paralelismo sintático e semântico.
-4.8 As alternativas foram redigidas SEM TERMOS ABSOLUTOS. Nenhuma delas — nem a correta, nem as 4 erradas — contém "apoio irrestrito", "somente e exclusivamente", "completamente", "rejeição completa", "negam qualquer participação", "integralmente", "drasticamente", "todos", "totalmente", "nunca", "sempre", "sem exceção", "de forma alguma", "em absoluto", "unicamente", "somente", "exclusivamente", "qualquer", "jamais" ou equivalentes. Esse tipo de termo é pista lexical: permite descartar ou marcar a alternativa só pelo tom, sem o conteúdo, nivelando por baixo qualquer nível de dificuldade. Encontrando algum, reescreva a alternativa mantendo EXATAMENTE o mesmo erro de raciocínio (ou a mesma ideia, se for a correta), porém em linguagem comedida e específica, no mesmo registro das demais.
-4.9 As alternativas apresentam extensão equivalente entre si.
-4.10 As alternativas seguem uma sequência lógica: valores numéricos em ordem crescente (ou decrescente) de A a E; alternativas verbais em ordem narrativa, cronológica ou alfabética quando houver ordem natural.
-4.11 As alternativas são independentes entre si — não mutuamente excludentes, não negam informações do texto, não são semanticamente muito próximas; nenhuma usa "todas as anteriores"/"nenhuma das anteriores"; nenhuma repete desnecessariamente palavras do enunciado.
-4.12 As justificativas são corretas, válidas e NÃO TAUTOLÓGICAS: cada uma informa exatamente por que aquela alternativa é ou não a resposta correta, nomeando o tipo de distrator e explicando EM TERMOS CONCEITUAIS o raciocínio, o conceito, a etapa de cálculo ou a leitura equivocada que a produz. É proibido justificar a incorreção apenas apontando que a alternativa "usa uma palavra absoluta/extrema" — a palavra não é o motivo do erro, o raciocínio é.
-4.13 A pontuação e a grafia das alternativas seguem a regra da área. Como o comando é sempre declarativo aqui, o caso padrão é "alternativa que complementa a sentença do enunciado": inicie em minúscula e finalize com ponto final — exceto alternativas exclusivamente numéricas/simbólicas de Matemática, Física e Química, em que se apresenta apenas o valor com sua unidade.
-
-▸ BLOCO 5 — ADEQUAÇÃO GLOBAL DO ITEM
-5.1 O item atende à habilidade indicada — a operação cognitiva realmente exigida corresponde ao "saber fazer" descrito na habilidade, não apenas ao assunto de superfície.
-5.2 O item atende à competência de área indicada.
-5.3 O OBJETO DE CONHECIMENTO declarado é um dos objetos oficiais da área (conferido contra a lista do prompt do sistema, sem invenção nem paráfrase do título) E corresponde ao conteúdo que a questão de fato mobiliza — não apenas a um assunto vizinho ou de afinidade superficial. Se não corresponder, troque pelo objeto correto ou reformule a questão para que ela realmente trate do objeto declarado.
-5.4 O item é ISENTO DE ERROS CONCEITUAIS. Reconfira todo dado científico, histórico, estatístico, numérico, gráfico, tabular, de fonte, de autoria, de data e de unidade de medida; confirme a coerência entre texto-base, recurso visual, alternativas e resolução comentada.
-5.5 O item é CONTEXTUALIZADO: configura uma situação-problema autêntica que permeia toda a estrutura (do texto-base às alternativas), e não uma questão tradicional de conteúdo acompanhada de um texto decorativo. O item forma UMA unidade de proposição, com coesão e coerência entre texto-base, enunciado e alternativas, explicitando uma única situação-problema e abordagem homogênea de conteúdo.
-5.6 O item é isento de informações preconceituosas, controversas ou polêmicas.
-5.7 O nível de dificuldade indicado ("${dificuldade}") é adequado E decorre da COMPLEXIDADE COGNITIVA REAL exigida (profundidade de análise, número de relações conceituais a articular, grau de interpretação e contextualização) — NUNCA de pistas linguísticas, obscuridade textual, pegadinhas ou alternativas mal construídas. Uma questão fácil é fácil pelo raciocínio simples que exige, não por ter distratores óbvios; uma difícil é difícil pela profundidade exigida, não por ter alternativas mal disfarçadas.
-5.8 O item está de acordo com a norma padrão da língua portuguesa e é isento de ambiguidade, dupla interpretação e informações desnecessárias.${criterioExtensao}
-5.10 A resposta exige interpretação, análise, comparação, aplicação, inferência ou resolução de problema — nunca memorização direta de um fato isolado.
-5.11 TEXTO-BASE NEUTRO E SEM ECO LEXICAL: o texto-base apenas apresenta material para o candidato interpretar; em nenhum momento formula, parafraseia antecipadamente ou sinaliza a conclusão que o comando pede como resposta, nem repete o vocabulário/palavras-chave que aparecem só na alternativa correta (pista por associação lexical). Se entregar a inferência que deveria ser o objeto do raciocínio, ou ecoar vocabulário exclusivo do gabarito, reescreva-o mantendo apenas o material bruto necessário para que a ponte até a resposta seja construída pelo próprio candidato.
-5.12 COMANDO NÃO REVELA A ESTRATÉGIA DE RESOLUÇÃO: o comando apresenta a tarefa cognitiva a ser realizada, mas não indica qual conceito, fórmula, dado ou caminho de raciocínio conduz diretamente ao gabarito. Se estiver entregando a estratégia (não apenas o que se pede, mas como chegar lá), reescreva-o de forma mais neutra, preservando a clareza sobre o que está sendo pedido.
-5.9 NOTAÇÃO QUÍMICA: toda fórmula, íon, equação, isótopo e unidade aparece pronta em Unicode — índices em ₀₁₂₃₄₅₆₇₈₉, cargas em ⁰¹²³⁴⁵⁶⁷⁸⁹⁺⁻ com o número ANTES do sinal (Ca²⁺, SO₄²⁻, jamais Ca2+ ou Ca+2), coeficientes como número comum antes da fórmula, estados físicos (s)(l)(g)(aq), equações balanceadas com massa e carga conservadas, e a MESMA grafia da substância no texto-base, nas alternativas, no gabarito e na resolução. Nenhum LaTeX, tag, cifrão, chave, barra invertida ou bloco de código. Se encontrar H2O, CO2, Ca2+, \\ce{} ou similar, REESCREVA a questão inteira com a notação correta antes de devolver.
-5.9.1 SETAS QUÍMICAS: cada seta é um caractere Unicode único e com significado próprio — → reação, ← sentido inverso, ⇌ equilíbrio, ↔ ressonância, ↑ gás, ↓ precipitado. Se encontrar QUALQUER seta montada com caracteres separados (-> --> => ==> <- <-> <=> <==>), substitua pelo símbolo correto do processo. Se encontrar ↔ funcionando como equilíbrio entre espécies com estado físico, troque por ⇌. Ligações químicas (–, =, ≡) permanecem ligações e nunca viram setas.
-5.13 PARIDADE TÉCNICA E DE ELABORAÇÃO: as 5 alternativas têm nível de elaboração e precisão técnica equivalentes — a correta não é a mais longa, mais detalhada ou mais bem redigida, nem os distratores parecem rasos, genéricos ou mal elaborados em comparação com ela. Havendo desequilíbrio, reescreva as mais fracas com o mesmo cuidado técnico da mais forte, sem torná-las corretas.
-
-═══════ ETAPA 3 — SÍNTESE DA REVISÃO ═══════
-Se QUALQUER critério das etapas 1 e 2 não for plenamente atendido, REESCREVA o item corrigindo o problema — integralmente quando se tratar de falha fatal (F1-F7) — mantendo o mesmo tema, o mesmo nível de dificuldade e o mesmo recurso visual solicitados. Se todos os critérios já estiverem atendidos, devolva o mesmo item sem alterações. Devolva SEMPRE o item completo no formato JSON especificado ao final, nunca um relatório da revisão.
-
-ITEM A REVISAR:
-__DRAFT_JSON__
-
-${JSON_SCHEMA_TXT}`;
-}
-
 /* ---------------- Claude API (server-side) ---------------- */
 
 // Códigos de erro transitórios (sobrecarga momentânea, timeout de proxy/CDN entre
@@ -648,10 +508,10 @@ async function callClaude(system: string, userMsg: string, maxTokens: number, en
           system: [{ type: "text", text: system, cache_control: { type: "ephemeral" } }],
           messages: [{ role: "user", content: userMsg }],
           thinking: { type: "disabled" },
-          /* EFFORT FIXO EM "medium" PARA TODA E QUALQUER CHAMADA AO SONNET 4.6.
+          /* EFFORT FIXO EM "medium" PARA TODA E QUALQUER CHAMADA AO SONNET 5.
              Isto é intencional e definitivo: não deve variar por disciplina,
-             por tipo de chamada (rascunho, validação pedagógica, auditoria de
-             imagem) nem por qualquer outra condição. Não tornar configurável
+             por tipo de chamada (rascunho, revisão de matemática, refazer
+             visual) nem por qualquer outra condição. Não tornar configurável
              por env var, header, ou parâmetro de request — o pedido foi para
              fixar em "medium" sempre, sem hipótese de subir nem descer. */
           output_config: { effort: "medium" },
@@ -807,20 +667,6 @@ const FERRAMENTA_VISUAL = {
     type: "object",
     properties: { visual: {} },
     required: ["visual"],
-  },
-};
-
-const FERRAMENTA_AUDITORIA_IMAGEM = {
-  name: "auditar_imagem",
-  description: "Entrega o veredito da auditoria de coerência da imagem e a especificação final (mantida ou reescrita) que de fato será usada.",
-  input_schema: {
-    type: "object",
-    properties: {
-      aprovado: { type: "boolean" },
-      descricao: { type: "string" },
-      promptImagem: { type: "string" },
-    },
-    required: ["aprovado", "descricao", "promptImagem"],
   },
 };
 
@@ -1276,10 +1122,8 @@ function selfTestResponse() {
     JSON_SCHEMA_TXT,
     buildSystemPrompt.toString(),
     buildUserPrompt.toString(),
-    buildValidationChecklist.toString(),
     buildGabaritoAlvo.toString(),
     buildVisualRedoPrompt.toString(),
-    buildImageFinalPass.toString(),
     buildRegraFontesReais.toString(),
     buildCalibracaoExtensao.toString(),
     buildMatrizInstrucoes.toString(),
@@ -1368,7 +1212,6 @@ Deno.serve(async (req: Request) => {
   const recurso = ["nenhum", "imagem", "grafico", "tabela"].includes(body.recurso) ? body.recurso : "nenhum";
   const competenciaNum = typeof body.competenciaNum === "number" ? body.competenciaNum : null;
   const habilidadeCod = body.habilidadeCod ? String(body.habilidadeCod) : null;
-  const validar = body.validar !== false;
 
   const capResponse = await checkDailyCap();
   if (capResponse) return capResponse;
@@ -1380,18 +1223,12 @@ Deno.serve(async (req: Request) => {
     const webSearch = precisaFontesReais(disciplina);
     let data = await callClaudeForJSON(system, userMsg, webSearch, usos);
 
-    if (validar) {
-      const valPrompt = buildValidationChecklist(disciplina, dificuldade).replace("__DRAFT_JSON__", JSON.stringify(data));
-      data = await callClaudeForJSON(system, valPrompt, webSearch, usos);
-    }
-
     /* REVISÃO MATEMÁTICA — agente separado (review-math-question), acionado
-       só para questões de matemática, depois da validação pedagógica e antes
-       da auditoria de imagem (para que esta última já veja o texto corrigido,
-       se houver correção). Corrige SÓ quando encontra lastro no banco de
-       referência (63 livros); sem cobertura, a questão segue como está. Uma
-       falha aqui (rede, parsing, function fora do ar) nunca pode derrubar a
-       entrega da questão — mantém-se o resultado da validação pedagógica. */
+       só para questões de matemática, logo depois do rascunho. Corrige SÓ
+       quando encontra lastro no banco de referência (63 livros); sem
+       cobertura, a questão segue como está. Uma falha aqui (rede, parsing,
+       function fora do ar) nunca pode derrubar a entrega da questão —
+       mantém-se o resultado do rascunho. */
     const revisarMatematica = body.revisarMatematica !== false;
     if (area === "matematica" && revisarMatematica) {
       try {
@@ -1410,39 +1247,8 @@ Deno.serve(async (req: Request) => {
           }
         }
       } catch (_e) {
-        // Mantém a questão como veio da validação pedagógica — nunca falha a
-        // geração por causa do revisor de matemática.
-      }
-    }
-
-    /* AUDITORIA FINAL DE COERÊNCIA DA IMAGEM — obrigatória, independente do
-       checkbox "validar": o texto da questão já está finalizado neste ponto
-       (rascunho + validação pedagógica, quando ligada), então esta chamada
-       dedicada audita SÓ a imagem contra o texto pronto e reescreve a
-       especificação do zero se detectar qualquer incoerência de assunto.
-       Uma falha aqui (rede, parsing) não pode derrubar a entrega da questão:
-       nesse caso mantém-se a especificação anterior, já revisada acima. */
-    if (recurso === "imagem" && data?.visual?.promptImagem) {
-      try {
-        const auditPrompt = buildImageFinalPass({
-          tema: data.tema || tema,
-          disciplina,
-          textoBase: data.textoBase || "",
-          comando: data.comando || "",
-          alternativas: data.alternativas || {},
-          gabarito: data.gabarito || "",
-          resolucaoComentada: data.resolucaoComentada || "",
-          descricaoAtual: data.visual.descricao || "",
-          promptImagemAtual: data.visual.promptImagem || "",
-        });
-        const auditData = await callClaudeForJSON(system, auditPrompt, false, usos, FERRAMENTA_AUDITORIA_IMAGEM);
-        if (auditData && typeof auditData.promptImagem === "string" && auditData.promptImagem.trim()) {
-          data.visual.descricao = auditData.descricao || data.visual.descricao;
-          data.visual.promptImagem = auditData.promptImagem;
-        }
-      } catch (_e) {
-        // Mantém a especificação já existente — melhor entregar a questão com
-        // a imagem revisada na etapa anterior do que falhar a geração inteira.
+        // Mantém a questão como veio do rascunho — nunca falha a geração por
+        // causa do revisor de matemática.
       }
     }
 
