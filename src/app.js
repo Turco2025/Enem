@@ -954,7 +954,17 @@ async function generateAll(){
   document.getElementById("formPanel").style.display = "none";
   document.getElementById("resultsPanel").style.display = "block";
   document.getElementById("genProgressWrap").classList.remove("hidden");
-  state.questions.forEach(q => { q.status = "idle"; q.data = null; q.errorMsg = ""; q.gabaritoStatus = null; });
+  /* Reset completo do estado "órfão" de uma geração anterior antes de começar
+     uma leva nova. Sem isto, trocar de disciplina no formulário (ex.: Física
+     -> Matemática) e clicar em Gerar reaproveita os MESMOS objetos de questão
+     (o array não é recriado do zero — syncQuestionsArrayLength só ajusta o
+     tamanho) e qualquer instrução de imagem digitada para a disciplina
+     anterior ("instrucoesVisual", por questão) sobrevivia e era enviada de
+     novo junto com o tema da disciplina nova — podendo produzir uma imagem de
+     um assunto completamente diferente do da questão (o backend agora também
+     tem uma trava contra isso, mas aqui é onde o problema realmente nasce).
+     "approved" também não deveria sobreviver a uma geração nova. */
+  state.questions.forEach(q => { q.status = "idle"; q.data = null; q.errorMsg = ""; q.gabaritoStatus = null; q.instrucoesVisual = ""; q.approved = false; });
   // Plano de gabaritos sorteado ANTES de gerar: como as questões saem em
   // paralelo, cada uma precisa saber de antemão qual letra é a sua, senão não há
   // como garantir que não se repitam.

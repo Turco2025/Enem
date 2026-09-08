@@ -413,6 +413,38 @@ Motivo: gabaritos repetidos em sequência deixam o candidato acertar por padrão
 `;
 }
 
+/* ANCORAGEM DE ASSUNTO DO RECURSO VISUAL.
+
+   Bug observado: o professor gera um simulado de uma disciplina (ex.: Física,
+   com uma questão sobre conversão de energia numa usina hidrelétrica) e, ao
+   trocar de disciplina no mesmo formulário (ex.: para Matemática) sem
+   perceber, o campo "Instruções opcionais para a criação da imagem" de um
+   slot de questão pode continuar preenchido com uma instrução pensada para a
+   disciplina anterior (o campo é por questão, digitado livremente pelo
+   professor, e nada no formulário o limpa sozinho ao trocar de área). O
+   resultado: o texto-base e o comando saem corretos, sobre o novo tema — mas
+   o "promptImagem" (que o protocolo de imagem instrui a seguir a instrução do
+   professor "com prioridade") pode obedecer à instrução deixada para trás e
+   desenhar um cenário de outra disciplina inteira.
+
+   Este bloco é a rede de segurança do lado do modelo: repete a disciplina e o
+   tema desta questão especificamente ENTRE a especificação técnica da imagem
+   e a instrução opcional do professor — a posição importa, porque um prompt
+   desta extensão (o protocolo de imagem sozinho passa de 5 mil caracteres)
+   corre risco real de "diluir" a atenção do modelo ao tema original de tanto
+   texto no meio — e manda explicitamente IGNORAR qualquer parte da instrução
+   que descreva um assunto incompatível com a disciplina/tema atuais, em vez
+   de tentar obedecer os dois pedidos ao mesmo tempo. (A correção definitiva —
+   limpar esse campo no formulário ao trocar de disciplina — já foi feita no
+   app cliente; isto aqui é a segunda camada, para o caso de uma instrução
+   antiga chegar ao backend por qualquer outro caminho.) */
+function buildAncoragemVisual(area: string, disciplina: string, tema: string, recurso: string): string {
+  if (recurso === "nenhum") return "";
+  const temaTxt = tema || "(o tema que você mesmo escolheu para esta questão, definido acima)";
+  return `
+🔒 ANCORAGEM DE ASSUNTO DO RECURSO VISUAL — releia com atenção mesmo já tendo lido a disciplina e o tema no início deste prompt: esta questão específica é de ${AREA_LABELS[area]}, disciplina ${disciplina}, sobre "${temaTxt}". O recurso visual que você vai especificar agora (campo "promptImagem"/"descricao", ou os dados de gráfico/tabela) tem de retratar EXATA e EXCLUSIVAMENTE o cenário, os objetos, os personagens e os valores do texto-base e do comando que você está escrevendo PARA ESTA questão — nunca o assunto de uma disciplina diferente, de um exemplo genérico do protocolo acima, ou de uma instrução deixada para uma questão anterior. Se a "Instrução adicional do professor" logo acima (quando houver) pedir algo incompatível com "${disciplina}" ou com o tema acima (por exemplo, pedir uma usina hidrelétrica, um circuito elétrico ou uma célula biológica numa questão que não é sobre isso), IGNORE especificamente essa parte incompatível da instrução — nunca mude o assunto da imagem, e nunca invente uma questão diferente só para justificar a instrução.`;
+}
+
 function buildUserPrompt(opts: {
   area: string; disciplina: string; tema: string; dificuldade: string;
   recurso: string; competenciaNum: number | null; habilidadeCod: string | null;
@@ -428,7 +460,8 @@ ${buildRegraFontesReais(opts.disciplina)}
 ${buildCalibracaoExtensao(opts.disciplina)}
 
 ${instrucoesImagem(opts.recurso, opts.disciplina)}
-${opts.instrucoesVisual ? `\nInstruções adicionais do professor especificamente para o recurso visual (siga-as com prioridade, desde que compatíveis com o pedido acima): ${opts.instrucoesVisual}\n` : ""}
+${opts.instrucoesVisual ? `\nInstrução adicional do professor especificamente para o recurso visual (siga-a com prioridade, desde que compatível com o pedido acima e com a ANCORAGEM DE ASSUNTO logo abaixo): ${opts.instrucoesVisual}\n` : ""}
+${buildAncoragemVisual(opts.area, opts.disciplina, opts.tema, opts.recurso)}
 
 ${buildMatrizInstrucoes(opts.area, opts.competenciaNum, opts.habilidadeCod)}
 ${buildGabaritoAlvo(opts.gabaritoAlvo || null)}
@@ -446,7 +479,7 @@ function buildVisualRedoPrompt(opts: {
 }) {
   return `Você elaborou anteriormente a questão de vestibular abaixo (padrão ENEM). O professor pediu para refazer SOMENTE o recurso visual (${opts.recurso}) desta questão — mantenha o texto-suporte, o comando, as alternativas, o gabarito e a resolução comentada exatamente como estão; gere apenas uma NOVA versão do recurso visual, coerente com o restante da questão e com os MESMOS fatos/valores já usados na resolução comentada, a menos que as instruções do professor abaixo peçam explicitamente para mudar dados.
 
-⚠️ REGRA ABSOLUTA DE ASSUNTO: o novo recurso visual tem de retratar EXATAMENTE o mesmo objeto, cenário, disciplina e fenômeno do texto-suporte/comando/resolução comentada abaixo — nunca outro tema, ainda que visualmente parecido (ex.: se a questão é de Matemática sobre um caixa eletrônico, a imagem tem de mostrar um caixa eletrônico, nunca uma cena de física, trânsito ou qualquer outro assunto). Antes de entregar, releia o "promptImagem"/"descricao" (ou os dados do gráfico/tabela) e confirme, item por item, que cada elemento pertence à mesma situação-problema descrita abaixo.
+⚠️ REGRA ABSOLUTA DE ASSUNTO: o novo recurso visual tem de retratar EXATAMENTE o mesmo objeto, cenário, disciplina e fenômeno do texto-suporte/comando/resolução comentada abaixo — nunca outro tema, ainda que visualmente parecido (ex.: se a questão é de Matemática sobre um caixa eletrônico, a imagem tem de mostrar um caixa eletrônico, nunca uma cena de física, trânsito ou qualquer outro assunto). Isto vale mesmo que as "Instruções adicionais do professor" abaixo peçam algo incompatível: obedeça só a parte delas que for compatível com o texto-suporte/comando/resolução desta questão, e ignore qualquer pedido de cenário diferente (esse tipo de instrução, quando aparece, normalmente sobrou digitada de uma questão anterior, de outra disciplina). Antes de escrever qualquer seção do "promptImagem" (ou os dados do gráfico/tabela), liste mentalmente de 2 a 4 substantivos concretos que aparecem no texto-suporte/comando/resolução abaixo (ex.: "trapézio", "canteiro de flores", "jardim retangular") — se o cenário que você está prestes a descrever não contiver esses substantivos, ele está errado; recomece a partir do texto-suporte real, não da instrução do professor. Antes de entregar, releia o "promptImagem"/"descricao" (ou os dados do gráfico/tabela) e confirme, item por item, que cada elemento pertence à mesma situação-problema descrita abaixo.
 
 QUESTÃO ATUAL (contexto — não repita nem altere nada disto na sua resposta):
 Tema: ${opts.tema}
