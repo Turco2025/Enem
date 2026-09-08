@@ -992,11 +992,12 @@ async function generateAll(){
 
   // Auditoria da distribuição do gabarito, com o resultado dito em voz alta.
   const presos = state.questions.filter(q => q.gabaritoStatus === "impossivel").length;
+  // Notação química: só fica registrada no console (depuração) — não bloqueia
+  // mais a exportação nem pede para editar a questão antes de exportar.
   const quimica = auditaQuimica();
+  if(quimica.length) console.warn("[notação] problemas encontrados (exportação NÃO bloqueada):", quimica);
   const problemas = auditaGabaritos();
-  if(quimica.length){
-    toast(avisoQuimica(quimica) + " Edite a questão antes de exportar.", "err");
-  }else if(problemas.length){
+  if(problemas.length){
     toast("Simulado gerado, mas a distribuição do gabarito ficou imperfeita: " + problemas[0] + ". Regenere a questão para corrigir.", "err");
   }else if(presos){
     toast("Simulado gerado. " + presos + " quest" + (presos > 1 ? "ões vieram" : "ão veio") + " com o gabarito fora da posição planejada e não pôde ser reposicionada sem quebrar a ordem numérica das alternativas.", "err");
@@ -1242,13 +1243,18 @@ function avisoQuimica(problemas){
   return "REVISÃO DE NOTAÇÃO NECESSÁRIA: " + onde + " — " + p.ocorrencia + "." + resto;
 }
 
-// Porta de saída: nenhum PDF, DOCX, HTML ou impressão sai com fórmula quebrada.
+/* Porta de saída DESATIVADA a pedido do professor. Antes, nenhum PDF, DOCX,
+   HTML ou impressão saía com fórmula química suspeita — a exportação era
+   bloqueada e pedia para corrigir a questão antes de tentar de novo. Agora a
+   auditoria continua rodando (útil para depuração), mas NUNCA bloqueia: o
+   simulado é exportado imediatamente, sem nenhuma restrição, mesmo que a
+   notação química de alguma questão pareça estranha. */
 function bloqueiaSeQuimicaInvalida(doneQuestions){
-  const problemas = auditaQuimica(doneQuestions.map(o => o.q));
-  if(!problemas.length) return false;
-  toast(avisoQuimica(problemas) + " Corrija a questão e exporte de novo.", "err");
-  try{ console.warn("[notação] problemas encontrados:", problemas); }catch(e){}
-  return true;
+  try{
+    const problemas = auditaQuimica(doneQuestions.map(o => o.q));
+    if(problemas.length) console.warn("[notação] problemas encontrados (exportação NÃO bloqueada):", problemas);
+  }catch(e){}
+  return false;
 }
 
 function updateProgress(){
