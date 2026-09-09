@@ -7,9 +7,24 @@ const CORS_HEADERS = {
   "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
 
-// Usa a API oficial da OpenAI, modelo GPT Image 2 ("ChatGPT").
+// Usa a API oficial da OpenAI (Image API, "ChatGPT Images").
 const OPENAI_API_KEY = Deno.env.get("OPENAI_API_KEY");
-const IMAGE_MODEL = Deno.env.get("OPENAI_IMAGE_MODEL") || "gpt-image-2";
+/* MODELO FIXO EM "GPT-Image-2.5 Flare" (snapshot datado), QUALIDADE FIXA EM
+   "low" — decisão do professor em 09/09/2026, quando a OpenAI lançou o
+   ChatGPT Images 2.5. Isto é intencional e definitivo: a variável de ambiente
+   OPENAI_IMAGE_MODEL NÃO é mais lida — mesmo que exista nos secrets do
+   projeto, é ignorada de propósito, para que nenhuma configuração externa
+   troque o modelo sem editar este arquivo (mesmo critério do modelo de texto
+   em generate-question). O snapshot datado garante que o modelo não muda por
+   baixo dos panos quando a OpenAI atualizar o apelido "gpt-image-2.5-flare".
+   Preços (por milhão de tokens): texto de entrada US$ 5, imagem de saída
+   US$ 30 — os mesmos usados no cálculo de custo abaixo. */
+const IMAGE_MODEL = "gpt-image-2.5-flare-2026-09-08";
+/* Rede de segurança de nome, não de modelo: se a OpenAI recusar o snapshot
+   datado (404/400 "model"), a MESMA imagem é pedida ao apelido oficial do
+   mesmo modelo, "gpt-image-2.5-flare" — nunca a outro modelo. O nome
+   efetivamente usado volta em "uso.modelo" e fica no log. */
+const IMAGE_MODEL_ALIAS = "gpt-image-2.5-flare";
 // SEM TETO DIÁRIO (decisão do professor): ausente, 0 ou negativo = ilimitado.
 // Para reativar um limite depois, basta definir MAX_DAILY_IMAGES com um número
 // positivo nos secrets do projeto Supabase — não é preciso reimplantar a função.
@@ -144,10 +159,12 @@ Deno.serve(async (req: Request) => {
     const inicio = Date.now();
     let data: any = null;
     let ultimoErro = "";
+    let modeloUsado = IMAGE_MODEL;
     for (let tentativa = 1; tentativa <= 3; tentativa++) {
       const controller = new AbortController();
       const relogio = setTimeout(() => controller.abort(), 240_000);
       try {
+        corpo.model = modeloUsado;
         const res = await fetch("https://api.openai.com/v1/images/generations", {
           method: "POST",
           headers: {
@@ -160,6 +177,17 @@ Deno.serve(async (req: Request) => {
         clearTimeout(relogio);
         if (res.ok) { data = await res.json(); break; }
         const errText = await res.text();
+        /* Snapshot datado não reconhecido pela OpenAI (nome, não modelo):
+           repete imediatamente com o apelido oficial do MESMO modelo. */
+        const nomeRecusado = modeloUsado === IMAGE_MODEL &&
+          (res.status === 404 || (res.status === 400 && /model/i.test(errText)));
+        if (nomeRecusado) {
+          console.warn(`[imagem] OpenAI recusou o snapshot "${IMAGE_MODEL}" (status ${res.status}); repetindo com "${IMAGE_MODEL_ALIAS}".`);
+          modeloUsado = IMAGE_MODEL_ALIAS;
+          ultimoErro = `status ${res.status}: ${errText.slice(0, 400)}`;
+          if (tentativa === 3) return jsonResponse({ error: `Falha ao gerar imagem na OpenAI (${ultimoErro})` }, 502);
+          continue;
+        }
         // 429 e 5xx passam; 400 é erro de pedido e não melhora tentando de novo.
         const vaiMelhorar = res.status === 429 || res.status >= 500;
         ultimoErro = `status ${res.status}: ${errText.slice(0, 400)}`;
@@ -202,9 +230,11 @@ Deno.serve(async (req: Request) => {
        e não havia como consultar depois quanto as imagens custaram de fato ao
        longo do tempo. Registro best-effort: uma falha aqui nunca pode impedir
        a entrega da imagem já gerada. */
+    console.log(`[imagem] ${modeloUsado} · ${quality} · ${size} · ${segundos}s · entrada ${tokensEntrada} · saída ${tokensSaida} · US$ ${custoUSD.toFixed(5)}`);
     try {
       await supabase.from("image_generation_log").insert({
         prompt: prompt.slice(0, 500),
+        modelo: modeloUsado,
         segundos,
         tokens_entrada: tokensEntrada,
         tokens_saida: tokensSaida,
@@ -217,6 +247,7 @@ Deno.serve(async (req: Request) => {
     return jsonResponse({
       imageDataUrl,
       uso: {
+        modelo: modeloUsado,
         qualidade: quality,
         tamanho: size,
         formato: outputFormat,
