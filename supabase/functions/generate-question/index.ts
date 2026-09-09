@@ -1043,15 +1043,32 @@ Reenvie a MESMA questão, agora como JSON estritamente válido. Verifique, antes
 /* Resumo do consumo desta requisição, para que o cache seja verificável e não
    apenas prometido. "cacheLido" maior que zero significa que o prompt do
    sistema veio do cache — é o que se espera da segunda chamada em diante. */
+/* v63: além dos tokens, o número de BUSCAS NA WEB feitas nesta questão
+   (usage.server_tool_use.web_search_requests, devolvido pela Anthropic) e o
+   custo estimado em dólares com os preços vigentes do Sonnet 5 — entrada
+   US$ 2/M, gravação de cache (5 min) US$ 2,50/M, leitura de cache US$ 0,20/M,
+   saída US$ 10/M, busca na web US$ 10 por mil. Serve para medir, com dado
+   real, quanto cada questão custa e quantas buscas o modelo faz de fato. */
+const PRECO_USD_POR_M = { entrada: 2, cacheEscrito: 2.5, cacheLido: 0.2, saida: 10 };
+const PRECO_USD_POR_BUSCA = 0.01;
 function resumoUso(usos: any[]) {
   const soma = (chave: string) => usos.reduce((t, u) => t + (Number(u?.[chave]) || 0), 0);
-  return {
+  const buscasWeb = usos.reduce((t, u) => t + (Number(u?.server_tool_use?.web_search_requests) || 0), 0);
+  const r = {
     chamadas: usos.length,
     entradaNova: soma("input_tokens"),
     cacheEscrito: soma("cache_creation_input_tokens"),
     cacheLido: soma("cache_read_input_tokens"),
     saida: soma("output_tokens"),
+    buscasWeb,
+    custoUSD: 0,
   };
+  r.custoUSD = Number((
+    (r.entradaNova * PRECO_USD_POR_M.entrada + r.cacheEscrito * PRECO_USD_POR_M.cacheEscrito +
+     r.cacheLido * PRECO_USD_POR_M.cacheLido + r.saida * PRECO_USD_POR_M.saida) / 1e6 +
+    buscasWeb * PRECO_USD_POR_BUSCA
+  ).toFixed(5));
+  return r;
 }
 
 /* ---------------- HTTP handler ---------------- */
@@ -1076,9 +1093,23 @@ async function checkDailyCap(): Promise<Response | null> {
   return null;
 }
 
-async function logGeneration(area: string, disciplina: string, tema: string) {
+async function logGeneration(area: string, disciplina: string, tema: string, extra?: { recurso?: string; uso?: ReturnType<typeof resumoUso> }) {
   try {
-    await supabase.from("question_generation_log").insert({ area, disciplina, tema: tema.slice(0, 200) });
+    const linha: Record<string, unknown> = { area, disciplina, tema: tema.slice(0, 200) };
+    // v63: consumo real da questão (tokens, buscas na web, custo estimado).
+    if (extra?.recurso) linha.recurso = extra.recurso;
+    if (extra?.uso) {
+      const u = extra.uso;
+      linha.chamadas = u.chamadas;
+      linha.buscas_web = u.buscasWeb;
+      linha.tokens_entrada = u.entradaNova;
+      linha.tokens_cache_escrito = u.cacheEscrito;
+      linha.tokens_cache_lido = u.cacheLido;
+      linha.tokens_saida = u.saida;
+      linha.custo_usd = u.custoUSD;
+      console.log(`[uso] ${disciplina} · ${extra.recurso || "?"} · ${u.chamadas} chamada(s) · entrada ${u.entradaNova} · cache escrito ${u.cacheEscrito} · cache lido ${u.cacheLido} · saída ${u.saida} · buscas web ${u.buscasWeb} · ≈ US$ ${u.custoUSD.toFixed(4)}`);
+    }
+    await supabase.from("question_generation_log").insert(linha);
   } catch (_e) {
     // best-effort logging
   }
@@ -1423,8 +1454,9 @@ Deno.serve(async (req: Request) => {
         console.error(`[visual] refazer "${tema}" (${disciplina}): ${conf.motivo}`);
         return jsonResponse({ error: `O modelo não entregou o recurso visual pedido (${conf.motivo}). Tente novamente.` }, 502);
       }
-      await logGeneration(area, disciplina, `[refazer visual] ${tema}`);
-      return jsonResponse({ visual: corrigirQuebrasLiterais(visualNovo), uso: resumoUso(usos) });
+      const usoRefazer = resumoUso(usos);
+      await logGeneration(area, disciplina, `[refazer visual] ${tema}`, { recurso, uso: usoRefazer });
+      return jsonResponse({ visual: corrigirQuebrasLiterais(visualNovo), uso: usoRefazer });
     } catch (err) {
       return jsonResponse({ error: `Erro ao refazer o recurso visual: ${String((err as any)?.message || err)}` }, 502);
     }
@@ -1500,8 +1532,6 @@ Deno.serve(async (req: Request) => {
       }
     }
 
-    await logGeneration(area, disciplina, tema);
-
     // De novo, depois da revisão matemática: idempotente, e garante o tipo na saída.
     if (data && typeof data === "object") data.visual = normalizarVisual(data.visual, recurso);
     // v62: a revisão matemática devolve a questão inteira — o recurso visual
@@ -1523,7 +1553,11 @@ Deno.serve(async (req: Request) => {
       eixoRespeitado: eixoTematico ? (data && typeof data === "object" && String(data.objetoConhecimento || "").trim().toLowerCase() === eixoTematico.toLowerCase()) : null,
     };
     if (eixoTematico) console.log(`[tema] "${diversidadeDiag.temaEntregue}" · eixo pedido "${eixoTematico}" · objeto entregue "${diversidadeDiag.objetoEntregue}" · respeitado ${diversidadeDiag.eixoRespeitado} · evitar ${temasEvitar.length} assunto(s)`);
-    return jsonResponse({ question: corrigirQuebrasLiterais(data), uso: resumoUso(usos), visualDiag, diversidadeDiag });
+    // v63: o registro vai por último, com TODAS as chamadas desta questão
+    // (rascunho, refazer visual, retentativas) já somadas em "usos".
+    const uso = resumoUso(usos);
+    await logGeneration(area, disciplina, tema, { recurso, uso });
+    return jsonResponse({ question: corrigirQuebrasLiterais(data), uso, visualDiag, diversidadeDiag });
   } catch (err) {
     return jsonResponse({ error: `Erro ao gerar questão: ${String((err as any)?.message || err)}` }, 502);
   }

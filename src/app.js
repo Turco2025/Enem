@@ -1374,7 +1374,8 @@ async function regenerarQuestaoEArquivar(q){
    quantos vieram lidos do cache. Somando tudo dá para dizer, ao fim da geração,
    se o aquecimento funcionou — em vez de acreditar que funcionou. */
 function zeraUso(){
-  state.uso = { chamadas: 0, entradaNova: 0, cacheEscrito: 0, cacheLido: 0, saida: 0 };
+  // buscasWeb/custoUSD: medição real por questão devolvida pelo backend (v63).
+  state.uso = { chamadas: 0, entradaNova: 0, cacheEscrito: 0, cacheLido: 0, saida: 0, buscasWeb: 0, custoUSD: 0 };
 }
 function somaUso(u){
   if(!state.uso) zeraUso();
@@ -1385,7 +1386,7 @@ function relatoUso(){
   if(!u || !u.chamadas) return "";
   const total = u.entradaNova + u.cacheEscrito + u.cacheLido;
   const pct = total ? Math.round((u.cacheLido / total) * 100) : 0;
-  return `[tokens] ${u.chamadas} chamadas · entrada nova ${u.entradaNova} · cache escrito ${u.cacheEscrito} · cache lido ${u.cacheLido} (${pct}% da entrada) · saída ${u.saida}`;
+  return `[tokens] ${u.chamadas} chamadas · entrada nova ${u.entradaNova} · cache escrito ${u.cacheEscrito} · cache lido ${u.cacheLido} (${pct}% da entrada) · saída ${u.saida} · buscas web ${u.buscasWeb || 0} · texto ≈ US$ ${(u.custoUSD || 0).toFixed(4)}`;
 }
 
 async function runPool(items, worker, concurrency){
