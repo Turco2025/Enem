@@ -440,14 +440,54 @@ const FERRAMENTA_RECORTES = {
   },
 };
 
+/* v65 — leitura tolerante do plano. Na primeira leva real (09/09/2026,
+   15:10) o planejamento voltou 502 "sem recortes utilizáveis": o modelo
+   chamou a ferramenta, mas não exatamente no formato pedido (a API não
+   valida o schema da ferramenta à risca). Aqui a resposta é aceita em
+   qualquer destas formas: lista no campo "recortes"; lista dentro de uma
+   string JSON; objeto numerado {"1": {...}, "2": {...}}; lista em outro
+   campo qualquer do argumento; e chaves com acento/maiúsculas ("Conteúdo",
+   "Contexto", "Habilidade"). O que não for lido fica registrado no log
+   (forma da resposta), para que a próxima falha tenha diagnóstico. */
+function semAcento(s: string): string {
+  return s.normalize("NFD").replace(/\p{M}/gu, "").toLowerCase();
+}
+function campoDoRecorte(r: Record<string, unknown>, nome: string): string {
+  const direto = r[nome];
+  if (typeof direto === "string" && direto.trim()) return direto.trim();
+  for (const k of Object.keys(r)) {
+    if (semAcento(k).startsWith(nome)) {
+      const v = r[k];
+      if (typeof v === "string" && v.trim()) return v.trim();
+      if (v && typeof v === "object") { const txt = textoDeEspecificacao(v); if (txt) return txt; }
+    }
+  }
+  return "";
+}
+function listaDeRecortes(data: unknown): unknown[] {
+  let bruto: any = data && typeof data === "object" && !Array.isArray(data) ? (data as any).recortes : data;
+  if (bruto == null && data && typeof data === "object" && !Array.isArray(data)) {
+    // o modelo pode ter usado outro nome de campo: pega a primeira lista que houver
+    for (const v of Object.values(data as Record<string, unknown>)) { if (Array.isArray(v)) { bruto = v; break; } }
+    if (bruto == null) bruto = data;
+  }
+  if (typeof bruto === "string") { try { bruto = JSON.parse(bruto); } catch { return []; } }
+  if (bruto && typeof bruto === "object" && !Array.isArray(bruto)) {
+    if (Array.isArray((bruto as any).recortes)) return (bruto as any).recortes;
+    const valores = Object.values(bruto as Record<string, unknown>);
+    return valores.every((v) => v && typeof v === "object") ? valores : [];
+  }
+  return Array.isArray(bruto) ? bruto : [];
+}
 function normalizarRecortes(bruto: unknown, quantidade: number): Array<{ conteudo: string; contexto: string; habilidade: string }> {
-  const lista = Array.isArray(bruto) ? bruto : [];
+  const lista = listaDeRecortes(bruto);
   const saida: Array<{ conteudo: string; contexto: string; habilidade: string }> = [];
   for (const r of lista) {
     if (!r || typeof r !== "object") continue;
-    const conteudo = String((r as any).conteudo || "").trim().slice(0, 200);
-    const contexto = String((r as any).contexto || "").trim().slice(0, 250);
-    const habilidade = String((r as any).habilidade || "").trim().slice(0, 200);
+    const obj = r as Record<string, unknown>;
+    const conteudo = campoDoRecorte(obj, "conteudo").slice(0, 200);
+    const contexto = campoDoRecorte(obj, "contexto").slice(0, 250);
+    const habilidade = campoDoRecorte(obj, "habilidade").slice(0, 200);
     if (!conteudo && !contexto) continue;
     saida.push({ conteudo, contexto, habilidade });
     if (saida.length >= quantidade) break;
@@ -1522,8 +1562,18 @@ Deno.serve(async (req: Request) => {
       // Sem cache_control de propósito: o prompt é pequeno e a chamada é única.
       const system: SistemaPrompt = [{ type: "text", text: buildSystemPlanejamento(area) }];
       const userMsg = buildPlanejamentoPrompt({ area, disciplina, tema, quantidade, dificuldades });
-      const data = await callClaudeForJSON(system, userMsg, false, usos, FERRAMENTA_RECORTES);
-      const recortes = normalizarRecortes(data?.recortes, quantidade);
+      let data = await callClaudeForJSON(system, userMsg, false, usos, FERRAMENTA_RECORTES);
+      let recortes = normalizarRecortes(data, quantidade);
+      if (!recortes.length) {
+        /* v65: forma inesperada — registra o que veio e pede UMA vez mais,
+           dizendo exatamente o formato. Só quando a primeira já se perdeu. */
+        console.error(`[tema] planejamento "${tema}": resposta sem recortes utilizáveis — forma recebida: ${JSON.stringify(data).slice(0, 700)}`);
+        const correcao = `${userMsg}
+
+ATENÇÃO — sua resposta anterior não pôde ser usada: o argumento da ferramenta "entregar_recortes" precisa ser exatamente {"recortes": [ {"conteudo": "...", "contexto": "...", "habilidade": "..."}, ... ]} — uma LISTA de ${quantidade} objetos, com estas três chaves em minúsculas e sem acento, cada valor uma string. Reenvie o plano nesse formato.`;
+        data = await callClaudeForJSON(system, correcao, false, usos, FERRAMENTA_RECORTES);
+        recortes = normalizarRecortes(data, quantidade);
+      }
       if (!recortes.length) return jsonResponse({ error: "O modelo não devolveu recortes utilizáveis." }, 502);
       const uso = resumoUso(usos);
       console.log(`[tema] planejamento "${tema}" (${disciplina}): ${recortes.length}/${quantidade} recorte(s) · ` + recortes.map((r, i) => `${i + 1}: ${r.conteudo}`).join(" · "));
