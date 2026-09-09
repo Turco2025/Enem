@@ -958,6 +958,103 @@ function planejaGabaritos(n){
 }
 
 // Garante que o plano existe e cobre o índice pedido (regeneração avulsa também).
+/* ---------------- Diversidade temática da leva ----------------
+
+   Objetos de conhecimento oficiais (Anexo da Matriz de Referência) que cabem
+   a cada disciplina. Em Ciências da Natureza o Anexo lista Física, Química e
+   Biologia em sequência; em Linguagens, cada disciplina cobre um recorte; em
+   Humanas e Matemática todos os objetos valem para todas as disciplinas. */
+const OBJETOS_POR_DISCIPLINA = {
+  "Física": ["Conhecimentos básicos e fundamentais", "O movimento, o equilíbrio e a descoberta de leis físicas", "Energia, trabalho e potência", "A Mecânica e o funcionamento do Universo", "Fenômenos Elétricos e Magnéticos", "Oscilações, ondas, óptica e radiação", "O calor e os fenômenos térmicos"],
+  "Química": ["Transformações Químicas", "Representação das transformações químicas", "Materiais, suas propriedades e usos", "Água", "Transformações Químicas e Energia", "Dinâmica das Transformações Químicas", "Transformação Química e Equilíbrio", "Compostos de Carbono", "Relações da Química com as Tecnologias, a Sociedade e o Meio Ambiente", "Energias Químicas no Cotidiano"],
+  "Biologia": ["Moléculas, células e tecidos", "Hereditariedade e diversidade da vida", "Identidade dos seres vivos", "Ecologia e ciências ambientais", "Origem e evolução da vida", "Qualidade de vida das populações humanas"],
+  "Língua Portuguesa": ["Estudo do texto", "Estudo dos aspectos linguísticos em diferentes textos", "Estudo do texto argumentativo, seus gêneros e recursos linguísticos", "Estudo dos aspectos linguísticos da língua portuguesa", "Estudo dos gêneros digitais"],
+  "Literatura": ["Estudo do texto literário", "Produção e recepção de textos artísticos"],
+  "Artes": ["Produção e recepção de textos artísticos"],
+  "Educação Física": ["Estudo das práticas corporais"],
+  "Língua Estrangeira (Inglês/Espanhol)": ["Estudo do texto", "Estudo dos aspectos linguísticos em diferentes textos"],
+};
+
+// Objetos de conhecimento válidos para (área, disciplina): a lista da
+// disciplina filtrada pelo Anexo oficial carregado (APP_DATA), ou — quando a
+// disciplina não tem recorte próprio (Humanas, Matemática) — todos da área.
+function objetosDaDisciplina(area, disciplina){
+  const oficiais = (APP_DATA.objetosConhecimento && APP_DATA.objetosConhecimento[area]) || [];
+  const proprios = OBJETOS_POR_DISCIPLINA[disciplina];
+  if(Array.isArray(proprios)){
+    const ok = proprios.filter(o => oficiais.includes(o));
+    if(ok.length) return ok;
+  }
+  return oficiais.slice();
+}
+
+function embaralha(lista){
+  const a = lista.slice();
+  for(let i = a.length - 1; i > 0; i--){ const j = Math.floor(Math.random() * (i + 1)); const t = a[i]; a[i] = a[j]; a[j] = t; }
+  return a;
+}
+
+/* Reserva um eixo temático (objeto de conhecimento oficial) para cada questão
+   SEM tema digitado, em rodízio sobre a lista embaralhada: com 10 questões de
+   Biologia (6 objetos), nenhum objeto recebe mais de 2 questões — e, dentro do
+   mesmo objeto, "temasEvitar" (abaixo) impede o mesmo recorte. Questões com
+   tema do professor não recebem eixo: o tema dele manda. */
+function planejaEixosTematicos(){
+  const objetos = objetosDaDisciplina(state.area, state.disciplina);
+  const semTema = state.questions.filter(q => !(q.tema || "").trim());
+  semTema.forEach(q => { q.eixoTematico = null; });
+  state.questions.filter(q => (q.tema || "").trim()).forEach(q => { q.eixoTematico = null; });
+  if(!objetos.length || semTema.length < 2) return; // uma questão só não tem com o que repetir
+  const ordem = embaralha(objetos);
+  semTema.forEach((q, i) => { q.eixoTematico = ordem[i % ordem.length]; });
+}
+
+// Assuntos já usados na leva, do ponto de vista da questão q: os temas
+// digitados pelo professor nas outras questões e os temas das questões já
+// entregues pela IA. Nunca inclui o tema da própria q (regenerar "mais fácil/
+// mais difícil" mantém o assunto).
+function temasEvitarPara(q){
+  const vistos = new Set();
+  const lista = [];
+  state.questions.forEach(o => {
+    if(o === q) return;
+    const candidatos = [(o.tema || "").trim(), (o.data && o.data.tema || "").trim()];
+    candidatos.forEach(t => {
+      if(!t) return;
+      const chave = t.toLowerCase();
+      if(vistos.has(chave)) return;
+      vistos.add(chave); lista.push(t.slice(0, 200));
+    });
+  });
+  return lista.slice(0, 30);
+}
+
+// Palavras significativas de um tema (sem acentos, sem palavras vazias), para
+// medir semelhança entre dois temas entregues.
+const PALAVRAS_VAZIAS = new Set(["a","o","e","de","da","do","das","dos","em","na","no","nas","nos","um","uma","com","por","para","sobre","entre","seu","sua","seus","suas","ao","aos","as","os","que","se","ou","versus","vs"]);
+function palavrasChaveTema(t){
+  return new Set(String(t || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9\s]/g, " ").split(/\s+/).filter(p => p.length > 3 && !PALAVRAS_VAZIAS.has(p)));
+}
+function temasParecidos(a, b){
+  const A = palavrasChaveTema(a), B = palavrasChaveTema(b);
+  if(!A.size || !B.size) return false;
+  let comum = 0; A.forEach(p => { if(B.has(p)) comum++; });
+  return comum / Math.min(A.size, B.size) >= 0.5;
+}
+// Pares de questões entregues com temas muito parecidos (informativo: a leva
+// não é bloqueada, mas o professor fica sabendo quais regenerar).
+function auditaDiversidadeTemas(){
+  const pares = [];
+  const qs = state.questions;
+  for(let i = 0; i < qs.length; i++){
+    for(let j = i + 1; j < qs.length; j++){
+      const ta = qs[i].data && qs[i].data.tema, tb = qs[j].data && qs[j].data.tema;
+      if(ta && tb && temasParecidos(ta, tb)) pares.push(`${i + 1} e ${j + 1} ("${ta}" / "${tb}")`);
+    }
+  }
+  return pares;
+}
+
 function gabaritoAlvoDe(idx){
   if(!Array.isArray(state.gabaritoPlan) || state.gabaritoPlan.length <= idx){
     state.gabaritoPlan = planejaGabaritos(Math.max(state.questions.length, idx + 1));
@@ -1065,6 +1162,10 @@ async function generateQuestion(q){
           instrucoesVisual: q.instrucoesVisual || "",
           gabaritoAlvo: gabaritoAlvoDe(state.questions.indexOf(q)),
           revisarMatematica,
+          // Diversidade temática da leva (backend v63): eixo reservado para
+          // esta questão (só sem tema do professor) e assuntos já usados.
+          eixoTematico: (q.tema || "").trim() ? null : (q.eixoTematico || null),
+          temasEvitar: temasEvitarPara(q),
         }),
       });
       rawBody = await resp.text();
@@ -1104,6 +1205,10 @@ async function generateQuestion(q){
        regenerar. Antes, uma questão com imagem pedida e visual nulo saía
        "done" e sem nenhum aviso. */
     q.diag = [];
+    if(payload.diversidadeDiag){
+      const dd = payload.diversidadeDiag;
+      diagImagem(q, "tema", `entregue "${dd.temaEntregue}" · objeto "${dd.objetoEntregue}"` + (dd.eixoTematico ? ` · eixo reservado "${dd.eixoTematico}" (${dd.eixoRespeitado ? "respeitado" : "NÃO respeitado"})` : " · sem eixo (tema do professor ou leva de 1)") + ` · ${dd.temasEvitar} assunto(s) a evitar`);
+    }
     const vd = payload.visualDiag || null;
     diagImagem(q, "questao_recebida", `recurso pedido "${q.recurso}" · visual entregue ${q.data.visual ? `tipo "${q.data.visual.tipo}"` : "nulo"} · promptImagem ${imgTextoDeEspecificacao(q.data.visual && q.data.visual.promptImagem, 0).length} chars` + (vd ? ` · backend: refeito ${vd.refeito}x, conforme ${vd.conforme}${vd.motivo ? ", " + vd.motivo : ""}` : "") + (q.data.visualPendente ? ` · visualPendente: ${q.data.visualPendente.motivo}` : ""));
     let conf = visualConformeApp(q.data, q.recurso);
@@ -1312,6 +1417,12 @@ async function generateAll(){
   // paralelo, cada uma precisa saber de antemão qual letra é a sua, senão não há
   // como garantir que não se repitam.
   state.gabaritoPlan = planejaGabaritos(state.questions.length);
+  // Eixos temáticos reservados ANTES de gerar (mesma lógica do gabarito: as
+  // questões saem em paralelo, então a distribuição tem de ser decidida antes).
+  planejaEixosTematicos();
+  if(state.questions.some(q => q.eixoTematico)){
+    console.log("[tema] eixos reservados: " + state.questions.map((q, i) => `${i + 1}: ${q.eixoTematico || "(tema do professor)"}`).join(" · "));
+  }
   renderResults();
   updateProgress();
   zeraUso();
@@ -1343,6 +1454,14 @@ async function generateAll(){
   // mais a exportação nem pede para editar a questão antes de exportar.
   const quimica = auditaQuimica();
   if(quimica.length) console.warn("[notação] problemas encontrados (exportação NÃO bloqueada):", quimica);
+  // Diversidade temática: temas entregues muito parecidos são apontados
+  // (a leva não é bloqueada — o professor decide se regenera).
+  const repetidos = auditaDiversidadeTemas();
+  console.log("[tema] temas entregues: " + state.questions.map((q, i) => `${i + 1}: ${q.data && q.data.tema || "—"}`).join(" · "));
+  if(repetidos.length){
+    console.warn("[tema] temas parecidos na leva:", repetidos);
+    toast(`Atenção: questões com assunto parecido — ${repetidos.slice(0, 3).join("; ")}${repetidos.length > 3 ? "; …" : ""}. Use "Regenerar" em uma delas para diversificar.`, "err");
+  }
   const problemas = auditaGabaritos();
   if(problemas.length){
     toast("Simulado gerado, mas a distribuição do gabarito ficou imperfeita: " + problemas[0] + ". Regenere a questão para corrigir.", "err");
