@@ -954,8 +954,21 @@ async function abrirSimuladoSalvo(id){
     state.qty = dados.qty || (dados.questions ? dados.questions.length : 1);
     state.questions = (dados.questions || []).map(q => {
       if(q && q.data){ q.data = corrigirQuebrasLiterais(q.data); normalizaVisualQuestao(q.data); }
+      // Um simulado nunca deveria ser arquivado com imagem "em geração"; se
+      // aconteceu (aba fechada no meio), o status volta a refletir a realidade.
+      if(q && q.status === "imagem"){
+        q.status = (q.data && q.data.visual && q.data.visual.imagemDataUrl) ? "done" : "error";
+        if(q.status === "error") q.errorMsg = "Imagem obrigatória não foi gerada antes de o simulado ser arquivado. Clique em \"Regenerar\".";
+      }
       return q;
     });
+    // Simulados arquivados antes da correção podem ter questões com imagem
+    // pedida e sem recurso visual — avisa, em vez de exibi-las como completas.
+    const semRecurso = state.questions.filter(q => q && q.status === "done" && q.data && !visualConformeApp(q.data, q.recurso).ok).map((q, _i, _a) => state.questions.indexOf(q) + 1);
+    if(semRecurso.length){
+      console.warn("[imagens] questões arquivadas sem o recurso visual pedido:", semRecurso);
+      setTimeout(() => toast(`Atenção: ${semRecurso.length} questão(ões) deste simulado (nº ${semRecurso.join(", ")}) foram arquivadas sem o recurso visual pedido. Use "Regenerar" nelas.`, "err"), 600);
+    }
     state.gabaritoPlan = dados.gabaritoPlan || null;
     simuladoAbertoId = data.id;
     document.getElementById("chkValidacao").checked = !!data.validacao_dupla;
@@ -1118,6 +1131,71 @@ function montaPromptImagem(visual, dataQuestao){
     if(enunciado) partes.push("A imagem deve retratar fielmente a situação descrita neste enunciado, com os mesmos objetos e valores, sem revelar a resposta:\n" + enunciado.slice(0, 1500));
   }
   return partes.join("\n\n");
+}
+
+/* ---------------- Recurso visual obrigatório: conferência e diagnóstico ----------------
+
+   O que o banco mostrou (08/09/2026, 11 simulados): o modelo entregava a
+   questão SEM o recurso visual pedido (visual null) ou com o tipo trocado
+   (gráfico no lugar de imagem) em 1 a 5 questões por leva de 10 — e o app
+   marcava a questão como concluída sem conferir. A partir daqui:
+   - visualConformeApp() confere recurso pedido × visual entregue (mesma
+     regra do backend v62);
+   - diagImagem() registra, por questão, cada etapa do caminho da imagem
+     (q.diag — vai junto com o simulado arquivado e para o console), para que
+     uma falha futura diga exatamente em que etapa aconteceu;
+   - gerarImagemComRetentativas() faz até IMG_MAX_TENTATIVAS pedidos ao
+     gerador antes de declarar a imagem perdida. */
+const IMG_MAX_TENTATIVAS = 3;
+const IMG_ESPERA_ENTRE_TENTATIVAS_MS = 2500;
+
+function visualConformeApp(data, recurso){
+  if(!["imagem","grafico","tabela"].includes(recurso)) return { ok: true, motivo: "" };
+  const v = data && data.visual;
+  if(v == null || typeof v !== "object") return { ok: false, motivo: `recurso "${recurso}" pedido, mas a questão veio com visual ${v == null ? "nulo" : typeof v}` };
+  if(v.tipo !== recurso) return { ok: false, motivo: `recurso "${recurso}" pedido, mas a questão veio com tipo "${v.tipo || "(sem tipo)"}"` };
+  if(recurso === "imagem"){
+    const p = imgTextoDeEspecificacao(v.promptImagem, 0);
+    if(p.length < 200) return { ok: false, motivo: `imagem sem especificação utilizável (promptImagem com ${p.length} caracteres)` };
+  }
+  if(recurso === "grafico" && !(Array.isArray(v.labels) && v.labels.length && Array.isArray(v.datasets) && v.datasets.length)) return { ok: false, motivo: "gráfico sem labels/datasets" };
+  if(recurso === "tabela" && !(Array.isArray(v.colunas) && v.colunas.length && Array.isArray(v.linhas) && v.linhas.length)) return { ok: false, motivo: "tabela sem colunas/linhas" };
+  return { ok: true, motivo: "" };
+}
+
+function diagImagem(q, etapa, detalhe){
+  if(!q) return;
+  if(!Array.isArray(q.diag)) q.diag = [];
+  const registro = { t: new Date().toISOString(), etapa, detalhe: detalhe == null ? "" : String(detalhe).slice(0, 400) };
+  q.diag.push(registro);
+  if(q.diag.length > 60) q.diag.splice(0, q.diag.length - 60);
+  const n = state.questions.indexOf(q);
+  console.log(`[diag q${n >= 0 ? n + 1 : "?"}] ${etapa}${registro.detalhe ? " — " + registro.detalhe : ""}`);
+}
+
+// Pede a imagem ao backend até IMG_MAX_TENTATIVAS vezes. Só desiste de vez
+// quando a causa não é transitória (questão sem especificação: repetir não
+// ajuda) ou quando as tentativas acabam. Devolve { dataUrl, uso, tentativas }.
+async function gerarImagemComRetentativas(promptText, q){
+  let ultimoErro = null;
+  for(let tentativa = 1; tentativa <= IMG_MAX_TENTATIVAS; tentativa++){
+    diagImagem(q, "imagem_tentativa", `${tentativa}/${IMG_MAX_TENTATIVAS} · prompt ${imgTextoDeEspecificacao(promptText, 0).length} chars`);
+    try{
+      const r = await generateImageViaBackend(promptText);
+      diagImagem(q, "imagem_ok", `tentativa ${tentativa} · ${Math.round((r.dataUrl || "").length / 1024)} KB` + (r.uso ? ` · ${r.uso.segundos}s · US$ ${Number(r.uso.custoUSD || 0).toFixed(4)}` : ""));
+      return { dataUrl: r.dataUrl, uso: r.uso, tentativas: tentativa };
+    }catch(err){
+      ultimoErro = err;
+      const msg = err && err.message ? err.message : String(err);
+      diagImagem(q, "imagem_erro", `tentativa ${tentativa}: ${msg}`);
+      const semEspecificacao = /sem a especificação/i.test(msg);
+      // Sem login não há o que repetir: o backend recusa toda tentativa igual.
+      const naoAutorizado = /HTTP 40[13]\b|fazer login/i.test(msg);
+      if(semEspecificacao || naoAutorizado) break;
+      if(tentativa < IMG_MAX_TENTATIVAS) await new Promise(r => setTimeout(r, IMG_ESPERA_ENTRE_TENTATIVAS_MS * tentativa));
+    }
+  }
+  throw ultimoErro || new Error("Falha desconhecida ao gerar a imagem.");
 }
 
 async function generateImageViaBackend(promptText){
@@ -1586,13 +1664,163 @@ async function generateQuestion(q){
     if(payload.uso) somaUso(payload.uso);
     // Rede de segurança: a letra planejada tem de ser mesmo a correta.
     q.gabaritoStatus = aplicaGabaritoAlvo(q.data, gabaritoAlvoDe(state.questions.indexOf(q)));
-    q.status = "done";
+
+    /* RECURSO VISUAL PEDIDO = RECURSO VISUAL ENTREGUE. O backend (v62) já
+       confere e refaz o recurso antes de responder, e manda o diagnóstico em
+       "visualDiag". Aqui é a segunda trava: se mesmo assim a questão chegou
+       sem o recurso pedido, o app pede SÓ o recurso visual mais uma vez (rota
+       "refazer" do backend). Se ainda faltar, a questão NÃO é dada como
+       concluída — vira erro, com o motivo à vista, para o professor
+       regenerar. Antes, uma questão com imagem pedida e visual nulo saía
+       "done" e sem nenhum aviso. */
+    q.diag = [];
+    const vd = payload.visualDiag || null;
+    diagImagem(q, "questao_recebida", `recurso pedido "${q.recurso}" · visual entregue ${q.data.visual ? `tipo "${q.data.visual.tipo}"` : "nulo"} · promptImagem ${imgTextoDeEspecificacao(q.data.visual && q.data.visual.promptImagem, 0).length} chars` + (vd ? ` · backend: refeito ${vd.refeito}x, conforme ${vd.conforme}${vd.motivo ? ", " + vd.motivo : ""}` : "") + (q.data.visualPendente ? ` · visualPendente: ${q.data.visualPendente.motivo}` : ""));
+    let conf = visualConformeApp(q.data, q.recurso);
+    if(!conf.ok){
+      diagImagem(q, "visual_nao_conforme", conf.motivo + " — pedindo ao backend para refazer só o recurso visual");
+      try{
+        await refazerVisualPeloBackend(q);
+        conf = visualConformeApp(q.data, q.recurso);
+        diagImagem(q, conf.ok ? "visual_refeito_ok" : "visual_refeito_falhou", conf.ok ? `tipo "${q.data.visual.tipo}" · promptImagem ${imgTextoDeEspecificacao(q.data.visual.promptImagem, 0).length} chars` : conf.motivo);
+      }catch(e){
+        diagImagem(q, "visual_refeito_erro", e && e.message || String(e));
+      }
+    }
+    if(!conf.ok){
+      throw new Error(`A IA entregou a questão sem ${recursoLabelArtigo(q.recurso)} obrigatóri${q.recurso === "imagem" || q.recurso === "tabela" ? "a" : "o"} (${conf.motivo}), mesmo após as tentativas automáticas do servidor e do aplicativo. Clique em "Regenerar" para gerar a questão de novo.`);
+    }
+
+    if(q.recurso === "imagem"){
+      /* A imagem faz parte da questão: a questão só é dada como concluída
+         quando a imagem estiver gerada e gravada em visual.imagemDataUrl. O
+         pedido corre em paralelo com as demais questões (não trava a fila),
+         com retentativas automáticas; ver garanteImagemDaQuestao(). */
+      q.status = "imagem";
+      garanteImagemDaQuestao(q);
+    }else{
+      q.status = "done";
+    }
   } catch(err){
     q.status = "error";
     q.errorMsg = err.message || String(err);
+    diagImagem(q, "questao_erro", q.errorMsg);
   }
   updateQuestionCard(q, state.questions.indexOf(q));
   updateProgress();
+}
+
+function recursoLabelArtigo(recurso){
+  return recurso === "imagem" ? "a imagem" : recurso === "grafico" ? "o gráfico" : recurso === "tabela" ? "a tabela" : "o recurso visual";
+}
+
+// Pede ao backend SÓ o recurso visual da questão (rota regenerarVisual), com o
+// texto-base/comando/alternativas/gabarito/resolução já escritos — a mesma
+// rota do botão "Refazer", usada aqui automaticamente quando a questão chegou
+// sem o recurso pedido. Substitui q.data.visual em caso de sucesso.
+async function refazerVisualPeloBackend(q){
+  const resp = await fetch(QUESTION_BACKEND_URL, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...authHeaders() },
+    body: JSON.stringify({
+      regenerarVisual: true,
+      area: state.area,
+      disciplina: state.disciplina,
+      tema: q.data.tema || q.tema || "",
+      dificuldade: q.data.dificuldade || q.dificuldade,
+      recurso: q.recurso,
+      textoBase: q.data.textoBase || "",
+      comando: q.data.comando || "",
+      alternativas: q.data.alternativas || {},
+      gabarito: q.data.gabarito || "",
+      resolucaoComentada: q.data.resolucaoComentada || "",
+      instrucoesVisual: q.instrucoesVisual || "",
+    }),
+  });
+  const rawBody = await resp.text();
+  let payload = {};
+  try{ payload = rawBody ? JSON.parse(rawBody) : {}; }catch(e){ /* trata abaixo */ }
+  if(!resp.ok || payload.error) throw new Error(payload.error || rawBody.slice(0, 300) || `Erro HTTP ${resp.status} ao refazer o recurso visual.`);
+  if(!payload.visual) throw new Error("O backend não retornou o recurso visual.");
+  if(payload.uso) somaUso(payload.uso);
+  q.data.visual = payload.visual;
+  q.data.recurso = q.recurso;
+  delete q.data.visualPendente;
+  normalizaVisualQuestao(q.data);
+}
+
+/* IMAGEM OBRIGATÓRIA. Dispara o pedido da imagem desta questão no próprio
+   fluxo de geração (antes, a imagem só era pedida quando o card era
+   renderizado — se a chamada falhasse, a questão continuava "done", com um
+   botão "Tentar novamente" perdido dentro do card). Regras:
+   1. o pedido fica registrado em imagensEmAndamento (por objeto "visual"),
+      então qualquer renderização do card enquanto ele corre só acompanha o
+      resultado — nunca gera (nem paga) uma segunda imagem;
+   2. até IMG_MAX_TENTATIVAS tentativas automáticas;
+   3. sucesso → visual.imagemDataUrl gravado, status "done";
+      falha final → status "error" com a mensagem, e o simulado avisa ao fim;
+   4. a promessa entra em imagePromisesEmAndamento: generateAll e
+      regenerarQuestaoEArquivar esperam TODAS as imagens antes de arquivar. */
+function garanteImagemDaQuestao(q){
+  const visual = q.data && q.data.visual;
+  if(!visual || visual.tipo !== "imagem"){ q.status = "done"; return; }
+  if(visual.imagemDataUrl){
+    diagImagem(q, "imagem_ja_pronta", `${Math.round(visual.imagemDataUrl.length / 1024)} KB`);
+    q.status = "done";
+    return;
+  }
+  if(imagensEmAndamento.has(visual)) return; // já há um pedido em voo para este visual
+  const promptText = montaPromptImagem(visual, q.data);
+  const pedido = gerarImagemComRetentativas(promptText, q);
+  imagensEmAndamento.set(visual, pedido);
+  const promessa = pedido.then(({ dataUrl }) => {
+    visual.imagemDataUrl = dataUrl;
+    q.status = "done";
+    q.errorMsg = "";
+    diagImagem(q, "imagem_vinculada", `gravada em visual.imagemDataUrl da questão ${state.questions.indexOf(q) + 1} (tema "${q.data.tema || q.tema || ""}")`);
+  }).catch(err => {
+    q.status = "error";
+    q.errorMsg = `Imagem obrigatória NÃO gerada após ${IMG_MAX_TENTATIVAS} tentativas: ${err && err.message || String(err)}. A questão não foi concluída — clique em "Regenerar" ou em "Tentar novamente" na imagem.`;
+    diagImagem(q, "imagem_perdida", q.errorMsg);
+  }).finally(() => {
+    imagensEmAndamento.delete(visual);
+    updateQuestionCard(q, state.questions.indexOf(q));
+    updateProgress();
+  });
+  imagePromisesEmAndamento.push(promessa);
+}
+
+// Resumo verificável do caminho das imagens da leva atual (também impresso
+// como tabela no console). Serve para o professor — e para a depuração —
+// confirmarem, questão a questão, que nenhuma imagem obrigatória ficou de fora.
+function resumoImagens(){
+  const linhas = state.questions.map((q, i) => {
+    const pedida = q.recurso === "imagem";
+    const v = q.data && q.data.visual;
+    const prompt = pedida && v && v.tipo === "imagem" ? imgTextoDeEspecificacao(v.promptImagem, 0).length : 0;
+    const diag = Array.isArray(q.diag) ? q.diag : [];
+    return {
+      questao: i + 1,
+      status: q.status,
+      imagemPedida: pedida,
+      promptCriado: prompt >= 200,
+      promptChars: prompt,
+      chamadasImagem: diag.filter(d => d.etapa === "imagem_tentativa").length,
+      imagemGerada: !!(v && v.imagemDataUrl),
+      vinculada: !!(v && v.imagemDataUrl && q.data.visual === v),
+      erro: q.status === "error" ? (q.errorMsg || "").slice(0, 120) : "",
+    };
+  });
+  const pedidas = linhas.filter(l => l.imagemPedida);
+  const total = {
+    pedidas: pedidas.length,
+    comPrompt: pedidas.filter(l => l.promptCriado).length,
+    chamadas: pedidas.reduce((s, l) => s + l.chamadasImagem, 0),
+    geradas: pedidas.filter(l => l.imagemGerada).length,
+    vinculadas: pedidas.filter(l => l.vinculada).length,
+    semImagem: pedidas.filter(l => !l.imagemGerada).map(l => l.questao),
+  };
+  return { linhas, total };
 }
 
 // Usado pelos botões "Regenerar"/"Mais fácil"/"Mais difícil" de uma questão já
@@ -1700,6 +1928,17 @@ async function generateAll(){
   // em "Meus Simulados" já leve as imagens prontas — nunca só o texto — e
   // reabri-lo depois não precise (nem vá) gerar nenhuma imagem de novo.
   await aguardaImagensPendentes();
+
+  // Conferência final, questão a questão: nenhuma imagem obrigatória pode
+  // ter ficado de fora sem aviso. Tabela completa no console; aviso na tela.
+  const resumo = resumoImagens();
+  if(resumo.total.pedidas){
+    console.table(resumo.linhas);
+    console.log(`[imagens] pedidas ${resumo.total.pedidas} · com prompt ${resumo.total.comPrompt} · chamadas ao gerador ${resumo.total.chamadas} · geradas ${resumo.total.geradas} · vinculadas ${resumo.total.vinculadas}` + (resumo.total.semImagem.length ? ` · SEM IMAGEM: questões ${resumo.total.semImagem.join(", ")}` : " · nenhuma faltando"));
+    if(resumo.total.semImagem.length){
+      toast(`⚠️ ${resumo.total.semImagem.length} questão(ões) com imagem obrigatória NÃO gerada (nº ${resumo.total.semImagem.join(", ")}). Elas estão marcadas com erro — use "Regenerar" ou "Tentar novamente" na imagem.`, "err");
+    }
+  }
 
   // Arquiva automaticamente em "Meus Simulados" (todo simulado gerado fica
   // arquivado). Roda por último e nunca interrompe o fluxo do professor —
@@ -2170,6 +2409,18 @@ function renderQuestionCard(q, idx){
     const s = document.createElement("div"); s.className = "status-line";
     s.innerHTML = `⚠️ Erro ao gerar: ${escapeHtml(q.errorMsg)}`;
     inner.appendChild(s);
+    // A questão pode ter texto pronto e só a imagem obrigatória ter falhado:
+    // mostra o texto, para que o professor veja o que existe e possa tentar a
+    // imagem de novo pelo botão dentro do card — sem fingir que está concluída.
+    if(q.data && q.data.visual && q.data.visual.tipo === "imagem" && !q.data.visual.imagemDataUrl){
+      inner.appendChild(buildQuestionBody(q.data, q));
+    }
+  } else if(q.status === "imagem"){
+    const s = document.createElement("div"); s.className = "status-line";
+    const tentativas = Array.isArray(q.diag) ? q.diag.filter(d => d.etapa === "imagem_tentativa").length : 0;
+    s.innerHTML = `<div class="spinner"></div> Texto pronto — gerando a imagem obrigatória desta questão${tentativas > 1 ? ` (tentativa ${tentativas} de ${IMG_MAX_TENTATIVAS})` : ""}...`;
+    inner.appendChild(s);
+    inner.appendChild(buildQuestionBody(q.data, q));
   } else if(q.status === "done"){
     inner.appendChild(buildQuestionBody(q.data, q));
   }
@@ -2457,7 +2708,7 @@ function renderVisualContent(body, visual, dataQuestao){
    terminar. WeakMap: não vai para o JSON salvo e some junto com o objeto. */
 const imagensEmAndamento = new WeakMap();
 
-function renderGeneratedImage(holder, promptText, descricao, visual){
+function renderGeneratedImage(holder, promptText, descricao, visual, forcar){
   const mostraImagem = (dataUrl) => {
     holder.innerHTML = "";
     const img = document.createElement("img");
@@ -2478,7 +2729,7 @@ function renderGeneratedImage(holder, promptText, descricao, visual){
         <button class="btn sm ghost no-print retry-img-btn">🔄 Tentar novamente</button>
       </div>
     `;
-    holder.querySelector(".retry-img-btn").addEventListener("click", () => renderGeneratedImage(holder, promptText, descricao, visual));
+    holder.querySelector(".retry-img-btn").addEventListener("click", () => renderGeneratedImage(holder, promptText, descricao, visual, true));
   };
   const mostraCarregando = () => {
     holder.innerHTML = `
@@ -2493,6 +2744,17 @@ function renderGeneratedImage(holder, promptText, descricao, visual){
   if(visual && imagensEmAndamento.has(visual)){
     mostraCarregando();
     imagensEmAndamento.get(visual).then(({ dataUrl }) => mostraImagem(dataUrl)).catch(mostraErro);
+    return;
+  }
+  // Questão cuja imagem obrigatória já esgotou as tentativas automáticas:
+  // renderizar o card NÃO gera de novo por conta própria (senão o limite de
+  // IMG_MAX_TENTATIVAS não valeria nada) — mostra o erro e o botão
+  // "Tentar novamente"; só o clique do professor pede outra imagem.
+  const donoErro = (!forcar && visual && !visual.imagemDataUrl)
+    ? state.questions.find(qq => qq.status === "error" && qq.data && qq.data.visual === visual)
+    : null;
+  if(donoErro){
+    mostraErro(new Error(donoErro.errorMsg || "imagem obrigatória não gerada"));
     return;
   }
   if(visual && visual.imagemDataUrl){
@@ -2510,13 +2772,22 @@ function renderGeneratedImage(holder, promptText, descricao, visual){
     return;
   }
   mostraCarregando();
-  const pedido = generateImageViaBackend(promptText);
+  // Dono deste recurso visual (para diagnóstico e para corrigir o status da
+  // questão quando a imagem sair por aqui — ex.: "Tentar novamente").
+  const dono = state.questions.find(qq => qq.data && qq.data.visual === visual) || null;
+  const pedido = gerarImagemComRetentativas(promptText, dono);
   if(visual) imagensEmAndamento.set(visual, pedido);
   const promessa = pedido.then(({ dataUrl }) => {
     mostraImagem(dataUrl);
     // Guarda a imagem pronta no próprio recurso visual da questão, para nunca
     // mais precisar gerar de novo esta mesma figura.
     if(visual) visual.imagemDataUrl = dataUrl;
+    if(dono && (dono.status === "error" || dono.status === "imagem")){
+      dono.status = "done"; dono.errorMsg = "";
+      diagImagem(dono, "imagem_vinculada", "gerada pelo card (Tentar novamente / reabertura) e gravada em visual.imagemDataUrl");
+      updateQuestionCard(dono, state.questions.indexOf(dono));
+      updateProgress();
+    }
     /* Sem seletor de qualidade e sem custo exibido na tela — a geração é
        sempre "low", sem opção de troca. O uso continua contabilizado em
        state.usoImagem (ver somaUsoImagem) para consulta quando pedida. */

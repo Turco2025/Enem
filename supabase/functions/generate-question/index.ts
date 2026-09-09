@@ -517,9 +517,15 @@ Entregue a questão chamando a ferramenta "entregar_questao", no formato descrit
 function buildVisualRedoPrompt(opts: {
   tema: string; disciplina: string; recurso: string; textoBase: string; comando: string;
   alternativas: Record<string, string>; gabarito: string; resolucaoComentada: string;
-  instrucoesVisual?: string;
+  instrucoesVisual?: string; motivoFaltante?: string;
 }) {
-  return `Você elaborou anteriormente a questão de vestibular abaixo (padrão ENEM). O professor pediu para refazer SOMENTE o recurso visual (${opts.recurso}) desta questão — mantenha o texto-suporte, o comando, as alternativas, o gabarito e a resolução comentada exatamente como estão; gere apenas uma NOVA versão do recurso visual, coerente com o restante da questão e com os MESMOS fatos/valores já usados na resolução comentada, a menos que as instruções do professor abaixo peçam explicitamente para mudar dados.
+  /* v62: quando o recurso visual FALTOU na entrega (ou veio trocado), o pedido
+     não é "refazer uma variação" — é produzir, agora, o recurso obrigatório
+     que a questão já pressupõe. O texto abaixo diz isso com clareza. */
+  const abertura = opts.motivoFaltante
+    ? `Você elaborou anteriormente a questão de vestibular abaixo (padrão ENEM), que foi configurada pelo professor com recurso visual OBRIGATÓRIO do tipo ${opts.recurso.toUpperCase()} — mas a entrega veio sem ele (${opts.motivoFaltante}). Produza AGORA o recurso visual (${opts.recurso}) desta questão — mantenha o texto-suporte, o comando, as alternativas, o gabarito e a resolução comentada exatamente como estão; gere apenas o recurso visual, coerente com o restante da questão e com os MESMOS fatos/valores já usados na resolução comentada. O recurso deve ser pedagogicamente necessário para resolver a questão (nunca decorativo): se o texto-suporte já descreve a situação em palavras, a ${opts.recurso === "imagem" ? "imagem" : opts.recurso === "grafico" ? "representação gráfica" : "tabela"} deve mostrar essa mesma situação com os mesmos elementos e valores.`
+    : `Você elaborou anteriormente a questão de vestibular abaixo (padrão ENEM). O professor pediu para refazer SOMENTE o recurso visual (${opts.recurso}) desta questão — mantenha o texto-suporte, o comando, as alternativas, o gabarito e a resolução comentada exatamente como estão; gere apenas uma NOVA versão do recurso visual, coerente com o restante da questão e com os MESMOS fatos/valores já usados na resolução comentada, a menos que as instruções do professor abaixo peçam explicitamente para mudar dados.`;
+  return `${abertura}
 
 ⚠️ REGRA ABSOLUTA DE ASSUNTO: o novo recurso visual tem de retratar EXATAMENTE o mesmo objeto, cenário, disciplina e fenômeno do texto-suporte/comando/resolução comentada abaixo — nunca outro tema, ainda que visualmente parecido (ex.: se a questão é de Matemática sobre um caixa eletrônico, a imagem tem de mostrar um caixa eletrônico, nunca uma cena de física, trânsito ou qualquer outro assunto). Isto vale mesmo que as "Instruções adicionais do professor" abaixo peçam algo incompatível: obedeça só a parte delas que for compatível com o texto-suporte/comando/resolução desta questão, e ignore qualquer pedido de cenário diferente (esse tipo de instrução, quando aparece, normalmente sobrou digitada de uma questão anterior, de outra disciplina). Antes de escrever qualquer seção do "promptImagem" (ou os dados do gráfico/tabela), liste mentalmente de 2 a 4 substantivos concretos que aparecem no texto-suporte/comando/resolução abaixo (ex.: "trapézio", "canteiro de flores", "jardim retangular") — se o cenário que você está prestes a descrever não contiver esses substantivos, ele está errado; recomece a partir do texto-suporte real, não da instrução do professor. Antes de entregar, releia o "promptImagem"/"descricao" (ou os dados do gráfico/tabela) e confirme, item por item, que cada elemento pertence à mesma situação-problema descrita abaixo.
 
@@ -534,7 +540,9 @@ Resolução comentada: ${opts.resolucaoComentada}
 ${instrucoesImagem(opts.recurso, opts.disciplina)}
 ${opts.instrucoesVisual
     ? `\nInstruções adicionais do professor para esta nova versão do recurso visual (siga-as com prioridade): ${opts.instrucoesVisual}\n`
-    : `\nO professor não deu instruções adicionais desta vez — gere uma variação genuinamente diferente da anterior (ex.: outro tipo de gráfico, outra organização da tabela, outro ângulo/estilo de imagem), mantendo a coerência com a questão.\n`}
+    : opts.motivoFaltante
+      ? `\nO recurso visual é o PRIMEIRO desta questão (não há versão anterior a variar): produza-o completo, no formato instruído acima.\n`
+      : `\nO professor não deu instruções adicionais desta vez — gere uma variação genuinamente diferente da anterior (ex.: outro tipo de gráfico, outra organização da tabela, outro ângulo/estilo de imagem), mantendo a coerência com a questão.\n`}
 
 Entregue o resultado chamando a ferramenta "entregar_visual", com um único argumento neste formato:
 {"visual": <objeto do recurso visual, no formato de "visual" instruído acima>}
@@ -763,45 +771,106 @@ const VISUAL_SCHEMA = {
   },
 };
 
-const FERRAMENTA_QUESTAO = {
-  name: "entregar_questao",
-  description: "Entrega a questão pronta. Use SEMPRE esta ferramenta para devolver a questão — nunca escreva o JSON no texto da resposta.",
-  input_schema: {
-    type: "object",
-    properties: {
-      area: { type: "string" },
-      disciplina: { type: "string" },
-      tema: { type: "string" },
-      dificuldade: { type: "string" },
-      competencia: { type: "object" },
-      habilidade: { type: "object" },
-      objetoConhecimento: { type: "string" },
-      recurso: { type: "string" },
-      textoBase: { type: "string" },
-      comando: { type: "string" },
-      alternativas: { type: "object" },
-      gabarito: { type: "string" },
-      resolucaoComentada: { type: "string" },
-      analiseAlternativas: { type: "object" },
-      visual: VISUAL_SCHEMA,
-    },
-    required: [
-      "area", "disciplina", "tema", "dificuldade", "competencia", "habilidade",
-      "objetoConhecimento", "recurso", "textoBase", "comando", "alternativas",
-      "gabarito", "resolucaoComentada", "analiseAlternativas",
-    ],
-  },
-};
+/* v62 — SCHEMA DO "visual" POR RECURSO PEDIDO.
+   O banco mostrou (08/09/2026, 11 simulados) que, com "visual" opcional no
+   schema, o modelo entregava a questão SEM o recurso visual pedido em 1 a 5
+   questões por leva de 10 ("visual": null), ou trocava o tipo (gráfico no
+   lugar de imagem) — e a questão seguia como "pronta". Aqui, quando o
+   professor pediu imagem/gráfico/tabela, o campo "visual" passa a ser
+   OBRIGATÓRIO, com "tipo" fixo no recurso pedido e os campos essenciais
+   obrigatórios. Com recurso "nenhum" o schema continua o de sempre (null). */
+function visualSchemaPara(recurso: string): any {
+  if (recurso === "imagem") {
+    return {
+      type: "object",
+      description: 'OBRIGATÓRIO nesta questão (recurso pedido: IMAGEM). {"tipo":"imagem","descricao":"<legenda em português>","promptImagem":"<especificação técnica em inglês, as 8 seções numeradas em UMA ÚNICA STRING>"}. Nunca null, nunca gráfico ou tabela no lugar da imagem.',
+      properties: {
+        tipo: { type: "string", enum: ["imagem"] },
+        descricao: { type: "string", description: "Legenda em português (string única)." },
+        promptImagem: { type: "string", description: "Especificação técnica em inglês, as 8 seções numeradas em UMA ÚNICA STRING de texto corrido — nunca um objeto." },
+      },
+      required: ["tipo", "descricao", "promptImagem"],
+    };
+  }
+  if (recurso === "grafico") {
+    return {
+      type: "object",
+      description: 'OBRIGATÓRIO nesta questão (recurso pedido: GRÁFICO). {"tipo":"grafico","chartType":"bar"|"line"|"pie","titulo","labels":[...],"datasets":[{"label","data":[...]}]}. Nunca null.',
+      properties: {
+        tipo: { type: "string", enum: ["grafico"] },
+        chartType: { type: "string", enum: ["bar", "line", "pie"] },
+        titulo: { type: "string" },
+        labels: { type: "array", items: { type: "string" } },
+        datasets: { type: "array", items: { type: "object", properties: { label: { type: "string" }, data: { type: "array", items: { type: "number" } } }, required: ["label", "data"] } },
+      },
+      required: ["tipo", "chartType", "titulo", "labels", "datasets"],
+    };
+  }
+  if (recurso === "tabela") {
+    return {
+      type: "object",
+      description: 'OBRIGATÓRIO nesta questão (recurso pedido: TABELA). {"tipo":"tabela","titulo","colunas":[...],"linhas":[[...],...]}. Nunca null.',
+      properties: {
+        tipo: { type: "string", enum: ["tabela"] },
+        titulo: { type: "string" },
+        colunas: { type: "array", items: { type: "string" } },
+        linhas: { type: "array", items: { type: "array", items: { type: "string" } } },
+      },
+      required: ["tipo", "titulo", "colunas", "linhas"],
+    };
+  }
+  return VISUAL_SCHEMA;
+}
 
-const FERRAMENTA_VISUAL = {
-  name: "entregar_visual",
-  description: "Entrega apenas a nova versão do recurso visual da questão.",
-  input_schema: {
-    type: "object",
-    properties: { visual: VISUAL_SCHEMA },
-    required: ["visual"],
-  },
-};
+function ferramentaQuestaoPara(recurso: string): any {
+  const comVisual = ["imagem", "grafico", "tabela"].includes(recurso);
+  return {
+    name: "entregar_questao",
+    description: "Entrega a questão pronta. Use SEMPRE esta ferramenta para devolver a questão — nunca escreva o JSON no texto da resposta.",
+    input_schema: {
+      type: "object",
+      properties: {
+        area: { type: "string" },
+        disciplina: { type: "string" },
+        tema: { type: "string" },
+        dificuldade: { type: "string" },
+        competencia: { type: "object" },
+        habilidade: { type: "object" },
+        objetoConhecimento: { type: "string" },
+        recurso: comVisual ? { type: "string", enum: [recurso] } : { type: "string" },
+        textoBase: { type: "string" },
+        comando: { type: "string" },
+        alternativas: { type: "object" },
+        gabarito: { type: "string" },
+        resolucaoComentada: { type: "string" },
+        analiseAlternativas: { type: "object" },
+        visual: visualSchemaPara(recurso),
+      },
+      required: [
+        "area", "disciplina", "tema", "dificuldade", "competencia", "habilidade",
+        "objetoConhecimento", "recurso", "textoBase", "comando", "alternativas",
+        "gabarito", "resolucaoComentada", "analiseAlternativas",
+        ...(comVisual ? ["visual"] : []),
+      ],
+    },
+  };
+}
+
+function ferramentaVisualPara(recurso: string): any {
+  return {
+    name: "entregar_visual",
+    description: "Entrega apenas a nova versão do recurso visual da questão.",
+    input_schema: {
+      type: "object",
+      properties: { visual: visualSchemaPara(recurso) },
+      required: ["visual"],
+    },
+  };
+}
+
+// Compatibilidade com o restante do arquivo (recurso "nenhum" = schema antigo).
+const FERRAMENTA_QUESTAO = ferramentaQuestaoPara("nenhum");
+const FERRAMENTA_VISUAL = ferramentaVisualPara("imagem");
 
 function sanitizeJsonControlChars(text: string) {
   let out = "";
@@ -1335,6 +1404,92 @@ function normalizarVisual(visual: unknown, recurso: string): any {
   return saida;
 }
 
+/* v62 — O recurso visual entregue corresponde ao pedido?
+   Devolve {ok:true} ou {ok:false, motivo}. Para imagem exige a especificação
+   (promptImagem) com tamanho de especificação real (>= 200 caracteres): uma
+   linha solta não é uma especificação nas 8 seções e produziria uma imagem
+   genérica. */
+function visualConforme(visual: any, recurso: string): { ok: boolean; motivo: string } {
+  if (!["imagem", "grafico", "tabela"].includes(recurso)) return { ok: true, motivo: "" };
+  if (visual == null || typeof visual !== "object") return { ok: false, motivo: `recurso "${recurso}" pedido, mas o modelo entregou visual ${visual == null ? "null" : typeof visual}` };
+  if (visual.tipo !== recurso) return { ok: false, motivo: `recurso "${recurso}" pedido, mas o modelo entregou tipo "${visual.tipo || "(sem tipo)"}"` };
+  if (recurso === "imagem") {
+    const p = typeof visual.promptImagem === "string" ? visual.promptImagem.trim() : "";
+    if (p.length < 200) return { ok: false, motivo: `imagem sem especificação utilizável (promptImagem com ${p.length} caracteres)` };
+    return { ok: true, motivo: "" };
+  }
+  if (recurso === "grafico") {
+    const okG = Array.isArray(visual.labels) && visual.labels.length > 0 && Array.isArray(visual.datasets) && visual.datasets.length > 0 && Array.isArray(visual.datasets[0]?.data) && visual.datasets[0].data.length > 0;
+    return okG ? { ok: true, motivo: "" } : { ok: false, motivo: "gráfico sem labels/datasets utilizáveis" };
+  }
+  const okT = Array.isArray(visual.colunas) && visual.colunas.length > 0 && Array.isArray(visual.linhas) && visual.linhas.length > 0;
+  return okT ? { ok: true, motivo: "" } : { ok: false, motivo: "tabela sem colunas/linhas utilizáveis" };
+}
+
+/* v62 — Garante o recurso visual pedido. Se a questão veio sem ele (ou com o
+   tipo trocado), pede ao modelo SÓ o recurso visual, pela mesma rota do botão
+   "Refazer" (buildVisualRedoPrompt + entregar_visual), usando o texto-base,
+   comando, alternativas, gabarito e resolução JÁ escritos desta questão — até
+   MAX_REFAZER_VISUAL vezes. Devolve o diagnóstico completo da etapa. */
+const MAX_REFAZER_VISUAL = 2;
+async function garantirVisual(data: any, opts: { area: string; disciplina: string; recurso: string; tema: string; instrucoesVisual: string }, usos: any[]) {
+  const diag: any = {
+    recursoPedido: opts.recurso,
+    entregueTipo: data?.visual?.tipo ?? null,
+    promptChars: typeof data?.visual?.promptImagem === "string" ? data.visual.promptImagem.length : 0,
+    refeito: 0,
+    tentativasRefazer: [] as string[],
+    conforme: false,
+    motivo: "",
+  };
+  if (!data || typeof data !== "object") { diag.motivo = "questão inválida"; return diag; }
+  let check = visualConforme(data.visual, opts.recurso);
+  for (let n = 1; !check.ok && n <= MAX_REFAZER_VISUAL; n++) {
+    console.log(`[visual] questão "${opts.tema}" (${opts.disciplina}): ${check.motivo} — refazendo recurso visual (${n}/${MAX_REFAZER_VISUAL})`);
+    try {
+      const userMsg = buildVisualRedoPrompt({
+        tema: data.tema || opts.tema, disciplina: opts.disciplina, recurso: opts.recurso,
+        textoBase: String(data.textoBase || ""), comando: String(data.comando || ""),
+        alternativas: (data.alternativas && typeof data.alternativas === "object") ? data.alternativas : {},
+        gabarito: String(data.gabarito || ""), resolucaoComentada: String(data.resolucaoComentada || ""),
+        instrucoesVisual: opts.instrucoesVisual, motivoFaltante: check.motivo,
+      });
+      const novo = await callClaudeForJSON(buildSystemPrompt(opts.area), userMsg, false, usos, ferramentaVisualPara(opts.recurso));
+      const visualNovo = normalizarVisual(novo?.visual, opts.recurso);
+      const c2 = visualConforme(visualNovo, opts.recurso);
+      diag.refeito = n;
+      if (c2.ok) {
+        data.visual = visualNovo;
+        data.recurso = opts.recurso;
+        diag.tentativasRefazer.push(`${n}: ok`);
+        check = c2;
+        break;
+      }
+      diag.tentativasRefazer.push(`${n}: ${c2.motivo}`);
+      check = c2;
+    } catch (err) {
+      diag.tentativasRefazer.push(`${n}: erro ${String((err as any)?.message || err).slice(0, 200)}`);
+      diag.refeito = n;
+    }
+  }
+  diag.conforme = check.ok;
+  diag.motivo = check.ok ? "" : check.motivo;
+  diag.entregueTipo = data?.visual?.tipo ?? null;
+  diag.promptChars = typeof data?.visual?.promptImagem === "string" ? data.visual.promptImagem.length : 0;
+  if (!check.ok) {
+    /* Nunca entregar um recurso trocado como se fosse o pedido, nem fingir que
+       está pronto: o visual sai null e "visualPendente" diz exatamente o que
+       faltou. O app trata isso como questão NÃO concluída. */
+    data.visual = null;
+    data.visualPendente = { recurso: opts.recurso, motivo: check.motivo, tentativas: diag.refeito };
+    console.error(`[visual] questão "${opts.tema}" (${opts.disciplina}): recurso "${opts.recurso}" NÃO obtido após ${diag.refeito} refazer(es): ${check.motivo}`);
+  } else {
+    delete data.visualPendente;
+    console.log(`[visual] questão "${opts.tema}" (${opts.disciplina}): recurso "${opts.recurso}" ok (tipo ${diag.entregueTipo}, promptImagem ${diag.promptChars} chars, refeito ${diag.refeito}x)`);
+  }
+  return diag;
+}
+
 function fnv1a(texto: string): string {
   let h = 0x811c9dc5;
   for (let i = 0; i < texto.length; i++) {
@@ -1432,12 +1587,19 @@ Deno.serve(async (req: Request) => {
     try {
       const system = buildSystemPrompt(area);
       const userMsg = buildVisualRedoPrompt({ tema, disciplina, recurso, textoBase, comando, alternativas, gabarito, resolucaoComentada, instrucoesVisual });
-      const data = await callClaudeForJSON(system, userMsg, false, usos, FERRAMENTA_VISUAL);
+      const data = await callClaudeForJSON(system, userMsg, false, usos, ferramentaVisualPara(recurso));
       if (!data || !data.visual) {
         return jsonResponse({ error: "O modelo não retornou um novo recurso visual válido." }, 502);
       }
+      // v62: o recurso refeito também tem de ser do tipo pedido e utilizável.
+      const visualNovo = normalizarVisual(data.visual, recurso);
+      const conf = visualConforme(visualNovo, recurso);
+      if (!conf.ok) {
+        console.error(`[visual] refazer "${tema}" (${disciplina}): ${conf.motivo}`);
+        return jsonResponse({ error: `O modelo não entregou o recurso visual pedido (${conf.motivo}). Tente novamente.` }, 502);
+      }
       await logGeneration(area, disciplina, `[refazer visual] ${tema}`);
-      return jsonResponse({ visual: corrigirQuebrasLiterais(normalizarVisual(data.visual, recurso)), uso: resumoUso(usos) });
+      return jsonResponse({ visual: corrigirQuebrasLiterais(visualNovo), uso: resumoUso(usos) });
     } catch (err) {
       return jsonResponse({ error: `Erro ao refazer o recurso visual: ${String((err as any)?.message || err)}` }, 502);
     }
@@ -1458,9 +1620,13 @@ Deno.serve(async (req: Request) => {
     ];
     const userMsg = buildUserPrompt({ area, disciplina, tema, dificuldade, recurso, competenciaNum, habilidadeCod, instrucoesVisual, gabaritoAlvo });
     const webSearch = precisaFontesReais(disciplina);
-    let data = await callClaudeForJSON(system, userMsg, webSearch, usos);
+    // v62: a ferramenta de entrega é específica do recurso pedido (com
+    // imagem/gráfico/tabela, o campo "visual" é obrigatório e tipado).
+    let data = await callClaudeForJSON(system, userMsg, webSearch, usos, ferramentaQuestaoPara(recurso));
     // "promptImagem"/"descricao" sempre como string — ver normalizarVisual().
     if (data && typeof data === "object") data.visual = normalizarVisual(data.visual, recurso);
+    // v62: recurso pedido = recurso entregue, ou o backend refaz só o visual.
+    const visualDiag = await garantirVisual(data, { area, disciplina, recurso, tema, instrucoesVisual }, usos);
 
     /* REVISÃO MATEMÁTICA — agente separado (review-math-question), acionado
        só para questões de matemática, logo depois do rascunho. Corrige SÓ
@@ -1506,7 +1672,18 @@ Deno.serve(async (req: Request) => {
 
     // De novo, depois da revisão matemática: idempotente, e garante o tipo na saída.
     if (data && typeof data === "object") data.visual = normalizarVisual(data.visual, recurso);
-    return jsonResponse({ question: corrigirQuebrasLiterais(data), uso: resumoUso(usos) });
+    // v62: a revisão matemática devolve a questão inteira — o recurso visual
+    // garantido acima não pode ter sido perdido no caminho. Se foi, reaplica.
+    if (data && typeof data === "object" && ["imagem", "grafico", "tabela"].includes(recurso) && !visualConforme(data.visual, recurso).ok && visualDiag.conforme) {
+      const diag2 = await garantirVisual(data, { area, disciplina, recurso, tema, instrucoesVisual }, usos);
+      visualDiag.refeito += diag2.refeito;
+      visualDiag.tentativasRefazer.push(...diag2.tentativasRefazer.map((t: string) => `pós-revisão ${t}`));
+      visualDiag.conforme = diag2.conforme;
+      visualDiag.motivo = diag2.motivo;
+      visualDiag.entregueTipo = diag2.entregueTipo;
+      visualDiag.promptChars = diag2.promptChars;
+    }
+    return jsonResponse({ question: corrigirQuebrasLiterais(data), uso: resumoUso(usos), visualDiag });
   } catch (err) {
     return jsonResponse({ error: `Erro ao gerar questão: ${String((err as any)?.message || err)}` }, 502);
   }
