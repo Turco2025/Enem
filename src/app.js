@@ -1016,17 +1016,81 @@ function planejaEixosTematicos(){
 function temasEvitarPara(q){
   const vistos = new Set();
   const lista = [];
+  // O tema pedido para ESTA questão nunca é "assunto a evitar" — quando todas
+  // as questões têm o mesmo tema digitado, ele apareceria aqui vindo das
+  // outras, e o pedido ficaria contraditório ("tema: X" / "proibido: X").
+  const proprioTema = (q.tema || "").trim().toLowerCase();
   state.questions.forEach(o => {
     if(o === q) return;
     const candidatos = [(o.tema || "").trim(), (o.data && o.data.tema || "").trim()];
     candidatos.forEach(t => {
       if(!t) return;
       const chave = t.toLowerCase();
+      if(chave === proprioTema) return;
       if(vistos.has(chave)) return;
       vistos.add(chave); lista.push(t.slice(0, 200));
     });
   });
   return lista.slice(0, 30);
+}
+
+/* Recortes planejados para questões com o MESMO tema digitado (backend v64).
+   Leva real de 09/09/2026: 10 questões de "Eletrodinâmica" — 4 sobre
+   associação de resistores, 2 quase iguais sobre capacitores. As questões da
+   mesma onda saem em paralelo e não sabem umas das outras; o eixo por objeto
+   de conhecimento só vale com tema em branco. Aqui, para cada grupo de 2+
+   questões com o mesmo tema, UMA chamada curta ao backend devolve um recorte
+   por questão (conteúdo + contexto real + habilidade), decidido ANTES da
+   leva, como o gabarito e os eixos. Custa centavos por leva. */
+function recorteTexto(r, q){
+  const partes = [];
+  if(r && r.conteudo) partes.push(`conteúdo: ${String(r.conteudo).trim()}`);
+  if(r && r.contexto) partes.push(`contexto: ${String(r.contexto).trim()}`);
+  // Se o professor fixou competência/habilidade na questão, a dele manda —
+  // a habilidade sugerida pelo planejamento fica de fora para não conflitar.
+  if(r && r.habilidade && !q.habilidadeCod && !q.competenciaNum) partes.push(`habilidade: ${String(r.habilidade).trim()}`);
+  return partes.join(" · ").slice(0, 600) || null;
+}
+
+async function planejaRecortesPorTema(){
+  state.questions.forEach(q => { q.recorte = null; });
+  const grupos = new Map();
+  state.questions.forEach(q => {
+    const t = (q.tema || "").trim();
+    if(!t) return;
+    const chave = t.toLowerCase();
+    if(!grupos.has(chave)) grupos.set(chave, { tema: t, qs: [] });
+    grupos.get(chave).qs.push(q);
+  });
+  for(const g of grupos.values()){
+    if(g.qs.length < 2) continue; // uma questão só não tem com o que repetir
+    try{
+      const resp = await fetch(QUESTION_BACKEND_URL, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...authHeaders() },
+        body: JSON.stringify({
+          planejarRecortes: true,
+          area: state.area,
+          disciplina: state.disciplina,
+          tema: g.tema,
+          quantidade: g.qs.length,
+          dificuldades: g.qs.map(q => q.dificuldade),
+        }),
+      });
+      let payload = {};
+      try{ payload = await resp.json(); }catch(e){ /* corpo não é JSON — trata abaixo */ }
+      if(!resp.ok || payload.error || !Array.isArray(payload.recortes) || !payload.recortes.length){
+        throw new Error(payload.error || `Erro HTTP ${resp.status} ao planejar os recortes.`);
+      }
+      if(payload.uso) somaUso(payload.uso);
+      g.qs.forEach((q, i) => { q.recorte = recorteTexto(payload.recortes[i % payload.recortes.length], q); });
+      console.log(`[tema] recortes planejados para "${g.tema}" (${payload.recortes.length}/${g.qs.length}): ` + g.qs.map(q => `${state.questions.indexOf(q) + 1}: ${q.recorte}`).join(" · "));
+    }catch(e){
+      // O planejamento é um refinamento: se falhar, a leva segue sem ele.
+      console.warn(`[tema] planejamento de recortes falhou para "${g.tema}" (a leva segue sem recortes):`, e && e.message || e);
+      toast(`Não foi possível planejar os recortes do tema "${g.tema}"; as questões serão geradas sem essa distribuição.`, "err");
+    }
+  }
 }
 
 // Palavras significativas de um tema (sem acentos, sem palavras vazias), para
@@ -1165,6 +1229,9 @@ async function generateQuestion(q){
           // Diversidade temática da leva (backend v63): eixo reservado para
           // esta questão (só sem tema do professor) e assuntos já usados.
           eixoTematico: (q.tema || "").trim() ? null : (q.eixoTematico || null),
+          // Recorte planejado (backend v64): só com tema digitado, e só quando
+          // há 2+ questões com o mesmo tema (ver planejaRecortesPorTema).
+          recorte: (q.tema || "").trim() ? (q.recorte || null) : null,
           temasEvitar: temasEvitarPara(q),
         }),
       });
@@ -1207,7 +1274,7 @@ async function generateQuestion(q){
     q.diag = [];
     if(payload.diversidadeDiag){
       const dd = payload.diversidadeDiag;
-      diagImagem(q, "tema", `entregue "${dd.temaEntregue}" · objeto "${dd.objetoEntregue}"` + (dd.eixoTematico ? ` · eixo reservado "${dd.eixoTematico}" (${dd.eixoRespeitado ? "respeitado" : "NÃO respeitado"})` : " · sem eixo (tema do professor ou leva de 1)") + ` · ${dd.temasEvitar} assunto(s) a evitar`);
+      diagImagem(q, "tema", `entregue "${dd.temaEntregue}" · objeto "${dd.objetoEntregue}"` + (dd.eixoTematico ? ` · eixo reservado "${dd.eixoTematico}" (${dd.eixoRespeitado ? "respeitado" : "NÃO respeitado"})` : dd.recorte ? ` · recorte reservado "${String(dd.recorte).slice(0, 160)}"` : " · sem eixo nem recorte (leva de 1 ou temas distintos)") + ` · ${dd.temasEvitar} assunto(s) a evitar`);
     }
     const vd = payload.visualDiag || null;
     diagImagem(q, "questao_recebida", `recurso pedido "${q.recurso}" · visual entregue ${q.data.visual ? `tipo "${q.data.visual.tipo}"` : "nulo"} · promptImagem ${imgTextoDeEspecificacao(q.data.visual && q.data.visual.promptImagem, 0).length} chars` + (vd ? ` · backend: refeito ${vd.refeito}x, conforme ${vd.conforme}${vd.motivo ? ", " + vd.motivo : ""}` : "") + (q.data.visualPendente ? ` · visualPendente: ${q.data.visualPendente.motivo}` : ""));
@@ -1428,6 +1495,9 @@ async function generateAll(){
   updateProgress();
   zeraUso();
   zeraUsoImagem();
+  // Recortes planejados ANTES de gerar (mesma lógica do gabarito e dos eixos):
+  // uma chamada curta por grupo de questões com o mesmo tema digitado.
+  await planejaRecortesPorTema();
   /* AQUECIMENTO DO CACHE. O prompt do sistema tem mais de 25 mil caracteres e é
      o mesmo em todas as questões da área. O backend o manda com cache_control,
      mas quem grava o cache é a primeira chamada — e chamadas simultâneas não

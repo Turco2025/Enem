@@ -257,8 +257,14 @@ function buildAncoragemVisual(area: string, disciplina: string, tema: string, re
    conhecimento oficial da disciplina, distribuído em rodízio) e a enviar os
    ASSUNTOS JÁ USADOS na leva. Este bloco vai no prompt do usuário — a parte
    que varia por questão — e por isso não mexe no cache do sistema. */
-function buildDiversidadeTematica(eixoTematico: string, temasEvitar: string[], temaDoProfessor: string): string {
+function buildDiversidadeTematica(eixoTematico: string, temasEvitar: string[], temaDoProfessor: string, recorte = ""): string {
   const partes: string[] = [];
+  /* v64: com tema digitado pelo professor, a diversidade vem de um RECORTE
+     planejado antes da leva (ver planejarRecortes): conteúdo + contexto +
+     habilidade próprios desta questão, sempre dentro do tema pedido. */
+  if (recorte) {
+    partes.push(`🎯 RECORTE RESERVADO PARA ESTA QUESTÃO (diversidade da leva): este simulado tem várias questões sobre o mesmo tema pedido pelo professor, e cada uma recebeu de antemão um recorte próprio, para que a leva cubra o tema em vez de repetir o exemplo mais comum. Esta questão DEVE seguir este recorte — ${recorte} — mantendo-se DENTRO do tema pedido: trate exatamente esse conteúdo, construa o texto-base e a situação-problema sobre esse contexto (não o troque por outro mais frequente) e, quando o recorte indicar uma habilidade, mobilize essa habilidade da Matriz e cite-a nos campos "competencia" e "habilidade". O campo "tema" da sua resposta deve nomear o recorte, não apenas o tema geral.`);
+  }
   if (eixoTematico) {
     partes.push(`🎯 EIXO TEMÁTICO RESERVADO PARA ESTA QUESTÃO (diversidade da leva): o professor não detalhou o tema, e este simulado distribui o conteúdo da disciplina entre as questões. Esta questão DEVE mobilizar o objeto de conhecimento oficial "${eixoTematico}" — declare-o literalmente no campo "objetoConhecimento" — e escolher, DENTRO dele, um recorte de conteúdo específico, frequente nas provas do ENEM e diferente dos assuntos listados a seguir (quando houver). Não escolha um assunto de outro objeto de conhecimento.`);
   }
@@ -313,7 +319,7 @@ function buildUserPrompt(opts: {
   area: string; disciplina: string; tema: string; dificuldade: string;
   recurso: string; competenciaNum: number | null; habilidadeCod: string | null;
   instrucoesVisual?: string; gabaritoAlvo?: string | null;
-  eixoTematico?: string; temasEvitar?: string[];
+  eixoTematico?: string; temasEvitar?: string[]; recorte?: string;
 }) {
   // Trecho específico da Matriz (só quando o professor escolheu
   // competência/habilidade) — o caso "automático" está no bloco fixo.
@@ -329,7 +335,7 @@ Nível de dificuldade: ${opts.dificuldade}
 Recurso visual pedido: ${opts.recurso}
 
 Siga integralmente as INSTRUÇÕES FIXAS DESTA CONFIGURAÇÃO que estão no prompt do sistema (regra de fontes, calibração de extensão, instruções do recurso visual, Matriz de Referência e formato de entrega) — elas fazem parte deste pedido.
-${buildDiversidadeTematica(opts.eixoTematico || "", opts.temasEvitar || [], opts.tema)}${opts.instrucoesVisual ? `\nInstrução adicional do professor especificamente para o recurso visual (siga-a com prioridade, desde que compatível com as instruções do recurso visual no prompt do sistema e com a ANCORAGEM DE ASSUNTO logo abaixo): ${opts.instrucoesVisual}\n` : ""}
+${buildDiversidadeTematica(opts.eixoTematico || "", opts.temasEvitar || [], opts.tema, opts.recorte || "")}${opts.instrucoesVisual ? `\nInstrução adicional do professor especificamente para o recurso visual (siga-a com prioridade, desde que compatível com as instruções do recurso visual no prompt do sistema e com a ANCORAGEM DE ASSUNTO logo abaixo): ${opts.instrucoesVisual}\n` : ""}
 ${buildAncoragemVisual(opts.area, opts.disciplina, opts.tema, opts.recurso)}${matrizEspecifica}
 ${buildGabaritoAlvo(opts.gabaritoAlvo || null)}
 Entregue a questão chamando a ferramenta "entregar_questao", no formato descrito no prompt do sistema.`;
@@ -372,6 +378,81 @@ ${opts.instrucoesVisual
 Entregue o resultado chamando a ferramenta "entregar_visual", com um único argumento neste formato:
 {"visual": <objeto do recurso visual, no formato de "visual" instruído acima>}
 Não escreva o JSON no texto da resposta e não escreva nada antes ou depois da chamada da ferramenta.`;
+}
+
+/* v64 — PLANEJAMENTO DE RECORTES (várias questões com o mesmo tema).
+
+   Leva real de 09/09/2026 (10 de Física, "Eletricidade – Eletrodinâmica"):
+   4 questões sobre associação de resistores e 2 quase iguais sobre
+   capacitores. As questões saem em ondas paralelas e, dentro de uma onda,
+   uma não sabe da outra; o eixo por objeto de conhecimento (v63) só vale
+   com tema em branco. Aqui, UMA chamada curta antes da leva devolve N
+   recortes distintos do tema — conteúdo, contexto real e habilidade — e o
+   app entrega um recorte a cada questão. Prompt pequeno, sem cache e sem
+   busca na web: custa centavos por leva. */
+function listaHabilidadesDaArea(area: string): string {
+  const m = APP_DATA.matriz[area];
+  if (!m) return "";
+  return m.competencias
+    .map((c: any) => `Competência ${c.numero}: ${c.texto}\n` + c.habilidades.map((h: any) => `  ${h.codigo}: ${h.texto}`).join("\n"))
+    .join("\n\n");
+}
+
+function buildSystemPlanejamento(area: string): string {
+  return `Você é um elaborador de itens do ENEM (Inep) encarregado de PLANEJAR um simulado: antes de qualquer questão ser escrita, você distribui o tema pedido pelo professor em recortes distintos, um por questão, para que a prova cubra o tema em vez de repetir o exemplo mais comum. Você conhece as provas reais do ENEM de 2015 a 2025 e a Matriz de Referência oficial. Você não escreve questões nesta etapa — só o plano.
+
+MATRIZ DE REFERÊNCIA — ${AREA_LABELS[area]} (competências e habilidades oficiais; cite os códigos exatamente como estão aqui):
+${listaHabilidadesDaArea(area)}`;
+}
+
+function buildPlanejamentoPrompt(opts: { area: string; disciplina: string; tema: string; quantidade: number; dificuldades: string[] }): string {
+  const niveis = opts.dificuldades.length ? opts.dificuldades.map((d, i) => `${i + 1}: ${d}`).join(", ") : "todas Médio";
+  return `Planeje ${opts.quantidade} recortes DISTINTOS para um simulado de ${AREA_LABELS[opts.area]}, disciplina ${opts.disciplina}. TODAS as questões são sobre o tema pedido pelo professor: "${opts.tema}". Nível de dificuldade pedido por questão: ${niveis}.
+
+Cada recorte é o plano de UMA questão e tem três partes:
+- "conteudo": o subtópico ou conceito específico, dentro do tema, que a questão vai mobilizar. Os ${opts.quantidade} conteúdos devem ser diferentes entre si; se o tema for estreito e não comportar ${opts.quantidade} conteúdos distintos, repita um conteúdo apenas quando o contexto e a habilidade forem claramente diferentes.
+- "contexto": a situação-problema concreta e real em que a questão vai se apoiar — do cotidiano, do trabalho, da ciência, da tecnologia, do ambiente ou da sociedade brasileira, no espírito das provas reais do ENEM 2015-2025. Os ${opts.quantidade} contextos devem ser TODOS diferentes: nunca o mesmo aparelho, objeto, cenário ou experimento em dois recortes.
+- "habilidade": o código e o texto de UMA habilidade da Matriz (lista no prompt do sistema) que a questão vai exigir. Varie as habilidades ao longo da lista (cálculo, leitura de gráfico/tabela/esquema, comparação de procedimentos, análise de impacto social ou ambiental, etc.), sem concentrar todas na mesma; a habilidade deve corresponder à operação cognitiva do recorte, não só ao assunto.
+
+Regras: fique DENTRO do tema pedido (nunca migre para outro tema da disciplina); prefira recortes frequentes nas provas reais, ordenados do mais frequente ao menos frequente; recortes de nível "Fácil" pedem contextos diretos e uma etapa de raciocínio, "Difícil" pedem combinar informações ou uma armadilha conceitual fina; escreva em português, de forma específica (nada de "aplicações no cotidiano" — diga qual). Entregue chamando a ferramenta "entregar_recortes", com exatamente ${opts.quantidade} itens, na ordem das questões.`;
+}
+
+const FERRAMENTA_RECORTES = {
+  name: "entregar_recortes",
+  description: "Entrega o plano de recortes do simulado. Use SEMPRE esta ferramenta — nunca escreva o JSON no texto da resposta.",
+  input_schema: {
+    type: "object",
+    properties: {
+      recortes: {
+        type: "array",
+        items: {
+          type: "object",
+          properties: {
+            conteudo: { type: "string", description: "Subtópico/conceito específico dentro do tema." },
+            contexto: { type: "string", description: "Situação-problema concreta e real, diferente das demais." },
+            habilidade: { type: "string", description: "Código e texto de uma habilidade da Matriz (ex.: \"H21: ...\")." },
+          },
+          required: ["conteudo", "contexto", "habilidade"],
+        },
+      },
+    },
+    required: ["recortes"],
+  },
+};
+
+function normalizarRecortes(bruto: unknown, quantidade: number): Array<{ conteudo: string; contexto: string; habilidade: string }> {
+  const lista = Array.isArray(bruto) ? bruto : [];
+  const saida: Array<{ conteudo: string; contexto: string; habilidade: string }> = [];
+  for (const r of lista) {
+    if (!r || typeof r !== "object") continue;
+    const conteudo = String((r as any).conteudo || "").trim().slice(0, 200);
+    const contexto = String((r as any).contexto || "").trim().slice(0, 250);
+    const habilidade = String((r as any).habilidade || "").trim().slice(0, 200);
+    if (!conteudo && !contexto) continue;
+    saida.push({ conteudo, contexto, habilidade });
+    if (saida.length >= quantidade) break;
+  }
+  return saida;
 }
 
 /* ---------------- Claude API (server-side) ---------------- */
@@ -1373,6 +1454,9 @@ function selfTestResponse() {
     buildCalibracaoExtensao.toString(),
     buildMatrizInstrucoes.toString(),
     buildObjetosConhecimento.toString(),
+    buildDiversidadeTematica.toString(),
+    buildSystemPlanejamento.toString(),
+    buildPlanejamentoPrompt.toString(),
   ].join(String.fromCharCode(0));
   return jsonResponse({
     selftest: true,
@@ -1425,6 +1509,31 @@ Deno.serve(async (req: Request) => {
   const gabaritoAlvoRaw = (body.gabaritoAlvo || "").toString().trim().toUpperCase();
   const gabaritoAlvo = ["A", "B", "C", "D", "E"].includes(gabaritoAlvoRaw) ? gabaritoAlvoRaw : null;
 
+  /* v64 — planejamento de recortes: várias questões com o mesmo tema. */
+  if (body.planejarRecortes === true) {
+    if (!tema) return jsonResponse({ error: "Campo 'tema' é obrigatório para planejar recortes." }, 400);
+    const qtdRaw = Number(body.quantidade);
+    const quantidade = Number.isFinite(qtdRaw) ? Math.max(2, Math.min(30, Math.round(qtdRaw))) : 2;
+    const dificuldades: string[] = Array.isArray(body.dificuldades)
+      ? body.dificuldades.slice(0, quantidade).map((d: unknown) => ["Fácil", "Médio", "Difícil"].includes(String(d)) ? String(d) : "Médio")
+      : [];
+    const usos: any[] = [];
+    try {
+      // Sem cache_control de propósito: o prompt é pequeno e a chamada é única.
+      const system: SistemaPrompt = [{ type: "text", text: buildSystemPlanejamento(area) }];
+      const userMsg = buildPlanejamentoPrompt({ area, disciplina, tema, quantidade, dificuldades });
+      const data = await callClaudeForJSON(system, userMsg, false, usos, FERRAMENTA_RECORTES);
+      const recortes = normalizarRecortes(data?.recortes, quantidade);
+      if (!recortes.length) return jsonResponse({ error: "O modelo não devolveu recortes utilizáveis." }, 502);
+      const uso = resumoUso(usos);
+      console.log(`[tema] planejamento "${tema}" (${disciplina}): ${recortes.length}/${quantidade} recorte(s) · ` + recortes.map((r, i) => `${i + 1}: ${r.conteudo}`).join(" · "));
+      await logGeneration(area, disciplina, `[planejar recortes] ${tema}`, { recurso: "planejamento", uso });
+      return jsonResponse({ recortes, uso });
+    } catch (err) {
+      return jsonResponse({ error: `Erro ao planejar os recortes do tema: ${String((err as any)?.message || err)}` }, 502);
+    }
+  }
+
   if (body.regenerarVisual === true) {
     const recurso = ["imagem", "grafico", "tabela"].includes(body.recurso) ? body.recurso : null;
     if (!recurso) {
@@ -1469,6 +1578,8 @@ Deno.serve(async (req: Request) => {
   // com tema em branco; com tema do professor o eixo é ignorado, e os
   // assuntos a evitar continuam valendo se o app os mandar.
   const eixoTematico = tema ? "" : (body.eixoTematico || "").toString().trim().slice(0, 300);
+  // v64 — recorte planejado (ver planejarRecortes): só com tema digitado.
+  const recorte = tema ? (body.recorte || "").toString().trim().slice(0, 600) : "";
   const temasEvitar: string[] = Array.isArray(body.temasEvitar)
     ? Array.from(new Set(body.temasEvitar.map((t: unknown) => String(t || "").trim().slice(0, 200)).filter((t: string) => t))).slice(0, 30) as string[]
     : [];
@@ -1482,7 +1593,7 @@ Deno.serve(async (req: Request) => {
       { type: "text", text: buildSystemPrompt(area), cache_control: { type: "ephemeral" } },
       { type: "text", text: buildBlocoFixo({ area, disciplina, recurso, competenciaNum, habilidadeCod }), cache_control: { type: "ephemeral" } },
     ];
-    const userMsg = buildUserPrompt({ area, disciplina, tema, dificuldade, recurso, competenciaNum, habilidadeCod, instrucoesVisual, gabaritoAlvo, eixoTematico, temasEvitar });
+    const userMsg = buildUserPrompt({ area, disciplina, tema, dificuldade, recurso, competenciaNum, habilidadeCod, instrucoesVisual, gabaritoAlvo, eixoTematico, temasEvitar, recorte });
     const webSearch = precisaFontesReais(disciplina);
     // v62: a ferramenta de entrega é específica do recurso pedido (com
     // imagem/gráfico/tabela, o campo "visual" é obrigatório e tipado).
@@ -1547,12 +1658,14 @@ Deno.serve(async (req: Request) => {
     }
     const diversidadeDiag = {
       eixoTematico: eixoTematico || null,
+      recorte: recorte || null,
       temasEvitar: temasEvitar.length,
       temaEntregue: data && typeof data === "object" ? String(data.tema || "") : "",
       objetoEntregue: data && typeof data === "object" ? String(data.objetoConhecimento || "") : "",
       eixoRespeitado: eixoTematico ? (data && typeof data === "object" && String(data.objetoConhecimento || "").trim().toLowerCase() === eixoTematico.toLowerCase()) : null,
     };
     if (eixoTematico) console.log(`[tema] "${diversidadeDiag.temaEntregue}" · eixo pedido "${eixoTematico}" · objeto entregue "${diversidadeDiag.objetoEntregue}" · respeitado ${diversidadeDiag.eixoRespeitado} · evitar ${temasEvitar.length} assunto(s)`);
+    if (recorte) console.log(`[tema] "${diversidadeDiag.temaEntregue}" · recorte reservado "${recorte.slice(0, 160)}" · evitar ${temasEvitar.length} assunto(s)`);
     // v63: o registro vai por último, com TODAS as chamadas desta questão
     // (rascunho, refazer visual, retentativas) já somadas em "usos".
     const uso = resumoUso(usos);
