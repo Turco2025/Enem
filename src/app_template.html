@@ -169,13 +169,26 @@ select optgroup{background:#fff;color:#111;font-weight:700;}
    uma vez; os blocos individuais continuam abaixo, para ajustes. */
 .lote-panel{border-radius:16px;border:1.5px dashed var(--glass-brd);background:rgba(255,255,255,.05);padding:18px;margin-bottom:18px;}
 .lote-panel .lote-head{display:flex;align-items:center;gap:8px;font-weight:700;font-size:13.5px;margin-bottom:4px;}
-.lote-checks{display:flex;gap:8px;flex-wrap:wrap;}
-.lote-check{flex:1;min-width:90px;display:flex;align-items:center;justify-content:center;gap:7px;padding:9px 6px;border-radius:10px;border:1.5px solid var(--glass-brd);background:rgba(255,255,255,.03);cursor:pointer;font-size:12px;font-weight:600;transition:.15s;user-select:none;}
-.lote-check input{width:auto;margin:0;accent-color:#fff;}
-.lote-check.sel[data-d="Fácil"]{background:linear-gradient(135deg,#22c55e,#16a34a);border-color:transparent;color:#fff;}
-.lote-check.sel[data-d="Médio"]{background:linear-gradient(135deg,#f59e0b,#d97706);border-color:transparent;color:#fff;}
-.lote-check.sel[data-d="Difícil"]{background:linear-gradient(135deg,#ef4444,#b91c1c);border-color:transparent;color:#fff;}
+/* Contadores por nível: espelho editável dos blocos individuais (ver
+   atualizaResumoLote / aplicarLoteATodas no app.js). */
+.lote-counts{display:flex;gap:8px;flex-wrap:wrap;}
+.lote-count{flex:1;min-width:120px;display:flex;align-items:center;justify-content:space-between;gap:6px;padding:6px 8px;border-radius:10px;border:1.5px solid var(--glass-brd);color:#fff;font-size:12px;font-weight:700;user-select:none;}
+.lote-count[data-d="Fácil"]{background:linear-gradient(135deg,#22c55e,#16a34a);border-color:transparent;}
+.lote-count[data-d="Médio"]{background:linear-gradient(135deg,#f59e0b,#d97706);border-color:transparent;}
+.lote-count[data-d="Difícil"]{background:linear-gradient(135deg,#ef4444,#b91c1c);border-color:transparent;}
+.lote-count.zero{opacity:.55;}
+.lote-count .lc-nome{flex:1;text-align:left;}
+.lote-count .lc-val{min-width:22px;text-align:center;font-size:15px;font-weight:800;}
+.lote-count button{width:26px;height:26px;border-radius:7px;border:1px solid rgba(255,255,255,.55);background:rgba(255,255,255,.15);color:#fff;font-size:15px;font-weight:800;cursor:pointer;line-height:1;padding:0;}
+.lote-count button:hover{background:rgba(255,255,255,.3);}
+.lote-count button:disabled{opacity:.35;cursor:default;}
+.lote-status{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:8px 0 0;}
+.lote-status .hint{margin:0;}
+.lote-status .hint.erro{color:#fecaca;font-weight:600;}
+.lote-link{background:none;border:none;color:var(--ink-1);text-decoration:underline;cursor:pointer;font-size:12px;padding:0;font-family:inherit;}
+.lote-link:hover{color:#fff;}
 .lote-actions{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-top:14px;}
+.btn:disabled{opacity:.45;cursor:not-allowed;transform:none;box-shadow:none;}
 .qblock .qb-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;}
 .qblock .qb-num{display:flex;align-items:center;gap:10px;font-weight:700;font-size:13.5px;}
 .qblock .qb-num .dot{width:26px;height:26px;border-radius:8px;background:linear-gradient(135deg,var(--accent-a),var(--accent-b));display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:800;}
@@ -396,18 +409,21 @@ body.mode-professor .qcard{box-shadow:0 25px 60px -25px rgba(0,0,0,.6), 0 0 0 1.
            gerar (ver planejaRecortesPorTema, no app.js). -->
       <div class="lote-panel" id="lotePanel">
         <div class="lote-head">⚡ Configurar todas as questões de uma vez</div>
-        <p class="hint" style="margin:0 0 12px;">Preenche as questões abaixo com o mesmo tema e o mesmo recurso visual. Os níveis marcados são distribuídos igualmente entre as questões, em ordem embaralhada. A IA planeja um recorte diferente (conteúdo, contexto e habilidade) para cada questão do tema.</p>
+        <p class="hint" style="margin:0 0 12px;">Preenche as questões abaixo com o mesmo tema e o mesmo recurso visual, e distribui as quantidades de cada nível em ordem embaralhada. Os contadores mostram sempre a situação real das questões abaixo: mude o nível de uma questão lá embaixo e eles se atualizam. A IA planeja um recorte diferente (conteúdo, contexto e habilidade) para cada questão do tema.</p>
         <label class="field-label">Tema do lote</label>
         <textarea id="loteTema" placeholder="Ex.: Eletricidade – Eletrodinâmica"></textarea>
         <div class="qgrid" style="margin-top:12px;">
           <div>
-            <label class="field-label">Níveis de dificuldade (marque um ou mais)</label>
-            <div class="lote-checks">
-              <label class="lote-check sel" data-d="Fácil"><input type="checkbox" id="loteNivelFacil" checked> Fácil</label>
-              <label class="lote-check sel" data-d="Médio"><input type="checkbox" id="loteNivelMedio" checked> Médio</label>
-              <label class="lote-check sel" data-d="Difícil"><input type="checkbox" id="loteNivelDificil" checked> Difícil</label>
+            <label class="field-label">Quantidade de questões por nível</label>
+            <div class="lote-counts">
+              <div class="lote-count" data-d="Fácil"><span class="lc-nome">Fácil</span><button type="button" class="lc-menos" aria-label="menos fáceis">−</button><span class="lc-val" id="loteContFacil">0</span><button type="button" class="lc-mais" aria-label="mais fáceis">+</button></div>
+              <div class="lote-count" data-d="Médio"><span class="lc-nome">Médio</span><button type="button" class="lc-menos" aria-label="menos médias">−</button><span class="lc-val" id="loteContMedio">0</span><button type="button" class="lc-mais" aria-label="mais médias">+</button></div>
+              <div class="lote-count" data-d="Difícil"><span class="lc-nome">Difícil</span><button type="button" class="lc-menos" aria-label="menos difíceis">−</button><span class="lc-val" id="loteContDificil">0</span><button type="button" class="lc-mais" aria-label="mais difíceis">+</button></div>
             </div>
-            <p class="hint" id="loteResumo" style="margin:8px 0 0;"></p>
+            <div class="lote-status">
+              <p class="hint" id="loteResumo"></p>
+              <button type="button" class="lote-link" id="btnDistribuirIgual">Distribuir igualmente</button>
+            </div>
           </div>
           <div>
             <label class="field-label">Recurso visual</label>

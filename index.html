@@ -169,13 +169,26 @@ select optgroup{background:#fff;color:#111;font-weight:700;}
    uma vez; os blocos individuais continuam abaixo, para ajustes. */
 .lote-panel{border-radius:16px;border:1.5px dashed var(--glass-brd);background:rgba(255,255,255,.05);padding:18px;margin-bottom:18px;}
 .lote-panel .lote-head{display:flex;align-items:center;gap:8px;font-weight:700;font-size:13.5px;margin-bottom:4px;}
-.lote-checks{display:flex;gap:8px;flex-wrap:wrap;}
-.lote-check{flex:1;min-width:90px;display:flex;align-items:center;justify-content:center;gap:7px;padding:9px 6px;border-radius:10px;border:1.5px solid var(--glass-brd);background:rgba(255,255,255,.03);cursor:pointer;font-size:12px;font-weight:600;transition:.15s;user-select:none;}
-.lote-check input{width:auto;margin:0;accent-color:#fff;}
-.lote-check.sel[data-d="Fácil"]{background:linear-gradient(135deg,#22c55e,#16a34a);border-color:transparent;color:#fff;}
-.lote-check.sel[data-d="Médio"]{background:linear-gradient(135deg,#f59e0b,#d97706);border-color:transparent;color:#fff;}
-.lote-check.sel[data-d="Difícil"]{background:linear-gradient(135deg,#ef4444,#b91c1c);border-color:transparent;color:#fff;}
+/* Contadores por nível: espelho editável dos blocos individuais (ver
+   atualizaResumoLote / aplicarLoteATodas no app.js). */
+.lote-counts{display:flex;gap:8px;flex-wrap:wrap;}
+.lote-count{flex:1;min-width:120px;display:flex;align-items:center;justify-content:space-between;gap:6px;padding:6px 8px;border-radius:10px;border:1.5px solid var(--glass-brd);color:#fff;font-size:12px;font-weight:700;user-select:none;}
+.lote-count[data-d="Fácil"]{background:linear-gradient(135deg,#22c55e,#16a34a);border-color:transparent;}
+.lote-count[data-d="Médio"]{background:linear-gradient(135deg,#f59e0b,#d97706);border-color:transparent;}
+.lote-count[data-d="Difícil"]{background:linear-gradient(135deg,#ef4444,#b91c1c);border-color:transparent;}
+.lote-count.zero{opacity:.55;}
+.lote-count .lc-nome{flex:1;text-align:left;}
+.lote-count .lc-val{min-width:22px;text-align:center;font-size:15px;font-weight:800;}
+.lote-count button{width:26px;height:26px;border-radius:7px;border:1px solid rgba(255,255,255,.55);background:rgba(255,255,255,.15);color:#fff;font-size:15px;font-weight:800;cursor:pointer;line-height:1;padding:0;}
+.lote-count button:hover{background:rgba(255,255,255,.3);}
+.lote-count button:disabled{opacity:.35;cursor:default;}
+.lote-status{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:8px 0 0;}
+.lote-status .hint{margin:0;}
+.lote-status .hint.erro{color:#fecaca;font-weight:600;}
+.lote-link{background:none;border:none;color:var(--ink-1);text-decoration:underline;cursor:pointer;font-size:12px;padding:0;font-family:inherit;}
+.lote-link:hover{color:#fff;}
 .lote-actions{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-top:14px;}
+.btn:disabled{opacity:.45;cursor:not-allowed;transform:none;box-shadow:none;}
 .qblock .qb-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;}
 .qblock .qb-num{display:flex;align-items:center;gap:10px;font-weight:700;font-size:13.5px;}
 .qblock .qb-num .dot{width:26px;height:26px;border-radius:8px;background:linear-gradient(135deg,var(--accent-a),var(--accent-b));display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:800;}
@@ -396,18 +409,21 @@ body.mode-professor .qcard{box-shadow:0 25px 60px -25px rgba(0,0,0,.6), 0 0 0 1.
            gerar (ver planejaRecortesPorTema, no app.js). -->
       <div class="lote-panel" id="lotePanel">
         <div class="lote-head">⚡ Configurar todas as questões de uma vez</div>
-        <p class="hint" style="margin:0 0 12px;">Preenche as questões abaixo com o mesmo tema e o mesmo recurso visual. Os níveis marcados são distribuídos igualmente entre as questões, em ordem embaralhada. A IA planeja um recorte diferente (conteúdo, contexto e habilidade) para cada questão do tema.</p>
+        <p class="hint" style="margin:0 0 12px;">Preenche as questões abaixo com o mesmo tema e o mesmo recurso visual, e distribui as quantidades de cada nível em ordem embaralhada. Os contadores mostram sempre a situação real das questões abaixo: mude o nível de uma questão lá embaixo e eles se atualizam. A IA planeja um recorte diferente (conteúdo, contexto e habilidade) para cada questão do tema.</p>
         <label class="field-label">Tema do lote</label>
         <textarea id="loteTema" placeholder="Ex.: Eletricidade – Eletrodinâmica"></textarea>
         <div class="qgrid" style="margin-top:12px;">
           <div>
-            <label class="field-label">Níveis de dificuldade (marque um ou mais)</label>
-            <div class="lote-checks">
-              <label class="lote-check sel" data-d="Fácil"><input type="checkbox" id="loteNivelFacil" checked> Fácil</label>
-              <label class="lote-check sel" data-d="Médio"><input type="checkbox" id="loteNivelMedio" checked> Médio</label>
-              <label class="lote-check sel" data-d="Difícil"><input type="checkbox" id="loteNivelDificil" checked> Difícil</label>
+            <label class="field-label">Quantidade de questões por nível</label>
+            <div class="lote-counts">
+              <div class="lote-count" data-d="Fácil"><span class="lc-nome">Fácil</span><button type="button" class="lc-menos" aria-label="menos fáceis">−</button><span class="lc-val" id="loteContFacil">0</span><button type="button" class="lc-mais" aria-label="mais fáceis">+</button></div>
+              <div class="lote-count" data-d="Médio"><span class="lc-nome">Médio</span><button type="button" class="lc-menos" aria-label="menos médias">−</button><span class="lc-val" id="loteContMedio">0</span><button type="button" class="lc-mais" aria-label="mais médias">+</button></div>
+              <div class="lote-count" data-d="Difícil"><span class="lc-nome">Difícil</span><button type="button" class="lc-menos" aria-label="menos difíceis">−</button><span class="lc-val" id="loteContDificil">0</span><button type="button" class="lc-mais" aria-label="mais difíceis">+</button></div>
             </div>
-            <p class="hint" id="loteResumo" style="margin:8px 0 0;"></p>
+            <div class="lote-status">
+              <p class="hint" id="loteResumo"></p>
+              <button type="button" class="lote-link" id="btnDistribuirIgual">Distribuir igualmente</button>
+            </div>
           </div>
           <div>
             <label class="field-label">Recurso visual</label>
@@ -1340,7 +1356,7 @@ function selectArea(key){
   renderDisciplinaChips();
   renderQuestionBlocks();
   atualizaOpcoesPorArea();
-  atualizaResumoLote();
+  sincronizaContadoresLote();
 }
 
 /* Instruções opcionais de imagem/gráfico/tabela são por questão e digitadas
@@ -1372,6 +1388,7 @@ function renderDisciplinaChips(){
       state.disciplina = d;
       renderDisciplinaChips();
       renderQuestionBlocks();
+      sincronizaContadoresLote();
     });
     wrap.appendChild(chip);
   });
@@ -1384,7 +1401,7 @@ function setQty(n){
   document.getElementById("qtyVal").textContent = n;
   syncQuestionsArrayLength();
   renderQuestionBlocks();
-  atualizaResumoLote();
+  sincronizaContadoresLote();
 }
 
 /* ---------------- Configuração em lote (passo 4) ----------------
@@ -1395,32 +1412,51 @@ function setQty(n){
    continua lendo os mesmos objetos, e com o mesmo tema em todas as questões
    o planejamento de recortes (planejaRecortesPorTema) e a distribuição de
    gabaritos fazem o trabalho de diversidade. */
+/* v9 — CONTADORES POR NÍVEL (Opção B). Os contadores são um espelho
+   editável dos blocos individuais, com duas regras e nenhuma exceção:
+   - blocos → contadores (automático): qualquer mudança de nível em qualquer
+     questão — clique num bloco, "Aplicar", stepper, troca de área/disciplina,
+     volta da tela de resultados — refaz os contadores com a contagem REAL
+     (sincronizaContadoresLote);
+   - contadores → blocos (só no "Aplicar"): mexer nos contadores é plano;
+     o botão distribui exatamente essas quantidades, embaralhadas.
+   A soma dos contadores tem de ser igual à quantidade de questões; enquanto
+   não fechar, a linha de situação avisa e o "Aplicar" fica desabilitado. */
 const NIVEIS_LOTE = [
-  { nome: "Fácil", id: "loteNivelFacil", plural: "fáceis" },
-  { nome: "Médio", id: "loteNivelMedio", plural: "médias" },
-  { nome: "Difícil", id: "loteNivelDificil", plural: "difíceis" },
+  { nome: "Fácil", id: "loteContFacil", plural: "fáceis", singular: "fácil" },
+  { nome: "Médio", id: "loteContMedio", plural: "médias", singular: "média" },
+  { nome: "Difícil", id: "loteContDificil", plural: "difíceis", singular: "difícil" },
 ];
+// Plano dos contadores (o que o "Aplicar" vai distribuir). Começa vazio e é
+// preenchido pela primeira sincronização com os blocos.
+let loteContadores = { "Fácil": 0, "Médio": 0, "Difícil": 0 };
 
-function niveisMarcadosNoLote(){
-  return NIVEIS_LOTE.filter(n => { const el = document.getElementById(n.id); return el && el.checked; }).map(n => n.nome);
+// Contagem REAL de níveis nas questões do formulário.
+function contagemRealPorNivel(){
+  const c = { "Fácil": 0, "Médio": 0, "Difícil": 0 };
+  state.questions.forEach(q => { if(c[q.dificuldade] !== undefined) c[q.dificuldade]++; });
+  return c;
 }
 
-// Quantas questões de cada nível: divisão igual entre os níveis marcados; a
-// sobra vai para os primeiros na ordem Fácil → Médio → Difícil.
-function contagemPorNivel(total, niveis){
-  const base = Math.floor(total / niveis.length), sobra = total % niveis.length;
+// Divisão igual de "total" entre os três níveis; a sobra vai para os
+// primeiros na ordem Fácil → Médio → Difícil.
+function contagemIgual(total){
+  const base = Math.floor(total / 3), sobra = total % 3;
   const saida = {};
-  niveis.forEach((nv, i) => { saida[nv] = base + (i < sobra ? 1 : 0); });
+  NIVEIS_LOTE.forEach((n, i) => { saida[n.nome] = base + (i < sobra ? 1 : 0); });
   return saida;
 }
 
 // Lista de níveis, uma posição por questão, EMBARALHADA (decisão do
 // professor: como no ENEM real, a prova não vem ordenada por dificuldade).
-function distribuiNiveis(total, niveis){
-  const contagem = contagemPorNivel(total, niveis);
+function distribuiNiveis(contagem){
   const lista = [];
-  niveis.forEach(nv => { for(let k = 0; k < contagem[nv]; k++) lista.push(nv); });
+  NIVEIS_LOTE.forEach(n => { for(let k = 0; k < (contagem[n.nome] || 0); k++) lista.push(n.nome); });
   return embaralha(lista);
+}
+
+function somaContadores(){
+  return NIVEIS_LOTE.reduce((s, n) => s + (loteContadores[n.nome] || 0), 0);
 }
 
 function recursoDoLote(){
@@ -1428,26 +1464,68 @@ function recursoDoLote(){
   return sel ? sel.dataset.r : "nenhum";
 }
 
+function textoContagem(contagem){
+  return NIVEIS_LOTE.filter(n => contagem[n.nome] > 0).map(n => `${contagem[n.nome]} ${contagem[n.nome] === 1 ? n.singular : n.plural}`).join(" · ") || "nenhuma";
+}
+
+// Blocos → contadores: os contadores passam a mostrar a contagem real.
+function sincronizaContadoresLote(){
+  loteContadores = contagemRealPorNivel();
+  atualizaResumoLote();
+}
+
+// Desenha contadores, linha de situação e estado do botão "Aplicar".
 function atualizaResumoLote(){
   const qtdEl = document.getElementById("loteQtd");
   const resumoEl = document.getElementById("loteResumo");
+  const btn = document.getElementById("btnAplicarLote");
   if(!qtdEl || !resumoEl) return;
   const total = state.qty;
   qtdEl.textContent = total;
-  const niveis = niveisMarcadosNoLote();
-  if(!niveis.length){ resumoEl.textContent = "Marque pelo menos um nível."; return; }
-  const contagem = contagemPorNivel(total, niveis);
-  resumoEl.textContent = niveis.map(nv => `${contagem[nv]} ${contagem[nv] === 1 ? nv.toLowerCase() : NIVEIS_LOTE.find(n => n.nome === nv).plural}`).join(" · ") + (niveis.length > 1 ? " · ordem embaralhada" : "");
+  NIVEIS_LOTE.forEach(n => {
+    const el = document.getElementById(n.id);
+    if(!el) return;
+    const v = loteContadores[n.nome] || 0;
+    el.textContent = v;
+    const card = el.closest(".lote-count");
+    if(card){
+      card.classList.toggle("zero", v === 0);
+      const menos = card.querySelector(".lc-menos"), mais = card.querySelector(".lc-mais");
+      if(menos) menos.disabled = v <= 0;
+      if(mais) mais.disabled = v >= total;
+    }
+  });
+  const soma = somaContadores();
+  const fecha = soma === total;
+  resumoEl.classList.toggle("erro", !fecha);
+  resumoEl.textContent = fecha
+    ? `${total} de ${total} ${total === 1 ? "questão" : "questões"} · ${textoContagem(loteContadores)} · ordem embaralhada ao aplicar`
+    : `${soma} de ${total} — ajuste os contadores para fechar a soma`;
+  if(btn) btn.disabled = !fecha;
+}
+
+// "+"/"−" de um contador: só o plano muda (0..N); os blocos ficam como estão
+// até o "Aplicar".
+function ajustaContadorLote(nivel, delta){
+  const v = Math.max(0, Math.min(state.qty, (loteContadores[nivel] || 0) + delta));
+  loteContadores[nivel] = v;
+  atualizaResumoLote();
+}
+
+function distribuirIgualmenteLote(){
+  loteContadores = contagemIgual(state.qty);
+  atualizaResumoLote();
 }
 
 function aplicarLoteATodas(){
   if(!state.area){ toast("Selecione a área do conhecimento primeiro.", "err"); return; }
   const tema = (document.getElementById("loteTema").value || "").trim();
-  const niveis = niveisMarcadosNoLote();
-  if(!niveis.length){ toast("Marque pelo menos um nível de dificuldade para o lote.", "err"); return; }
-  const recurso = recursoDoLote();
   syncQuestionsArrayLength();
-  const plano = distribuiNiveis(state.questions.length, niveis);
+  const total = state.questions.length;
+  if(somaContadores() !== total){ toast(`A soma dos contadores (${somaContadores()}) tem de ser igual ao número de questões (${total}).`, "err"); return; }
+  const recurso = recursoDoLote();
+  const contagem = { ...loteContadores };
+  const plano = distribuiNiveis(contagem);
   state.questions.forEach((q, i) => {
     q.tema = tema;
     q.dificuldade = plano[i];
@@ -1457,10 +1535,10 @@ function aplicarLoteATodas(){
     q.instrucoesVisual = "";
   });
   renderQuestionBlocks();
-  const contagem = contagemPorNivel(state.questions.length, niveis);
-  const resumo = niveis.map(nv => `${contagem[nv]} ${nv}`).join(", ");
-  console.log(`[lote] aplicado a ${state.questions.length} questões · tema "${tema || "(em branco)"}" · recurso ${recurso} · níveis ${resumo} · ordem: ${plano.join(", ")}`);
-  toast(`Configuração aplicada às ${state.questions.length} questões (${resumo}${tema ? "" : "; tema em branco — a IA distribui os objetos de conhecimento"}). Ajuste qualquer questão abaixo, se quiser.`, "ok");
+  sincronizaContadoresLote();
+  const resumo = textoContagem(contagem);
+  console.log(`[lote] aplicado a ${total} questões · tema "${tema || "(em branco)"}" · recurso ${recurso} · níveis ${resumo} · ordem: ${plano.join(", ")}`);
+  toast(`Configuração aplicada às ${total} questões (${resumo}${tema ? "" : "; tema em branco — a IA distribui os objetos de conhecimento"}). Ajuste qualquer questão abaixo, se quiser.`, "ok");
 }
 
 // Tema comum a TODAS as questões da leva (ou null): dá nome ao simulado.
@@ -1597,6 +1675,8 @@ function buildQuestionBlock(q, idx){
   el.querySelectorAll(".diff-opt").forEach(d => d.addEventListener("click", () => {
     q.dificuldade = d.dataset.d;
     el.querySelectorAll(".diff-opt").forEach(x => x.classList.toggle("sel", x === d));
+    // Blocos → contadores: o painel de lote mostra sempre a contagem real.
+    sincronizaContadoresLote();
   }));
   el.querySelectorAll(".res-opt").forEach(r => r.addEventListener("click", () => {
     q.recurso = r.dataset.r;
@@ -5943,17 +6023,18 @@ function init(){
   document.getElementById("qtyMinus").addEventListener("click", () => setQty(state.qty - 1));
   document.getElementById("qtyPlus").addEventListener("click", () => setQty(state.qty + 1));
 
-  // Painel de configuração em lote (passo 4).
-  NIVEIS_LOTE.forEach(n => {
-    const cb = document.getElementById(n.id);
-    if(!cb) return;
-    cb.addEventListener("change", () => { cb.closest(".lote-check").classList.toggle("sel", cb.checked); atualizaResumoLote(); });
+  // Painel de configuração em lote (passo 4): contadores por nível.
+  document.querySelectorAll("#lotePanel .lote-count").forEach(card => {
+    const nivel = card.dataset.d;
+    card.querySelector(".lc-menos").addEventListener("click", () => ajustaContadorLote(nivel, -1));
+    card.querySelector(".lc-mais").addEventListener("click", () => ajustaContadorLote(nivel, +1));
   });
+  document.getElementById("btnDistribuirIgual").addEventListener("click", distribuirIgualmenteLote);
   document.querySelectorAll("#loteRecursoRow .res-opt").forEach(r => r.addEventListener("click", () => {
     document.querySelectorAll("#loteRecursoRow .res-opt").forEach(x => x.classList.toggle("sel", x === r));
   }));
   document.getElementById("btnAplicarLote").addEventListener("click", () => { if(exigirLogin()) aplicarLoteATodas(); });
-  atualizaResumoLote();
+  sincronizaContadoresLote();
 
   document.getElementById("btnGenerate").addEventListener("click", () => {
     if(!exigirLogin()) return;
@@ -5967,6 +6048,10 @@ function init(){
     simuladoAbertoId = null;
     document.getElementById("formPanel").style.display = "block";
     document.getElementById("resultsPanel").style.display = "none";
+    // Os blocos são reconstruídos a partir do estado: o que foi editado na
+    // tela de resultados (tema, nível, recurso) aparece aqui também.
+    renderQuestionBlocks();
+    sincronizaContadoresLote();
   });
 
   document.getElementById("viewAluno").addEventListener("click", () => setViewMode("aluno"));
