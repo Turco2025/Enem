@@ -1599,6 +1599,11 @@ function selfTestResponse() {
     notacaoHash: fnv1a(NOTACAO_QUIMICA),
     schemaChars: JSON_SCHEMA_TXT.length,
     schemaHash: fnv1a(JSON_SCHEMA_TXT),
+    // v68: impressão digital dos protocolos de recurso visual embutidos no
+    // deploy (recurso_instrucoes.ts), para provar qual versão está no ar.
+    recursoChars: JSON.stringify(RECURSO_INSTRUCOES).length,
+    recursoHash: fnv1a(JSON.stringify(RECURSO_INSTRUCOES)),
+    recursoBiologiaCinematografico: /National Geographic/.test(RECURSO_INSTRUCOES["imagem_biologia"] || ""),
     temNotacaoQuimica: typeof NOTACAO_QUIMICA === "string" && NOTACAO_QUIMICA.length > 0,
     temGabaritoAlvo: typeof buildGabaritoAlvo === "function",
     temNormalizarCamposEstruturados: typeof normalizarCamposEstruturados === "function",
