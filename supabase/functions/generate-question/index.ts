@@ -12,7 +12,7 @@ const APP_DATA: any = APP_DATA_JSON;
    visual e formato de entrega) vivem em recurso_instrucoes.ts, ao lado deste
    arquivo no repositório, e entram no pacote do mesmo jeito que app_data.json:
    embutidos no deploy, sem rede em produção. Conteúdo idêntico ao da v62. */
-import { NOTACAO_QUIMICA, RECURSO_INSTRUCOES, instrucoesImagem, JSON_SCHEMA_TXT } from "https://raw.githubusercontent.com/Turco2025/Enem/main/supabase/functions/generate-question/recurso_instrucoes.ts";
+import { NOTACAO_QUIMICA, RECURSO_INSTRUCOES, COMPLEMENTO_BIOLOGIA, instrucoesImagem, ehBiologia, JSON_SCHEMA_TXT } from "https://raw.githubusercontent.com/Turco2025/Enem/main/supabase/functions/generate-question/recurso_instrucoes.ts";
 
 
 const CORS_HEADERS = {
@@ -148,6 +148,20 @@ function buildSystemPrompt(area: string) {
   return APP_DATA.universalModel + "\n\n" + APP_DATA.areaContext[area] + buildObjetosConhecimento(area) + notacao;
 }
 
+/* v69 — PROMPT DE SISTEMA ENXUTO PARA REFAZER SÓ O RECURSO VISUAL.
+   O botão "Refazer imagem" e o refazer automático (garantirVisual) usavam
+   buildSystemPrompt(area) — o modelo pedagógico completo (26,5 mil
+   caracteres), que serve para ESCREVER questões — só para reespecificar
+   uma imagem. Medido em 10/09/2026: um clique custava US$ 0,097 (entrada
+   11 mil tokens + gravação de cache de 12,5 mil). Aqui vai só o que a
+   imagem precisa: papel, contexto da área e, em Ciências da Natureza, a
+   notação química (rótulos podem ter fórmulas). O protocolo de imagem
+   continua indo na mensagem (buildVisualRedoPrompt). */
+function buildSystemVisual(area: string) {
+  const notacao = area === "natureza" ? "\n\n" + NOTACAO_QUIMICA : "";
+  return `Você é um elaborador de itens do ENEM (Inep), especialista em recursos visuais de questões: sua tarefa nesta chamada é produzir SOMENTE a especificação do recurso visual (imagem, gráfico ou tabela) de uma questão já escrita, seguindo à risca o protocolo e o formato indicados na mensagem do usuário. Não reescreva, não corrija e não comente a questão.\n\nÁrea: ${AREA_LABELS[area]}.\n\n${APP_DATA.areaContext[area]}${notacao}`;
+}
+
 function findCompetencia(area: string, numero: number) {
   const m = APP_DATA.matriz[area];
   if (!m) return null;
@@ -194,8 +208,21 @@ function buildRegraFontesReais(disciplina: string): string {
   return `
 
 ⚠️ REGRA OBRIGATÓRIA — PROIBIDO INVENTAR AUTORES OU TEXTOS: a disciplina "${disciplina}" normalmente exige um texto-suporte apoiado em autor, obra, pesquisa, teoria, evento histórico ou registro cultural real. Você está TERMINANTEMENTE PROIBIDO de inventar, "criar hipóteses de", atribuir erroneamente ou apresentar como real qualquer autor, livro, poema, conto, artigo, quadro, obra de arte, filme, teoria, pesquisador, estudo científico, citação ou fato histórico que não exista de fato. Use SOMENTE autores/obras/estudos reais, verificáveis e reconhecidos, adequados ao nível de ensino médio/ENEM (autores consagrados da literatura em língua portuguesa e estrangeira, documentos e eventos históricos reais, teóricos e obras reais de filosofia/sociologia, pesquisas e pesquisadores reais de biologia, obras de arte reais, etc.).
-Se você tiver QUALQUER dúvida sobre a existência, autoria, título exato, data, conteúdo ou trecho de um texto/autor antes de usá-lo, USE A FERRAMENTA web_search para verificar em fontes confiáveis (sites de universidades, editoras, enciclopédias reconhecidas, artigos científicos/acadêmicos, acervos como Domínio Público, Fundação Biblioteca Nacional, Scielo) antes de escrever a questão — é sempre preferível pesquisar e confirmar a arriscar citar algo inexistente ou incorreto. No campo "textoBase", cite a fonte real (autor, obra, ano) no formato ENEM; é PROIBIDO usar uma citação "verossímil"/fictícia nesta disciplina. Você pode resumir, parafrasear ou adaptar um trecho real do texto (para não reproduzir excertos extensos protegidos por direitos autorais), mas a autoria e a obra citadas devem ser genuínas e o conteúdo do resumo deve corresponder fielmente ao que a obra real de fato trata.`;
+${ehBiologia(disciplina) ? BUSCA_BIOLOGIA : BUSCA_PADRAO} No campo "textoBase", cite a fonte real (autor, obra, ano) no formato ENEM; é PROIBIDO usar uma citação "verossímil"/fictícia nesta disciplina. Você pode resumir, parafrasear ou adaptar um trecho real do texto (para não reproduzir excertos extensos protegidos por direitos autorais), mas a autoria e a obra citadas devem ser genuínas e o conteúdo do resumo deve corresponder fielmente ao que a obra real de fato trata.`;
 }
+
+/* Como usar a busca na web, por disciplina. O texto padrão (Literatura,
+   História, Filosofia etc.) incentiva a pesquisa sempre que houver dúvida.
+   v69 — em BIOLOGIA a leva real de 10/09/2026 mostrou 6 buscas em 5 das 10
+   questões, cada uma custando ≈ US$ 0,04–0,05 (a busca em si, a segunda
+   rodada e a gravação do resultado no cache) — quase sempre para confirmar
+   conhecimento consolidado (ciclos, anatomia, fisiologia) que não precisa de
+   fonte. Em Biologia a busca passa a ser reservada a citação de estudo, dado
+   numérico ou publicação específica, no máximo uma vez; sem certeza da
+   fonte, o Guia do Inep permite texto-suporte como situação hipotética
+   formulada pelo elaborador — sem autor inventado. */
+const BUSCA_PADRAO = `Se você tiver QUALQUER dúvida sobre a existência, autoria, título exato, data, conteúdo ou trecho de um texto/autor antes de usá-lo, USE A FERRAMENTA web_search para verificar em fontes confiáveis (sites de universidades, editoras, enciclopédias reconhecidas, artigos científicos/acadêmicos, acervos como Domínio Público, Fundação Biblioteca Nacional, Scielo) antes de escrever a questão — é sempre preferível pesquisar e confirmar a arriscar citar algo inexistente ou incorreto.`;
+const BUSCA_BIOLOGIA = `USO DA BUSCA NA WEB EM BIOLOGIA — regra de economia, sem abrir mão da veracidade: pesquise NO MÁXIMO UMA VEZ por questão, e SOMENTE quando for citar um estudo, uma pesquisa, um dado numérico, uma estatística ou uma publicação ESPECÍFICA cuja existência, autoria ou valor você não tenha certeza. Para conhecimento consolidado de Biologia (ciclos biogeoquímicos, anatomia, fisiologia, ecologia, genética, evolução, ciclos de vida, saúde pública básica) NÃO pesquise: escreva a partir do seu conhecimento. Se você não tiver certeza de uma fonte específica e a busca não for justificada, NÃO invente autor, instituição nem ano: escreva o texto-suporte como situação hipotética formulada pelo elaborador (permitida pelo Guia do Inep), com contexto real e verossímil, e SEM citação de fonte — isso é sempre preferível a uma citação inventada.`;
 
 // Posição do gabarito: o professor reserva, antes de gerar, qual letra é a
 // correta em cada questão, de modo que em cada bloco de cinco questões
@@ -518,7 +545,7 @@ function backoffDelay(attempt: number) {
 
 type SistemaPrompt = string | Array<{ type: "text"; text: string; cache_control?: { type: "ephemeral" } }>;
 
-async function callClaude(system: SistemaPrompt, userMsg: string, maxTokens: number, enableWebSearch = false, ferramenta: any = null): Promise<{ text: string; truncated: boolean; usage: any; ferramentaJSON: string }> {
+async function callClaude(system: SistemaPrompt, userMsg: string, maxTokens: number, enableWebSearch: false | { type: string; name: string; max_uses: number } = false, ferramenta: any = null): Promise<{ text: string; truncated: boolean; usage: any; ferramentaJSON: string }> {
   let lastErr: any;
   for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
     const controller = new AbortController();
@@ -560,7 +587,7 @@ async function callClaude(system: SistemaPrompt, userMsg: string, maxTokens: num
           stream: true,
           ...(() => {
             const tools = [
-              ...(enableWebSearch ? [WEB_SEARCH_TOOL] : []),
+              ...(enableWebSearch ? [enableWebSearch] : []),
               ...(ferramenta ? [ferramenta] : []),
             ];
             if (!tools.length) return {};
@@ -658,6 +685,10 @@ async function callClaude(system: SistemaPrompt, userMsg: string, maxTokens: num
 }
 
 const WEB_SEARCH_TOOL = { type: "web_search_20250305", name: "web_search", max_uses: 5 };
+// v69: em Biologia o teto cai para 2 buscas por questão (ver BUSCA_BIOLOGIA).
+function webSearchTool(disciplina: string) {
+  return ehBiologia(disciplina) ? { ...WEB_SEARCH_TOOL, max_uses: 2 } : WEB_SEARCH_TOOL;
+}
 
 /* ENTREGA POR FERRAMENTA, NÃO POR TEXTO LIVRE.
 
@@ -1134,7 +1165,7 @@ function lerFerramenta(bruto: string): any | null {
   return null;
 }
 
-async function callClaudeForJSON(system: SistemaPrompt, userMsg: string, enableWebSearch = false, usos?: any[], ferramenta: any = FERRAMENTA_QUESTAO) {
+async function callClaudeForJSON(system: SistemaPrompt, userMsg: string, enableWebSearch: false | { type: string; name: string; max_uses: number } = false, usos?: any[], ferramenta: any = FERRAMENTA_QUESTAO) {
   const primeira = await callClaude(system, userMsg, 8000, enableWebSearch, ferramenta);
   const { text, truncated, usage } = primeira;
   if (usos && usage) usos.push(usage);
@@ -1521,7 +1552,7 @@ async function garantirVisual(data: any, opts: { area: string; disciplina: strin
         gabarito: String(data.gabarito || ""), resolucaoComentada: String(data.resolucaoComentada || ""),
         instrucoesVisual: opts.instrucoesVisual, motivoFaltante: check.motivo,
       });
-      const novo = await callClaudeForJSON(buildSystemPrompt(opts.area), userMsg, false, usos, ferramentaVisualPara(opts.recurso));
+      const novo = await callClaudeForJSON(buildSystemVisual(opts.area), userMsg, false, usos, ferramentaVisualPara(opts.recurso));
       const visualNovo = normalizarVisual(novo?.visual, opts.recurso);
       const c2 = visualConforme(visualNovo, opts.recurso);
       diag.refeito = n;
@@ -1587,6 +1618,9 @@ function selfTestResponse() {
     buildDiversidadeTematica.toString(),
     buildSystemPlanejamento.toString(),
     buildPlanejamentoPrompt.toString(),
+    buildSystemVisual.toString(),
+    BUSCA_PADRAO,
+    BUSCA_BIOLOGIA,
   ].join(String.fromCharCode(0));
   return jsonResponse({
     selftest: true,
@@ -1603,7 +1637,12 @@ function selfTestResponse() {
     // deploy (recurso_instrucoes.ts), para provar qual versão está no ar.
     recursoChars: JSON.stringify(RECURSO_INSTRUCOES).length,
     recursoHash: fnv1a(JSON.stringify(RECURSO_INSTRUCOES)),
-    recursoBiologiaCinematografico: /National Geographic/.test(RECURSO_INSTRUCOES["imagem_biologia"] || ""),
+    // v69: Biologia usa o protocolo de Física byte a byte + complemento científico.
+    complementoBiologiaChars: COMPLEMENTO_BIOLOGIA.length,
+    complementoBiologiaHash: fnv1a(COMPLEMENTO_BIOLOGIA),
+    biologiaUsaProtocoloDeFisica: instrucoesImagem("imagem", "Biologia").startsWith(instrucoesImagem("imagem", "Física")),
+    recursoBiologiaCinematografico: /National Geographic/.test(instrucoesImagem("imagem", "Biologia")),
+    buscaBiologiaMaxUses: webSearchTool("Biologia").max_uses,
     temNotacaoQuimica: typeof NOTACAO_QUIMICA === "string" && NOTACAO_QUIMICA.length > 0,
     temGabaritoAlvo: typeof buildGabaritoAlvo === "function",
     temNormalizarCamposEstruturados: typeof normalizarCamposEstruturados === "function",
@@ -1696,7 +1735,8 @@ ATENÇÃO — sua resposta anterior não pôde ser usada: o argumento da ferrame
 
     const usos: any[] = [];
     try {
-      const system = buildSystemPrompt(area);
+      // v69: sistema enxuto — a imagem não precisa do modelo pedagógico inteiro.
+      const system = buildSystemVisual(area);
       const userMsg = buildVisualRedoPrompt({ tema, disciplina, recurso, textoBase, comando, alternativas, gabarito, resolucaoComentada, instrucoesVisual });
       const data = await callClaudeForJSON(system, userMsg, false, usos, ferramentaVisualPara(recurso));
       if (!data || !data.visual) {
@@ -1740,7 +1780,7 @@ ATENÇÃO — sua resposta anterior não pôde ser usada: o argumento da ferrame
       { type: "text", text: buildBlocoFixo({ area, disciplina, recurso, competenciaNum, habilidadeCod }), cache_control: { type: "ephemeral" } },
     ];
     const userMsg = buildUserPrompt({ area, disciplina, tema, dificuldade, recurso, competenciaNum, habilidadeCod, instrucoesVisual, gabaritoAlvo, eixoTematico, temasEvitar, recorte });
-    const webSearch = precisaFontesReais(disciplina);
+    const webSearch = precisaFontesReais(disciplina) ? webSearchTool(disciplina) : false;
     // v62: a ferramenta de entrega é específica do recurso pedido (com
     // imagem/gráfico/tabela, o campo "visual" é obrigatório e tipado).
     let data = await callClaudeForJSON(system, userMsg, webSearch, usos, ferramentaQuestaoPara(recurso));
