@@ -1014,7 +1014,7 @@ async function abrirSimuladoSalvo(id){
     state.disciplina = dados.disciplina || data.disciplina;
     state.qty = dados.qty || (dados.questions ? dados.questions.length : 1);
     state.questions = (dados.questions || []).map(q => {
-      if(q && q.data){ q.data = corrigirQuebrasLiterais(q.data); normalizaVisualQuestao(q.data); }
+      if(q && q.data){ normalizaCamposEstruturados(q.data); q.data = corrigirQuebrasLiterais(q.data); normalizaVisualQuestao(q.data); }
       // Um simulado nunca deveria ser arquivado com imagem "em geração"; se
       // aconteceu (aba fechada no meio), o status volta a refletir a realidade.
       if(q && q.status === "imagem"){
@@ -1174,6 +1174,85 @@ function normalizaVisualQuestao(data){
   });
   if(typeof v.promptImagem === "string" && !v.promptImagem.trim()) delete v.promptImagem;
   data.visual = v;
+  return data;
+}
+
+/* v10 — CAMPOS ESTRUTURADOS QUE CHEGAM COMO STRING (cópia da rede de
+   segurança do backend v67). Caso real (10/09/2026, questão 6 do lote
+   "ciclos biogeoquímicos"): o modelo devolveu "alternativas" como uma STRING
+   contendo o JSON das cinco alternativas, truncada no fim (sem o `"}`). O app
+   procurava alternativas.A…E numa string e exibia as cinco em branco — a
+   auditoria local acusava "Alternativa(s) sem texto". Aqui trata tanto a
+   questão recém-gerada (segunda rede, depois do backend) quanto simulados já
+   arquivados com o defeito. Tem de rodar ANTES de corrigirQuebrasLiterais,
+   que trocaria "\n" literal por quebra real e quebraria o JSON na string.
+   Objeto que já é objeto não é tocado. */
+const LETRAS_ALTERNATIVAS = ["A","B","C","D","E"];
+
+function desescaparJsonString(s){
+  return s
+    .replace(/\\n/g, "\n").replace(/\\r/g, "\r").replace(/\\t/g, "\t")
+    .replace(/\\"/g, '"').replace(/\\\//g, "/").replace(/\\\\/g, "\\");
+}
+
+function objetoDeString(bruto){
+  const t = String(bruto).trim();
+  if(!t.startsWith("{")) return null;
+  for(const sufixo of ["", '"}', "}", '"}}', "}}"]){
+    try{
+      const p = JSON.parse(t + sufixo);
+      if(p && typeof p === "object" && !Array.isArray(p)) return p;
+    }catch(e){ /* tenta o próximo fechamento */ }
+  }
+  return null;
+}
+
+function alternativasUtilizaveis(obj){
+  if(!obj || typeof obj !== "object" || Array.isArray(obj)) return false;
+  return LETRAS_ALTERNATIVAS.every(L => typeof obj[L] === "string" && obj[L].trim().length > 0);
+}
+
+function alternativasDeString(bruto){
+  const direto = objetoDeString(bruto);
+  if(direto && alternativasUtilizaveis(direto)) return direto;
+  const marcas = [];
+  const re = /"([A-E])"\s*[^"\w\s]{0,2}\s*"/g; // aceita ":" e também um separador trocado (caso real: `"D">"16 A."`)
+  let m;
+  while((m = re.exec(bruto)) !== null){
+    if(marcas.some(x => x.letra === m[1])) continue;
+    marcas.push({ letra: m[1], inicio: m.index, fimMarca: m.index + m[0].length });
+  }
+  if(marcas.length !== 5) return null;
+  const saida = {};
+  for(let i = 0; i < marcas.length; i++){
+    const fim = i + 1 < marcas.length ? marcas[i + 1].inicio : bruto.length;
+    let valor = bruto.slice(marcas[i].fimMarca, fim).trim();
+    valor = valor.replace(/[\s,]*\}*\s*$/g, "").replace(/(?<!\\)"[\s,]*$/g, "").trim();
+    saida[marcas[i].letra] = desescaparJsonString(valor).trim();
+  }
+  return alternativasUtilizaveis(saida) ? saida : null;
+}
+
+function normalizaCamposEstruturados(data){
+  if(!data || typeof data !== "object") return data;
+  if(typeof data.alternativas === "string"){
+    const tamanho = data.alternativas.length;
+    const obj = alternativasDeString(data.alternativas);
+    if(obj){ data.alternativas = obj; console.log("[alternativas] campo veio como string — reparado no app (" + tamanho + " caracteres)"); }
+    else console.warn("[alternativas] campo veio como string e NÃO pôde ser reparado (" + tamanho + " caracteres)");
+  }
+  ["analiseAlternativas","competencia","habilidade"].forEach(campo => {
+    if(typeof data[campo] === "string"){
+      const obj = objetoDeString(data[campo]);
+      if(obj){ data[campo] = obj; console.log("[" + campo + "] campo veio como string — reparado no app"); }
+    }
+  });
+  if(data.analiseAlternativas && typeof data.analiseAlternativas === "object"){
+    LETRAS_ALTERNATIVAS.forEach(L => {
+      const v = data.analiseAlternativas[L];
+      if(typeof v === "string"){ const obj = objetoDeString(v); if(obj) data.analiseAlternativas[L] = obj; }
+    });
+  }
   return data;
 }
 
@@ -2054,7 +2133,9 @@ async function generateQuestion(q){
       throw new Error("O backend não retornou a questão.");
     }
 
-    q.data = corrigirQuebrasLiterais(payload.question);
+    // v10: alternativas/análise/competência/habilidade sempre como objeto —
+    // antes de corrigirQuebrasLiterais (ver normalizaCamposEstruturados).
+    q.data = corrigirQuebrasLiterais(normalizaCamposEstruturados(payload.question));
     normalizaVisualQuestao(q.data);
     // Consumo relatado pelo backend (tokens novos, escritos e lidos do cache).
     // Serve para conferir, em produção, que o cache de prompt está valendo.

@@ -786,7 +786,12 @@ function ferramentaQuestaoPara(recurso: string): any {
         recurso: comVisual ? { type: "string", enum: [recurso] } : { type: "string" },
         textoBase: { type: "string" },
         comando: { type: "string" },
-        alternativas: { type: "object" },
+        alternativas: {
+          type: "object",
+          description: 'OBJETO com as chaves "A", "B", "C", "D" e "E", cada valor uma string com o texto da alternativa — nunca uma string contendo JSON.',
+          properties: { A: { type: "string" }, B: { type: "string" }, C: { type: "string" }, D: { type: "string" }, E: { type: "string" } },
+          required: ["A", "B", "C", "D", "E"],
+        },
         gabarito: { type: "string" },
         resolucaoComentada: { type: "string" },
         analiseAlternativas: { type: "object" },
@@ -1381,6 +1386,91 @@ function normalizarVisual(visual: unknown, recurso: string): any {
   return saida;
 }
 
+/* v67 — CAMPOS ESTRUTURADOS QUE CHEGAM COMO STRING.
+   Caso real (10/09/2026, lote "ciclos biogeoquímicos", questão 6): o modelo
+   preencheu "alternativas" da ferramenta com uma STRING contendo o JSON das
+   cinco alternativas — e ainda truncada no fim (sem o `"}` final). A API não
+   valida o conteúdo contra o schema, o backend passou adiante e o app, ao
+   procurar alternativas.A…E numa string, mostrou as cinco em branco.
+   Mesmo padrão de normalizarVisual(), estendido a alternativas,
+   analiseAlternativas, competencia e habilidade:
+   1) JSON.parse direto; 2) JSON.parse acrescentando `"}` ou `}` (fechamento
+   perdido); 3) só para alternativas: extração pelos marcadores "A":" … "E":",
+   valor de cada letra = do marcador até o marcador seguinte, tirando as aspas
+   e vírgulas sobrando e desfazendo os escapes. A conversão só é aceita quando
+   produz um objeto utilizável (alternativas: as cinco letras com texto); caso
+   contrário o campo fica como veio, para a auditoria continuar acusando.
+   Objeto que já chega como objeto não é tocado. */
+const LETRAS_ALTERNATIVAS = ["A", "B", "C", "D", "E"];
+
+function desescaparJsonString(s: string): string {
+  return s
+    .replace(/\\n/g, "\n").replace(/\\r/g, "\r").replace(/\\t/g, "\t")
+    .replace(/\\"/g, '"').replace(/\\\//g, "/").replace(/\\\\/g, "\\");
+}
+
+function objetoDeString(bruto: string): any | null {
+  const t = bruto.trim();
+  if (!t.startsWith("{")) return null;
+  for (const sufixo of ["", '"}', "}", '"}}', "}}"]) {
+    try {
+      const p = JSON.parse(t + sufixo);
+      if (p && typeof p === "object" && !Array.isArray(p)) return p;
+    } catch { /* tenta o próximo fechamento */ }
+  }
+  return null;
+}
+
+function alternativasDeString(bruto: string): Record<string, string> | null {
+  const direto = objetoDeString(bruto);
+  if (direto && alternativasUtilizaveis(direto)) return direto;
+  // Extração pelos marcadores — tolera o fechamento perdido e aspas soltas.
+  const marcas: Array<{ letra: string; inicio: number; fimMarca: number }> = [];
+  const re = /"([A-E])"\s*[^"\w\s]{0,2}\s*"/g; // aceita ":" e também um separador trocado (caso real: `"D">"16 A."`)
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(bruto)) !== null) {
+    if (marcas.some((x) => x.letra === m![1])) continue;
+    marcas.push({ letra: m[1], inicio: m.index, fimMarca: m.index + m[0].length });
+  }
+  if (marcas.length !== 5) return null;
+  const saida: Record<string, string> = {};
+  for (let i = 0; i < marcas.length; i++) {
+    const fim = i + 1 < marcas.length ? marcas[i + 1].inicio : bruto.length;
+    let valor = bruto.slice(marcas[i].fimMarca, fim).trim();
+    valor = valor.replace(/[\s,]*\}*\s*$/g, "").replace(/(?<!\\)"[\s,]*$/g, "").trim();
+    saida[marcas[i].letra] = desescaparJsonString(valor).trim();
+  }
+  return alternativasUtilizaveis(saida) ? saida : null;
+}
+
+function alternativasUtilizaveis(obj: any): boolean {
+  if (!obj || typeof obj !== "object" || Array.isArray(obj)) return false;
+  return LETRAS_ALTERNATIVAS.every((L) => typeof obj[L] === "string" && obj[L].trim().length > 0);
+}
+
+function normalizarCamposEstruturados(data: any): any {
+  if (!data || typeof data !== "object") return data;
+  if (typeof data.alternativas === "string") {
+    const tamanho = data.alternativas.length;
+    const obj = alternativasDeString(data.alternativas);
+    if (obj) { data.alternativas = obj; console.log("[alternativas] campo veio como string — reparado (" + tamanho + " caracteres)"); }
+    else console.warn("[alternativas] campo veio como string e NÃO pôde ser reparado (" + tamanho + " caracteres)");
+  }
+  for (const campo of ["analiseAlternativas", "competencia", "habilidade"]) {
+    if (typeof data[campo] === "string") {
+      const obj = objetoDeString(data[campo]);
+      if (obj) { data[campo] = obj; console.log("[" + campo + "] campo veio como string — reparado"); }
+    }
+  }
+  if (data.analiseAlternativas && typeof data.analiseAlternativas === "object") {
+    for (const L of LETRAS_ALTERNATIVAS) {
+      const v = data.analiseAlternativas[L];
+      if (typeof v === "string") { const obj = objetoDeString(v); if (obj) data.analiseAlternativas[L] = obj; }
+    }
+  }
+  return data;
+}
+
 /* v62 — O recurso visual entregue corresponde ao pedido?
    Devolve {ok:true} ou {ok:false, motivo}. Para imagem exige a especificação
    (promptImagem) com tamanho de especificação real (>= 200 caracteres): uma
@@ -1511,6 +1601,7 @@ function selfTestResponse() {
     schemaHash: fnv1a(JSON_SCHEMA_TXT),
     temNotacaoQuimica: typeof NOTACAO_QUIMICA === "string" && NOTACAO_QUIMICA.length > 0,
     temGabaritoAlvo: typeof buildGabaritoAlvo === "function",
+    temNormalizarCamposEstruturados: typeof normalizarCamposEstruturados === "function",
   });
 }
 
@@ -1648,6 +1739,8 @@ ATENÇÃO — sua resposta anterior não pôde ser usada: o argumento da ferrame
     // v62: a ferramenta de entrega é específica do recurso pedido (com
     // imagem/gráfico/tabela, o campo "visual" é obrigatório e tipado).
     let data = await callClaudeForJSON(system, userMsg, webSearch, usos, ferramentaQuestaoPara(recurso));
+    // v67: alternativas/análise/competência/habilidade sempre como objeto.
+    data = normalizarCamposEstruturados(data);
     // "promptImagem"/"descricao" sempre como string — ver normalizarVisual().
     if (data && typeof data === "object") data.visual = normalizarVisual(data.visual, recurso);
     // v62: recurso pedido = recurso entregue, ou o backend refaz só o visual.
@@ -1694,6 +1787,7 @@ ATENÇÃO — sua resposta anterior não pôde ser usada: o argumento da ferrame
     }
 
     // De novo, depois da revisão matemática: idempotente, e garante o tipo na saída.
+    data = normalizarCamposEstruturados(data);
     if (data && typeof data === "object") data.visual = normalizarVisual(data.visual, recurso);
     // v62: a revisão matemática devolve a questão inteira — o recurso visual
     // garantido acima não pode ter sido perdido no caminho. Se foi, reaplica.
