@@ -234,7 +234,7 @@ async function salvarSimuladoAtual(){
   const nomeArea = (AREA_META[state.area] && AREA_META[state.area].label) || state.area || "";
   const linha = {
     user_id: currentUser.id,
-    nome: `Simulado de ${state.disciplina || state.area || "ENEM"}`,
+    nome: `Simulado de ${state.disciplina || state.area || "ENEM"}` + (temaComumDaLeva() ? ` — ${temaComumDaLeva().slice(0, 80)}` : ""),
     area: state.area,
     area_label: nomeArea,
     disciplina: state.disciplina,
@@ -720,10 +720,21 @@ function renderAreaGrid(){
 function selectArea(key){
   state.area = key;
   state.disciplina = AREA_META[key].disciplinas[0];
+  limpaInstrucoesVisuais(); // instruções de imagem de outra área não sobrevivem à troca
   renderAreaGrid();
   renderDisciplinaChips();
   renderQuestionBlocks();
   atualizaOpcoesPorArea();
+  atualizaResumoLote();
+}
+
+/* Instruções opcionais de imagem/gráfico/tabela são por questão e digitadas
+   livremente. Elas só fazem sentido para a disciplina em que foram escritas:
+   ao trocar de área ou de disciplina, são apagadas aqui — e NÃO mais na
+   geração (ver generateAll), para que a instrução digitada no formulário
+   chegue de fato ao backend na primeira geração. */
+function limpaInstrucoesVisuais(){
+  state.questions.forEach(q => { q.instrucoesVisual = ""; });
 }
 
 // O interruptor da revisão matemática só aparece onde tem efeito (Matemática);
@@ -741,7 +752,12 @@ function renderDisciplinaChips(){
     const chip = document.createElement("div");
     chip.className = "chip" + (state.disciplina === d ? " sel" : "");
     chip.textContent = d;
-    chip.addEventListener("click", () => { state.disciplina = d; renderDisciplinaChips(); });
+    chip.addEventListener("click", () => {
+      if(state.disciplina !== d) limpaInstrucoesVisuais();
+      state.disciplina = d;
+      renderDisciplinaChips();
+      renderQuestionBlocks();
+    });
     wrap.appendChild(chip);
   });
 }
@@ -753,6 +769,92 @@ function setQty(n){
   document.getElementById("qtyVal").textContent = n;
   syncQuestionsArrayLength();
   renderQuestionBlocks();
+  atualizaResumoLote();
+}
+
+/* ---------------- Configuração em lote (passo 4) ----------------
+
+   Um tema, um recurso e um ou mais níveis para todas as questões de uma vez.
+   O botão só PREENCHE state.questions e redesenha os blocos individuais —
+   não existe um segundo caminho de geração: "Gerar simulado completo"
+   continua lendo os mesmos objetos, e com o mesmo tema em todas as questões
+   o planejamento de recortes (planejaRecortesPorTema) e a distribuição de
+   gabaritos fazem o trabalho de diversidade. */
+const NIVEIS_LOTE = [
+  { nome: "Fácil", id: "loteNivelFacil", plural: "fáceis" },
+  { nome: "Médio", id: "loteNivelMedio", plural: "médias" },
+  { nome: "Difícil", id: "loteNivelDificil", plural: "difíceis" },
+];
+
+function niveisMarcadosNoLote(){
+  return NIVEIS_LOTE.filter(n => { const el = document.getElementById(n.id); return el && el.checked; }).map(n => n.nome);
+}
+
+// Quantas questões de cada nível: divisão igual entre os níveis marcados; a
+// sobra vai para os primeiros na ordem Fácil → Médio → Difícil.
+function contagemPorNivel(total, niveis){
+  const base = Math.floor(total / niveis.length), sobra = total % niveis.length;
+  const saida = {};
+  niveis.forEach((nv, i) => { saida[nv] = base + (i < sobra ? 1 : 0); });
+  return saida;
+}
+
+// Lista de níveis, uma posição por questão, EMBARALHADA (decisão do
+// professor: como no ENEM real, a prova não vem ordenada por dificuldade).
+function distribuiNiveis(total, niveis){
+  const contagem = contagemPorNivel(total, niveis);
+  const lista = [];
+  niveis.forEach(nv => { for(let k = 0; k < contagem[nv]; k++) lista.push(nv); });
+  return embaralha(lista);
+}
+
+function recursoDoLote(){
+  const sel = document.querySelector("#loteRecursoRow .res-opt.sel");
+  return sel ? sel.dataset.r : "nenhum";
+}
+
+function atualizaResumoLote(){
+  const qtdEl = document.getElementById("loteQtd");
+  const resumoEl = document.getElementById("loteResumo");
+  if(!qtdEl || !resumoEl) return;
+  const total = state.qty;
+  qtdEl.textContent = total;
+  const niveis = niveisMarcadosNoLote();
+  if(!niveis.length){ resumoEl.textContent = "Marque pelo menos um nível."; return; }
+  const contagem = contagemPorNivel(total, niveis);
+  resumoEl.textContent = niveis.map(nv => `${contagem[nv]} ${contagem[nv] === 1 ? nv.toLowerCase() : NIVEIS_LOTE.find(n => n.nome === nv).plural}`).join(" · ") + (niveis.length > 1 ? " · ordem embaralhada" : "");
+}
+
+function aplicarLoteATodas(){
+  if(!state.area){ toast("Selecione a área do conhecimento primeiro.", "err"); return; }
+  const tema = (document.getElementById("loteTema").value || "").trim();
+  const niveis = niveisMarcadosNoLote();
+  if(!niveis.length){ toast("Marque pelo menos um nível de dificuldade para o lote.", "err"); return; }
+  const recurso = recursoDoLote();
+  syncQuestionsArrayLength();
+  const plano = distribuiNiveis(state.questions.length, niveis);
+  state.questions.forEach((q, i) => {
+    q.tema = tema;
+    q.dificuldade = plano[i];
+    q.recurso = recurso;
+    // O lote redefine o recurso de todas: uma instrução de imagem antiga não
+    // pode sobreviver a isso (mesma regra da troca de disciplina).
+    q.instrucoesVisual = "";
+  });
+  renderQuestionBlocks();
+  const contagem = contagemPorNivel(state.questions.length, niveis);
+  const resumo = niveis.map(nv => `${contagem[nv]} ${nv}`).join(", ");
+  console.log(`[lote] aplicado a ${state.questions.length} questões · tema "${tema || "(em branco)"}" · recurso ${recurso} · níveis ${resumo} · ordem: ${plano.join(", ")}`);
+  toast(`Configuração aplicada às ${state.questions.length} questões (${resumo}${tema ? "" : "; tema em branco — a IA distribui os objetos de conhecimento"}). Ajuste qualquer questão abaixo, se quiser.`, "ok");
+}
+
+// Tema comum a TODAS as questões da leva (ou null): dá nome ao simulado.
+function temaComumDaLeva(){
+  if(!state.questions.length) return null;
+  const temas = state.questions.map(q => (q.tema || "").trim());
+  if(temas.some(t => !t)) return null;
+  const chave = temas[0].toLowerCase();
+  return temas.every(t => t.toLowerCase() === chave) ? temas[0] : null;
 }
 
 function syncQuestionsArrayLength(){
@@ -1223,7 +1325,9 @@ async function generateQuestion(q){
           recurso: q.recurso,
           competenciaNum: q.competenciaNum || null,
           habilidadeCod: q.habilidadeCod || null,
-          instrucoesVisual: q.instrucoesVisual || "",
+          // Sem recurso visual não há o que instruir: uma instrução guardada
+          // de quando o recurso era "imagem" não vai para o modelo.
+          instrucoesVisual: q.recurso !== "nenhum" ? (q.instrucoesVisual || "") : "",
           gabaritoAlvo: gabaritoAlvoDe(state.questions.indexOf(q)),
           revisarMatematica,
           // Diversidade temática da leva (backend v63): eixo reservado para
@@ -1480,7 +1584,12 @@ async function generateAll(){
      um assunto completamente diferente do da questão (o backend agora também
      tem uma trava contra isso, mas aqui é onde o problema realmente nasce).
      "approved" também não deveria sobreviver a uma geração nova. */
-  state.questions.forEach(q => { q.status = "idle"; q.data = null; q.errorMsg = ""; q.gabaritoStatus = null; q.instrucoesVisual = ""; q.approved = false; });
+  /* "instrucoesVisual" NÃO é mais apagada aqui: apagá-la na geração fazia as
+     instruções de imagem digitadas no formulário nunca chegarem ao backend na
+     primeira geração. A limpeza que motivou isso (instrução de outra
+     disciplina sobrevivendo à troca) agora acontece em limpaInstrucoesVisuais,
+     chamada ao trocar de área/disciplina e ao aplicar o lote. */
+  state.questions.forEach(q => { q.status = "idle"; q.data = null; q.errorMsg = ""; q.gabaritoStatus = null; q.approved = false; });
   // Plano de gabaritos sorteado ANTES de gerar: como as questões saem em
   // paralelo, cada uma precisa saber de antemão qual letra é a sua, senão não há
   // como garantir que não se repitam.
@@ -5218,6 +5327,18 @@ function init(){
 
   document.getElementById("qtyMinus").addEventListener("click", () => setQty(state.qty - 1));
   document.getElementById("qtyPlus").addEventListener("click", () => setQty(state.qty + 1));
+
+  // Painel de configuração em lote (passo 4).
+  NIVEIS_LOTE.forEach(n => {
+    const cb = document.getElementById(n.id);
+    if(!cb) return;
+    cb.addEventListener("change", () => { cb.closest(".lote-check").classList.toggle("sel", cb.checked); atualizaResumoLote(); });
+  });
+  document.querySelectorAll("#loteRecursoRow .res-opt").forEach(r => r.addEventListener("click", () => {
+    document.querySelectorAll("#loteRecursoRow .res-opt").forEach(x => x.classList.toggle("sel", x === r));
+  }));
+  document.getElementById("btnAplicarLote").addEventListener("click", () => { if(exigirLogin()) aplicarLoteATodas(); });
+  atualizaResumoLote();
 
   document.getElementById("btnGenerate").addEventListener("click", () => {
     if(!exigirLogin()) return;

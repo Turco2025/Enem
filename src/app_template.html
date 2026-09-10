@@ -165,6 +165,17 @@ select optgroup{background:#fff;color:#111;font-weight:700;}
   border-radius:16px;border:1.5px solid var(--glass-brd);background:rgba(255,255,255,.03);
   padding:18px;margin-bottom:14px;position:relative;
 }
+/* Painel de configuração em lote (passo 4): preenche todas as questões de
+   uma vez; os blocos individuais continuam abaixo, para ajustes. */
+.lote-panel{border-radius:16px;border:1.5px dashed var(--glass-brd);background:rgba(255,255,255,.05);padding:18px;margin-bottom:18px;}
+.lote-panel .lote-head{display:flex;align-items:center;gap:8px;font-weight:700;font-size:13.5px;margin-bottom:4px;}
+.lote-checks{display:flex;gap:8px;flex-wrap:wrap;}
+.lote-check{flex:1;min-width:90px;display:flex;align-items:center;justify-content:center;gap:7px;padding:9px 6px;border-radius:10px;border:1.5px solid var(--glass-brd);background:rgba(255,255,255,.03);cursor:pointer;font-size:12px;font-weight:600;transition:.15s;user-select:none;}
+.lote-check input{width:auto;margin:0;accent-color:#fff;}
+.lote-check.sel[data-d="Fácil"]{background:linear-gradient(135deg,#22c55e,#16a34a);border-color:transparent;color:#fff;}
+.lote-check.sel[data-d="Médio"]{background:linear-gradient(135deg,#f59e0b,#d97706);border-color:transparent;color:#fff;}
+.lote-check.sel[data-d="Difícil"]{background:linear-gradient(135deg,#ef4444,#b91c1c);border-color:transparent;color:#fff;}
+.lote-actions{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-top:14px;}
 .qblock .qb-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;}
 .qblock .qb-num{display:flex;align-items:center;gap:10px;font-weight:700;font-size:13.5px;}
 .qblock .qb-num .dot{width:26px;height:26px;border-radius:8px;background:linear-gradient(135deg,var(--accent-a),var(--accent-b));display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:800;}
@@ -367,7 +378,7 @@ body.mode-professor .qcard{box-shadow:0 25px 60px -25px rgba(0,0,0,.6), 0 0 0 1.
 
     <div class="card card-step3">
       <div class="section-title"><span class="num">3</span> Quantidade de questões</div>
-      <p class="section-sub">Você poderá configurar tema, dificuldade, recurso visual, competência e habilidade individualmente para cada questão.</p>
+      <p class="section-sub">Você poderá configurar tema, dificuldade, recurso visual, competência e habilidade individualmente para cada questão — ou preencher todas de uma vez, no passo 4.</p>
       <div class="qty-stepper">
         <button type="button" id="qtyMinus">–</button>
         <div class="qty-val" id="qtyVal">1</div>
@@ -378,7 +389,41 @@ body.mode-professor .qcard{box-shadow:0 25px 60px -25px rgba(0,0,0,.6), 0 0 0 1.
 
     <div class="card card-step4">
       <div class="section-title"><span class="num">4</span> Configuração individual das questões</div>
-      <p class="section-sub">Para cada questão, defina o tema, a dificuldade e o recurso visual. Competência e habilidade são opcionais — se você não escolher, o agente seleciona automaticamente a mais aderente ao tema e informa a classificação usada.</p>
+      <p class="section-sub">Para cada questão, defina o tema, a dificuldade e o recurso visual. Competência e habilidade são opcionais — se você não escolher, o agente seleciona automaticamente a mais aderente ao tema e informa a classificação usada. Para um simulado inteiro sobre um único tema, use o painel abaixo e depois ajuste o que quiser questão por questão.</p>
+      <!-- CONFIGURAÇÃO EM LOTE. Só preenche os blocos individuais abaixo (é um
+           atalho, não um segundo caminho de geração). Com o mesmo tema em todas
+           as questões, o app planeja um recorte distinto para cada uma antes de
+           gerar (ver planejaRecortesPorTema, no app.js). -->
+      <div class="lote-panel" id="lotePanel">
+        <div class="lote-head">⚡ Configurar todas as questões de uma vez</div>
+        <p class="hint" style="margin:0 0 12px;">Preenche as questões abaixo com o mesmo tema e o mesmo recurso visual. Os níveis marcados são distribuídos igualmente entre as questões, em ordem embaralhada. A IA planeja um recorte diferente (conteúdo, contexto e habilidade) para cada questão do tema.</p>
+        <label class="field-label">Tema do lote</label>
+        <textarea id="loteTema" placeholder="Ex.: Eletricidade – Eletrodinâmica"></textarea>
+        <div class="qgrid" style="margin-top:12px;">
+          <div>
+            <label class="field-label">Níveis de dificuldade (marque um ou mais)</label>
+            <div class="lote-checks">
+              <label class="lote-check sel" data-d="Fácil"><input type="checkbox" id="loteNivelFacil" checked> Fácil</label>
+              <label class="lote-check sel" data-d="Médio"><input type="checkbox" id="loteNivelMedio" checked> Médio</label>
+              <label class="lote-check sel" data-d="Difícil"><input type="checkbox" id="loteNivelDificil" checked> Difícil</label>
+            </div>
+            <p class="hint" id="loteResumo" style="margin:8px 0 0;"></p>
+          </div>
+          <div>
+            <label class="field-label">Recurso visual</label>
+            <div class="resource-row" id="loteRecursoRow">
+              <div class="res-opt sel" data-r="nenhum"><span class="ic">🚫</span>Sem recurso</div>
+              <div class="res-opt" data-r="imagem"><span class="ic">🖼️</span>Imagem</div>
+              <div class="res-opt" data-r="grafico"><span class="ic">📊</span>Gráfico</div>
+              <div class="res-opt" data-r="tabela"><span class="ic">📋</span>Tabela</div>
+            </div>
+          </div>
+        </div>
+        <div class="lote-actions">
+          <button type="button" class="btn sm" id="btnAplicarLote">Aplicar às <span id="loteQtd">1</span> questões</button>
+          <span class="hint">Depois de aplicar, você ainda pode ajustar cada questão individualmente abaixo.</span>
+        </div>
+      </div>
       <div id="questionBlocks"></div>
     </div>
 

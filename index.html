@@ -165,6 +165,17 @@ select optgroup{background:#fff;color:#111;font-weight:700;}
   border-radius:16px;border:1.5px solid var(--glass-brd);background:rgba(255,255,255,.03);
   padding:18px;margin-bottom:14px;position:relative;
 }
+/* Painel de configuração em lote (passo 4): preenche todas as questões de
+   uma vez; os blocos individuais continuam abaixo, para ajustes. */
+.lote-panel{border-radius:16px;border:1.5px dashed var(--glass-brd);background:rgba(255,255,255,.05);padding:18px;margin-bottom:18px;}
+.lote-panel .lote-head{display:flex;align-items:center;gap:8px;font-weight:700;font-size:13.5px;margin-bottom:4px;}
+.lote-checks{display:flex;gap:8px;flex-wrap:wrap;}
+.lote-check{flex:1;min-width:90px;display:flex;align-items:center;justify-content:center;gap:7px;padding:9px 6px;border-radius:10px;border:1.5px solid var(--glass-brd);background:rgba(255,255,255,.03);cursor:pointer;font-size:12px;font-weight:600;transition:.15s;user-select:none;}
+.lote-check input{width:auto;margin:0;accent-color:#fff;}
+.lote-check.sel[data-d="Fácil"]{background:linear-gradient(135deg,#22c55e,#16a34a);border-color:transparent;color:#fff;}
+.lote-check.sel[data-d="Médio"]{background:linear-gradient(135deg,#f59e0b,#d97706);border-color:transparent;color:#fff;}
+.lote-check.sel[data-d="Difícil"]{background:linear-gradient(135deg,#ef4444,#b91c1c);border-color:transparent;color:#fff;}
+.lote-actions{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-top:14px;}
 .qblock .qb-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;}
 .qblock .qb-num{display:flex;align-items:center;gap:10px;font-weight:700;font-size:13.5px;}
 .qblock .qb-num .dot{width:26px;height:26px;border-radius:8px;background:linear-gradient(135deg,var(--accent-a),var(--accent-b));display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:800;}
@@ -367,7 +378,7 @@ body.mode-professor .qcard{box-shadow:0 25px 60px -25px rgba(0,0,0,.6), 0 0 0 1.
 
     <div class="card card-step3">
       <div class="section-title"><span class="num">3</span> Quantidade de questões</div>
-      <p class="section-sub">Você poderá configurar tema, dificuldade, recurso visual, competência e habilidade individualmente para cada questão.</p>
+      <p class="section-sub">Você poderá configurar tema, dificuldade, recurso visual, competência e habilidade individualmente para cada questão — ou preencher todas de uma vez, no passo 4.</p>
       <div class="qty-stepper">
         <button type="button" id="qtyMinus">–</button>
         <div class="qty-val" id="qtyVal">1</div>
@@ -378,7 +389,41 @@ body.mode-professor .qcard{box-shadow:0 25px 60px -25px rgba(0,0,0,.6), 0 0 0 1.
 
     <div class="card card-step4">
       <div class="section-title"><span class="num">4</span> Configuração individual das questões</div>
-      <p class="section-sub">Para cada questão, defina o tema, a dificuldade e o recurso visual. Competência e habilidade são opcionais — se você não escolher, o agente seleciona automaticamente a mais aderente ao tema e informa a classificação usada.</p>
+      <p class="section-sub">Para cada questão, defina o tema, a dificuldade e o recurso visual. Competência e habilidade são opcionais — se você não escolher, o agente seleciona automaticamente a mais aderente ao tema e informa a classificação usada. Para um simulado inteiro sobre um único tema, use o painel abaixo e depois ajuste o que quiser questão por questão.</p>
+      <!-- CONFIGURAÇÃO EM LOTE. Só preenche os blocos individuais abaixo (é um
+           atalho, não um segundo caminho de geração). Com o mesmo tema em todas
+           as questões, o app planeja um recorte distinto para cada uma antes de
+           gerar (ver planejaRecortesPorTema, no app.js). -->
+      <div class="lote-panel" id="lotePanel">
+        <div class="lote-head">⚡ Configurar todas as questões de uma vez</div>
+        <p class="hint" style="margin:0 0 12px;">Preenche as questões abaixo com o mesmo tema e o mesmo recurso visual. Os níveis marcados são distribuídos igualmente entre as questões, em ordem embaralhada. A IA planeja um recorte diferente (conteúdo, contexto e habilidade) para cada questão do tema.</p>
+        <label class="field-label">Tema do lote</label>
+        <textarea id="loteTema" placeholder="Ex.: Eletricidade – Eletrodinâmica"></textarea>
+        <div class="qgrid" style="margin-top:12px;">
+          <div>
+            <label class="field-label">Níveis de dificuldade (marque um ou mais)</label>
+            <div class="lote-checks">
+              <label class="lote-check sel" data-d="Fácil"><input type="checkbox" id="loteNivelFacil" checked> Fácil</label>
+              <label class="lote-check sel" data-d="Médio"><input type="checkbox" id="loteNivelMedio" checked> Médio</label>
+              <label class="lote-check sel" data-d="Difícil"><input type="checkbox" id="loteNivelDificil" checked> Difícil</label>
+            </div>
+            <p class="hint" id="loteResumo" style="margin:8px 0 0;"></p>
+          </div>
+          <div>
+            <label class="field-label">Recurso visual</label>
+            <div class="resource-row" id="loteRecursoRow">
+              <div class="res-opt sel" data-r="nenhum"><span class="ic">🚫</span>Sem recurso</div>
+              <div class="res-opt" data-r="imagem"><span class="ic">🖼️</span>Imagem</div>
+              <div class="res-opt" data-r="grafico"><span class="ic">📊</span>Gráfico</div>
+              <div class="res-opt" data-r="tabela"><span class="ic">📋</span>Tabela</div>
+            </div>
+          </div>
+        </div>
+        <div class="lote-actions">
+          <button type="button" class="btn sm" id="btnAplicarLote">Aplicar às <span id="loteQtd">1</span> questões</button>
+          <span class="hint">Depois de aplicar, você ainda pode ajustar cada questão individualmente abaixo.</span>
+        </div>
+      </div>
       <div id="questionBlocks"></div>
     </div>
 
@@ -804,7 +849,7 @@ async function salvarSimuladoAtual(){
   const nomeArea = (AREA_META[state.area] && AREA_META[state.area].label) || state.area || "";
   const linha = {
     user_id: currentUser.id,
-    nome: `Simulado de ${state.disciplina || state.area || "ENEM"}`,
+    nome: `Simulado de ${state.disciplina || state.area || "ENEM"}` + (temaComumDaLeva() ? ` — ${temaComumDaLeva().slice(0, 80)}` : ""),
     area: state.area,
     area_label: nomeArea,
     disciplina: state.disciplina,
@@ -1290,10 +1335,21 @@ function renderAreaGrid(){
 function selectArea(key){
   state.area = key;
   state.disciplina = AREA_META[key].disciplinas[0];
+  limpaInstrucoesVisuais(); // instruções de imagem de outra área não sobrevivem à troca
   renderAreaGrid();
   renderDisciplinaChips();
   renderQuestionBlocks();
   atualizaOpcoesPorArea();
+  atualizaResumoLote();
+}
+
+/* Instruções opcionais de imagem/gráfico/tabela são por questão e digitadas
+   livremente. Elas só fazem sentido para a disciplina em que foram escritas:
+   ao trocar de área ou de disciplina, são apagadas aqui — e NÃO mais na
+   geração (ver generateAll), para que a instrução digitada no formulário
+   chegue de fato ao backend na primeira geração. */
+function limpaInstrucoesVisuais(){
+  state.questions.forEach(q => { q.instrucoesVisual = ""; });
 }
 
 // O interruptor da revisão matemática só aparece onde tem efeito (Matemática);
@@ -1311,7 +1367,12 @@ function renderDisciplinaChips(){
     const chip = document.createElement("div");
     chip.className = "chip" + (state.disciplina === d ? " sel" : "");
     chip.textContent = d;
-    chip.addEventListener("click", () => { state.disciplina = d; renderDisciplinaChips(); });
+    chip.addEventListener("click", () => {
+      if(state.disciplina !== d) limpaInstrucoesVisuais();
+      state.disciplina = d;
+      renderDisciplinaChips();
+      renderQuestionBlocks();
+    });
     wrap.appendChild(chip);
   });
 }
@@ -1323,6 +1384,92 @@ function setQty(n){
   document.getElementById("qtyVal").textContent = n;
   syncQuestionsArrayLength();
   renderQuestionBlocks();
+  atualizaResumoLote();
+}
+
+/* ---------------- Configuração em lote (passo 4) ----------------
+
+   Um tema, um recurso e um ou mais níveis para todas as questões de uma vez.
+   O botão só PREENCHE state.questions e redesenha os blocos individuais —
+   não existe um segundo caminho de geração: "Gerar simulado completo"
+   continua lendo os mesmos objetos, e com o mesmo tema em todas as questões
+   o planejamento de recortes (planejaRecortesPorTema) e a distribuição de
+   gabaritos fazem o trabalho de diversidade. */
+const NIVEIS_LOTE = [
+  { nome: "Fácil", id: "loteNivelFacil", plural: "fáceis" },
+  { nome: "Médio", id: "loteNivelMedio", plural: "médias" },
+  { nome: "Difícil", id: "loteNivelDificil", plural: "difíceis" },
+];
+
+function niveisMarcadosNoLote(){
+  return NIVEIS_LOTE.filter(n => { const el = document.getElementById(n.id); return el && el.checked; }).map(n => n.nome);
+}
+
+// Quantas questões de cada nível: divisão igual entre os níveis marcados; a
+// sobra vai para os primeiros na ordem Fácil → Médio → Difícil.
+function contagemPorNivel(total, niveis){
+  const base = Math.floor(total / niveis.length), sobra = total % niveis.length;
+  const saida = {};
+  niveis.forEach((nv, i) => { saida[nv] = base + (i < sobra ? 1 : 0); });
+  return saida;
+}
+
+// Lista de níveis, uma posição por questão, EMBARALHADA (decisão do
+// professor: como no ENEM real, a prova não vem ordenada por dificuldade).
+function distribuiNiveis(total, niveis){
+  const contagem = contagemPorNivel(total, niveis);
+  const lista = [];
+  niveis.forEach(nv => { for(let k = 0; k < contagem[nv]; k++) lista.push(nv); });
+  return embaralha(lista);
+}
+
+function recursoDoLote(){
+  const sel = document.querySelector("#loteRecursoRow .res-opt.sel");
+  return sel ? sel.dataset.r : "nenhum";
+}
+
+function atualizaResumoLote(){
+  const qtdEl = document.getElementById("loteQtd");
+  const resumoEl = document.getElementById("loteResumo");
+  if(!qtdEl || !resumoEl) return;
+  const total = state.qty;
+  qtdEl.textContent = total;
+  const niveis = niveisMarcadosNoLote();
+  if(!niveis.length){ resumoEl.textContent = "Marque pelo menos um nível."; return; }
+  const contagem = contagemPorNivel(total, niveis);
+  resumoEl.textContent = niveis.map(nv => `${contagem[nv]} ${contagem[nv] === 1 ? nv.toLowerCase() : NIVEIS_LOTE.find(n => n.nome === nv).plural}`).join(" · ") + (niveis.length > 1 ? " · ordem embaralhada" : "");
+}
+
+function aplicarLoteATodas(){
+  if(!state.area){ toast("Selecione a área do conhecimento primeiro.", "err"); return; }
+  const tema = (document.getElementById("loteTema").value || "").trim();
+  const niveis = niveisMarcadosNoLote();
+  if(!niveis.length){ toast("Marque pelo menos um nível de dificuldade para o lote.", "err"); return; }
+  const recurso = recursoDoLote();
+  syncQuestionsArrayLength();
+  const plano = distribuiNiveis(state.questions.length, niveis);
+  state.questions.forEach((q, i) => {
+    q.tema = tema;
+    q.dificuldade = plano[i];
+    q.recurso = recurso;
+    // O lote redefine o recurso de todas: uma instrução de imagem antiga não
+    // pode sobreviver a isso (mesma regra da troca de disciplina).
+    q.instrucoesVisual = "";
+  });
+  renderQuestionBlocks();
+  const contagem = contagemPorNivel(state.questions.length, niveis);
+  const resumo = niveis.map(nv => `${contagem[nv]} ${nv}`).join(", ");
+  console.log(`[lote] aplicado a ${state.questions.length} questões · tema "${tema || "(em branco)"}" · recurso ${recurso} · níveis ${resumo} · ordem: ${plano.join(", ")}`);
+  toast(`Configuração aplicada às ${state.questions.length} questões (${resumo}${tema ? "" : "; tema em branco — a IA distribui os objetos de conhecimento"}). Ajuste qualquer questão abaixo, se quiser.`, "ok");
+}
+
+// Tema comum a TODAS as questões da leva (ou null): dá nome ao simulado.
+function temaComumDaLeva(){
+  if(!state.questions.length) return null;
+  const temas = state.questions.map(q => (q.tema || "").trim());
+  if(temas.some(t => !t)) return null;
+  const chave = temas[0].toLowerCase();
+  return temas.every(t => t.toLowerCase() === chave) ? temas[0] : null;
 }
 
 function syncQuestionsArrayLength(){
@@ -1793,7 +1940,9 @@ async function generateQuestion(q){
           recurso: q.recurso,
           competenciaNum: q.competenciaNum || null,
           habilidadeCod: q.habilidadeCod || null,
-          instrucoesVisual: q.instrucoesVisual || "",
+          // Sem recurso visual não há o que instruir: uma instrução guardada
+          // de quando o recurso era "imagem" não vai para o modelo.
+          instrucoesVisual: q.recurso !== "nenhum" ? (q.instrucoesVisual || "") : "",
           gabaritoAlvo: gabaritoAlvoDe(state.questions.indexOf(q)),
           revisarMatematica,
           // Diversidade temática da leva (backend v63): eixo reservado para
@@ -2050,7 +2199,12 @@ async function generateAll(){
      um assunto completamente diferente do da questão (o backend agora também
      tem uma trava contra isso, mas aqui é onde o problema realmente nasce).
      "approved" também não deveria sobreviver a uma geração nova. */
-  state.questions.forEach(q => { q.status = "idle"; q.data = null; q.errorMsg = ""; q.gabaritoStatus = null; q.instrucoesVisual = ""; q.approved = false; });
+  /* "instrucoesVisual" NÃO é mais apagada aqui: apagá-la na geração fazia as
+     instruções de imagem digitadas no formulário nunca chegarem ao backend na
+     primeira geração. A limpeza que motivou isso (instrução de outra
+     disciplina sobrevivendo à troca) agora acontece em limpaInstrucoesVisuais,
+     chamada ao trocar de área/disciplina e ao aplicar o lote. */
+  state.questions.forEach(q => { q.status = "idle"; q.data = null; q.errorMsg = ""; q.gabaritoStatus = null; q.approved = false; });
   // Plano de gabaritos sorteado ANTES de gerar: como as questões saem em
   // paralelo, cada uma precisa saber de antemão qual letra é a sua, senão não há
   // como garantir que não se repitam.
@@ -5788,6 +5942,18 @@ function init(){
 
   document.getElementById("qtyMinus").addEventListener("click", () => setQty(state.qty - 1));
   document.getElementById("qtyPlus").addEventListener("click", () => setQty(state.qty + 1));
+
+  // Painel de configuração em lote (passo 4).
+  NIVEIS_LOTE.forEach(n => {
+    const cb = document.getElementById(n.id);
+    if(!cb) return;
+    cb.addEventListener("change", () => { cb.closest(".lote-check").classList.toggle("sel", cb.checked); atualizaResumoLote(); });
+  });
+  document.querySelectorAll("#loteRecursoRow .res-opt").forEach(r => r.addEventListener("click", () => {
+    document.querySelectorAll("#loteRecursoRow .res-opt").forEach(x => x.classList.toggle("sel", x === r));
+  }));
+  document.getElementById("btnAplicarLote").addEventListener("click", () => { if(exigirLogin()) aplicarLoteATodas(); });
+  atualizaResumoLote();
 
   document.getElementById("btnGenerate").addEventListener("click", () => {
     if(!exigirLogin()) return;
