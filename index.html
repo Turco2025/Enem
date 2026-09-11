@@ -2401,6 +2401,10 @@ async function generateAll(){
   // console, o valor pode voltar para 4.
   if(demais.length) await runPool(demais, generateQuestion, 5);
   document.getElementById("genProgressWrap").classList.add("hidden");
+  // v12: baixa o jsPDF (≈ 420 KB) em segundo plano assim que o simulado fica
+  // pronto, para o primeiro "Exportar PDF"/"Imprimir" não pagar o download do
+  // CDN (0,3–1,5 s). Silencioso: se falhar, o botão tenta de novo na hora.
+  loadScriptOnce(CDN_URLS.jspdf).catch(() => {});
   const relato = relatoUso();
   if(relato) console.log(relato);
 
@@ -3432,6 +3436,7 @@ async function printExam(){
   const btn = document.getElementById("btnPrint");
   const label = btn ? btn.textContent : "";
   if(btn){ btn.disabled = true; btn.textContent = "Preparando..."; }
+  await new Promise(r => setTimeout(r, 40));   // v12: deixa o navegador pintar o botão
   try{
     const professor = state.viewMode !== "aluno";
     const doneQuestions = state.questions.map((q, idx) => ({ q, idx })).filter(o => o.q.status === "done");
@@ -4628,7 +4633,7 @@ function enemPrintVisual(out, visual, cardIdx){
     if(visual.titulo) out.push('<p class="ref ref-visual">' + enemPrintRich(visual.titulo) + '</p>');
     return;
   }
-  const info = visual.tipo === "imagem" ? pdfGetVisualImageInfo(cardIdx) : pdfGetVisualChartInfo(cardIdx);
+  const info = visual.tipo === "imagem" ? pdfGetVisualImageInfo(cardIdx, false, true) : pdfGetVisualChartInfo(cardIdx);
   if(!info || !info.dataUrl) return;
   out.push('<figure><img src="' + info.dataUrl + '" alt=""></figure>');
   if(visual.descricao) out.push('<p class="ref ref-visual">' + enemPrintRich(visual.descricao) + '</p>');
@@ -5353,16 +5358,42 @@ function enemDocxSections(doneQuestions, professor){
   return sections;
 }
 
-function pdfGetVisualImageInfo(cardIdx, paraDocx){
+/* v12 — A IMAGEM ENTRA NO PDF COMO JPEG, NUNCA COMO WEBP.
+   Medido em 11/09/2026 com o app real (jsPDF 4.2.1, 5 imagens WebP de
+   1024×1024): doc.addImage(webp) leva ≈ 1.010 ms POR IMAGEM — o jsPDF não
+   tem decodificador nativo de WebP, decodifica pixel a pixel em JavaScript
+   e ainda grava os pixels crus (PDF de 8,6 MB para 5 questões). Convertendo
+   antes pelo canvas do navegador (decodificação nativa, a partir da imagem já
+   desenhada na tela — a mesma imagemParaJpeg que o Word usa), a inserção cai
+   para ≈ 60 ms por imagem e o PDF para 1,9 MB. Era este o "pequeno delay" do
+   botão Exportar PDF (e do Imprimir, que monta o mesmo documento).
+   O resultado fica em cache por elemento <img>: a mesma figura é lida mais de
+   uma vez por exportação (decisão de página larga + desenho) e de novo ao
+   exportar aluno e professor em sequência. Se a conversão falhar, o PDF cai
+   para o WebP lento (nunca perde a figura); o Word continua sem a figura,
+   como antes, porque não abre WebP. */
+const _jpegCache = new WeakMap();
+function imagemParaJpegCacheada(img){
+  const guardado = _jpegCache.get(img);
+  if(guardado && guardado.src === img.src) return guardado.jpeg;
+  const jpeg = imagemParaJpeg(img.src, img);
+  if(jpeg) _jpegCache.set(img, { src: img.src, jpeg });
+  return jpeg;
+}
+function pdfGetVisualImageInfo(cardIdx, paraDocx, manterOriginal){
   const card = document.querySelectorAll("#questionResults .qcard")[cardIdx];
   if(!card) return null;
   const img = card.querySelector(".visual-image-holder img");
   if(!img || !img.src) return null;
-  // Só o Word precisa da conversão; o PDF aceita o WebP e converte internamente.
-  const dataUrl = paraDocx ? imagemParaJpeg(img.src, img) : img.src;
+  // A exportação em HTML abre no navegador, que lê WebP: mantém o original
+  // (≈ 7× menor que o JPEG) — só PDF e Word convertem.
+  if(manterOriginal) return { dataUrl: img.src, width: img.naturalWidth || 800, height: img.naturalHeight || 500 };
+  const jpeg = imagemParaJpegCacheada(img);
   // Sem conversão possível, o Word sai sem a figura — e, como quem chama
   // interrompe o bloco inteiro, sem a legenda também. É pior perder a figura do
   // que entregar um .docx com um quadro quebrado que ninguém consegue abrir.
+  // O PDF, ao contrário, ainda aceita o WebP (devagar): melhor lento que sem figura.
+  const dataUrl = paraDocx ? jpeg : (jpeg || img.src);
   if(!dataUrl) return null;
   return { dataUrl, width: img.naturalWidth || 800, height: img.naturalHeight || 500 };
 }
@@ -5591,6 +5622,9 @@ async function exportPdf(){
   const btn = document.getElementById("btnExportPdf");
   const originalLabel = btn.textContent;
   btn.disabled = true; btn.textContent = "Gerando PDF...";
+  // v12: a montagem é síncrona e trava a interface; sem esta pausa o navegador
+  // muitas vezes nem chega a pintar "Gerando PDF..." antes do download aparecer.
+  await new Promise(r => setTimeout(r, 40));
 
   try{
     const { jsPDF } = window.jspdf;
