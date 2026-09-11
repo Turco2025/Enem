@@ -3382,8 +3382,23 @@ function setViewMode(mode){
   document.body.classList.toggle("mode-professor", mode === "professor");
 }
 
-/* "Exportar HTML" entrega o documento na anatomia do caderno ENEM 2025 — não
-   mais um retrato da tela do app. Mesma grade do PDF, expressa em CSS. */
+/* "Exportar HTML" — v13: o arquivo HTML CONTÉM o próprio PDF.
+
+   Até a v12 este botão gerava um segundo documento, em CSS, que tentava
+   reproduzir a diagramação do caderno (enemBuildPrintHTML, mais abaixo). Na
+   tela isso nunca ficou igual ao PDF: sem altura de página, o CSS de colunas
+   (column-fill:auto) despejava todo o texto na primeira coluna e deixava a
+   segunda vazia; a tarja da versão caía no meio da lateral; e não havia
+   paginação em 275 mm, fólio, margens espelhadas nem cabeçalho/rodapé
+   repetidos — o CSS não sabe fluir texto entre folhas de altura fixa.
+
+   Agora o botão monta o MESMO documento do botão PDF (enemBuildPdfDoc — a
+   mesma função, portanto a mesma diagramação, byte a byte no conteúdo) e o
+   embute, em base64, num arquivo .html autocontido que o exibe no visualizador
+   de PDF do navegador, ocupando a janela inteira. Ao abrir o HTML, a tela é
+   literalmente o PDF exportado. O arquivo abre com duplo clique, sem internet,
+   e dali o usuário imprime ou salva o PDF. Nada muda nos botões PDF, Word e
+   Imprimir. O código CSS antigo fica no arquivo sem ser chamado.              */
 async function exportHtmlSnapshot(){
   if(!state.questions.length || !state.questions.some(q => q.status === "done")){
     toast("Gere ao menos uma questão antes de exportar.", "err");
@@ -3393,11 +3408,23 @@ async function exportHtmlSnapshot(){
     toast("Aguarde a geração das imagens terminar antes de exportar.", "err");
     return;
   }
+  if(!window.jspdf){
+    try{
+      await loadScriptOnce(CDN_URLS.jspdf);
+    }catch(e){
+      toast("Não foi possível carregar a biblioteca de PDF (verifique sua conexão com a internet) e tente novamente.", "err");
+      return;
+    }
+  }
+  const btn = document.getElementById("btnExport");
+  const originalLabel = btn ? btn.textContent : "";
+  if(btn){ btn.disabled = true; btn.textContent = "Gerando HTML..."; }
+  await new Promise(r => setTimeout(r, 40));   // deixa o navegador pintar o botão
   try{
     const professor = state.viewMode !== "aluno";
     const doneQuestions = state.questions.map((q, idx) => ({ q, idx })).filter(o => o.q.status === "done");
     if(bloqueiaSeQuimicaInvalida(doneQuestions)) return;
-    const html = enemBuildPrintHTML(doneQuestions, professor);
+    const html = enemBuildHtmlComPdf(doneQuestions, professor);
     const blob = new Blob([html], { type: "text/html;charset=utf-8" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
@@ -3409,10 +3436,69 @@ async function exportHtmlSnapshot(){
     a.click();
     a.remove();
     setTimeout(() => URL.revokeObjectURL(url), 4000);
-    toast("Arquivo HTML exportado no padrão do caderno ENEM.", "ok");
+    toast("Arquivo HTML exportado — idêntico ao PDF.", "ok");
   }catch(err){
-    toast("Não foi possível exportar o arquivo: " + err.message, "err");
+    toast("Não foi possível exportar o arquivo: " + (err.message || err), "err");
+  }finally{
+    if(btn){ btn.disabled = false; btn.textContent = originalLabel; }
   }
+}
+
+// Bytes → base64, em blocos (String.fromCharCode.apply estoura a pilha com
+// arrays grandes; um PDF com imagens passa de 1 MB).
+function enemBytesParaBase64(bytes){
+  let bin = "";
+  const passo = 0x8000;
+  for(let i = 0; i < bytes.length; i += passo){
+    bin += String.fromCharCode.apply(null, bytes.subarray(i, i + passo));
+  }
+  return btoa(bin);
+}
+
+/* Documento HTML autocontido que exibe o PDF do simulado. O PDF vai em base64
+   dentro de um <script>; ao abrir, o script reconstrói os bytes, cria um blob
+   e o carrega num <iframe> que ocupa a janela inteira — é o visualizador de
+   PDF do próprio navegador (Chrome, Edge, Firefox, Safari) que desenha as
+   folhas, exatamente como faria com o arquivo .pdf. Se o navegador não tiver
+   visualizador (navigator.pdfViewerEnabled === false, ou o iframe não abrir),
+   aparece um aviso com o botão para baixar o PDF. O base64 nunca contém "<",
+   então não há como fechar o <script> por acidente.                          */
+function enemBuildHtmlComPdf(doneQuestions, professor){
+  const built = enemBuildPdfDoc(doneQuestions, professor);
+  const areaLabel = AREA_META[state.area] ? AREA_META[state.area].label : "";
+  const titulo = "Simulado ENEM — " + areaLabel + (state.disciplina ? " · " + state.disciplina : "") +
+                 " — versão do " + (professor ? "professor" : "aluno");
+  // O visualizador mostra o título do PDF na barra; sem ele apareceria o
+  // identificador aleatório do blob.
+  built.doc.setProperties({ title: titulo, subject: "Simulado no padrão do caderno ENEM 2025", creator: "Gerador de Questões ENEM" });
+  const base64 = enemBytesParaBase64(new Uint8Array(built.doc.output("arraybuffer")));
+  const esc = s => String(s == null ? "" : s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+  return '<!doctype html>\n<html lang="pt-BR">\n<head>\n<meta charset="utf-8">\n' +
+    '<meta name="viewport" content="width=device-width, initial-scale=1">\n' +
+    '<title>' + esc(titulo) + '</title>\n' +
+    '<style>\n' +
+    'html,body{margin:0;padding:0;height:100%;background:#525659;}\n' +
+    '#visor{position:fixed;top:0;left:0;width:100%;height:100%;border:0;display:block;}\n' +
+    '#aviso{display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:#e9e9ec;color:#222;' +
+      'font:15px/1.6 system-ui,Segoe UI,Arial,sans-serif;padding:32px 24px;text-align:center;}\n' +
+    '#aviso a{display:inline-block;margin-top:14px;padding:10px 18px;background:#004B8D;color:#fff;' +
+      'border-radius:6px;text-decoration:none;font-weight:600;}\n' +
+    'body.sem-visor #visor{display:none;} body.sem-visor #aviso{display:block;}\n' +
+    '</style>\n</head>\n<body>\n' +
+    '<iframe id="visor" title="' + esc(titulo) + '"></iframe>\n' +
+    '<div id="aviso"><p>Este navegador não exibe PDF embutido na página.</p>' +
+    '<a id="baixar" download="' + esc(built.safeName) + '">Baixar o PDF do simulado</a></div>\n' +
+    '<script>\n' +
+    '(function(){\n' +
+    '  var B64 = "' + base64 + '";\n' +
+    '  var bin = atob(B64), n = bin.length, bytes = new Uint8Array(n);\n' +
+    '  for(var i = 0; i < n; i++) bytes[i] = bin.charCodeAt(i);\n' +
+    '  var url = URL.createObjectURL(new Blob([bytes], { type: "application/pdf" }));\n' +
+    '  document.getElementById("baixar").href = url;\n' +
+    '  if(navigator.pdfViewerEnabled === false){ document.body.className = "sem-visor"; return; }\n' +
+    '  document.getElementById("visor").src = url;\n' +
+    '})();\n' +
+    '<\/script>\n</body>\n</html>';
 }
 
 /* "Imprimir" manda para a impressora o MESMO documento do botão PDF. */
@@ -4436,13 +4522,13 @@ function enemExportPdf(doneQuestions, professor){
      página. Antes este botão chamava window.print() sobre a tela do app, e o
      que ia para a impressora eram os cartões da interface.
 
-   • "Exportar HTML" gera um documento web autocontido que reproduz a mesma
-     grade em CSS: 200 × 275 mm, duas colunas de 89,47 mm com fio sólido na
-     calha, Calibri 10/12,0 pt, tinta #231F20, barra-ornamento, letras
-     circuladas e os dois tratamentos de referência do §2.1. O cabeçalho e o
-     rodapé se repetem em cada folha por <thead>/<tfoot> — em CSS de impressão
-     o navegador só repete cromo de página desse jeito; `position: fixed` com
-     deslocamento negativo é levado para o fim da página no Chrome.           */
+   • "Exportar HTML" — DESDE A v13 NÃO USA MAIS o que segue. O botão passou a
+     embutir o próprio PDF no arquivo HTML (ver exportHtmlSnapshot /
+     enemBuildHtmlComPdf). ENEM_PRINT_CSS e as funções enemPrint* /
+     enemBuildPrintHTML abaixo ficam no arquivo apenas como referência e não
+     são chamadas por ninguém. Elas geravam um documento web em CSS que, na
+     tela, não reproduzia o PDF: sem altura de página, column-fill:auto punha
+     todo o texto na primeira coluna e não havia paginação nem fólio.        */
 
 function enemPrintEsc(s){
   return quiJuntaFormula(String(s == null ? "" : s))
