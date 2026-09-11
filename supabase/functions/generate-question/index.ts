@@ -13,6 +13,11 @@ const APP_DATA: any = APP_DATA_JSON;
    arquivo no repositório, e entram no pacote do mesmo jeito que app_data.json:
    embutidos no deploy, sem rede em produção. Conteúdo idêntico ao da v62. */
 import { NOTACAO_QUIMICA, RECURSO_INSTRUCOES, COMPLEMENTO_BIOLOGIA, instrucoesImagem, ehBiologia, JSON_SCHEMA_TXT } from "https://raw.githubusercontent.com/Turco2025/Enem/main/supabase/functions/generate-question/recurso_instrucoes.ts";
+/* v70: rede de segurança da notação química (índices e cargas em subscrito/
+   sobrescrito, lista fechada) vive em notacao_quimica.ts, ao lado deste
+   arquivo no repositório, e entra no pacote como recurso_instrucoes.ts:
+   embutida no deploy, sem rede em produção. Ver o cabeçalho daquele arquivo. */
+import { normalizarNotacaoTexto, normalizarNotacaoQuimica, normalizarNotacaoVisual, qnTabela, qnConverteIon, QN_FORMULAS_COMUNS, QN_FORMULAS_DISCIPLINA, QN_GASES, QN_GASES_SEMPRE, QN_IONS } from "https://raw.githubusercontent.com/Turco2025/Enem/main/supabase/functions/generate-question/notacao_quimica.ts";
 
 
 const CORS_HEADERS = {
@@ -1617,6 +1622,8 @@ function selfTestResponse() {
     buildObjetosConhecimento.toString(),
     buildDiversidadeTematica.toString(),
     buildSystemPlanejamento.toString(),
+    normalizarNotacaoTexto.toString(), normalizarNotacaoQuimica.toString(), qnConverteIon.toString(),
+    JSON.stringify([QN_FORMULAS_COMUNS, QN_FORMULAS_DISCIPLINA, QN_GASES, QN_GASES_SEMPRE, QN_IONS]),
     buildPlanejamentoPrompt.toString(),
     buildSystemVisual.toString(),
     BUSCA_PADRAO,
@@ -1646,6 +1653,9 @@ function selfTestResponse() {
     temNotacaoQuimica: typeof NOTACAO_QUIMICA === "string" && NOTACAO_QUIMICA.length > 0,
     temGabaritoAlvo: typeof buildGabaritoAlvo === "function",
     temNormalizarCamposEstruturados: typeof normalizarCamposEstruturados === "function",
+    temNormalizarNotacaoQuimica: typeof normalizarNotacaoQuimica === "function",
+    notacaoAmostra: normalizarNotacaoTexto("CO2 e NO3- e Ca2+ e H10 e C3 e O+", "Biologia"),
+    notacaoTokens: { Biologia: qnTabela("Biologia").mapa.size, Quimica: qnTabela("Química").mapa.size, Fisica: qnTabela("Física").mapa.size },
   });
 }
 
@@ -1710,6 +1720,13 @@ ATENÇÃO — sua resposta anterior não pôde ser usada: o argumento da ferrame
         recortes = normalizarRecortes(data, quantidade);
       }
       if (!recortes.length) return jsonResponse({ error: "O modelo não devolveu recortes utilizáveis." }, 502);
+      // v70: o recorte entra no prompt da questão ("conteúdo: … CO2 …") e o
+      // modelo copia a grafia — foi assim que a questão 2 de 11/09 saiu com
+      // "CO2". Corrige na origem (conteúdo e contexto; a habilidade é texto
+      // oficial e não é tocada).
+      if (area === "natureza") {
+        recortes = recortes.map((r) => ({ ...r, conteudo: normalizarNotacaoTexto(r.conteudo, disciplina), contexto: normalizarNotacaoTexto(r.contexto, disciplina) }));
+      }
       const uso = resumoUso(usos);
       console.log(`[tema] planejamento "${tema}" (${disciplina}): ${recortes.length}/${quantidade} recorte(s) · ` + recortes.map((r, i) => `${i + 1}: ${r.conteudo}`).join(" · "));
       await logGeneration(area, disciplina, `[planejar recortes] ${tema}`, { recurso: "planejamento", uso });
@@ -1751,7 +1768,9 @@ ATENÇÃO — sua resposta anterior não pôde ser usada: o argumento da ferrame
       }
       const usoRefazer = resumoUso(usos);
       await logGeneration(area, disciplina, `[refazer visual] ${tema}`, { recurso, uso: usoRefazer });
-      return jsonResponse({ visual: corrigirQuebrasLiterais(visualNovo), uso: usoRefazer });
+      // v70: descrição/título/tabela/rótulos do recurso refeito com a notação certa.
+      const visualSaida = area === "natureza" ? normalizarNotacaoVisual(visualNovo, disciplina) : visualNovo;
+      return jsonResponse({ visual: corrigirQuebrasLiterais(visualSaida), uso: usoRefazer });
     } catch (err) {
       return jsonResponse({ error: `Erro ao refazer o recurso visual: ${String((err as any)?.message || err)}` }, 502);
     }
@@ -1859,6 +1878,10 @@ ATENÇÃO — sua resposta anterior não pôde ser usada: o argumento da ferrame
     // (rascunho, refazer visual, retentativas) já somadas em "usos".
     const uso = resumoUso(usos);
     await logGeneration(area, disciplina, tema, { recurso, uso });
+    // v70: índices e cargas de fórmulas da lista fechada em subscrito/sobrescrito
+    // (só Ciências da Natureza). Por último, depois de tudo o que pode ter
+    // reescrito a questão (garantia do visual, revisão matemática).
+    data = normalizarNotacaoQuimica(data, area, disciplina);
     return jsonResponse({ question: corrigirQuebrasLiterais(data), uso, visualDiag, diversidadeDiag });
   } catch (err) {
     return jsonResponse({ error: `Erro ao gerar questão: ${String((err as any)?.message || err)}` }, 502);
