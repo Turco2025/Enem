@@ -2026,14 +2026,21 @@ function auditaQuimica(questoes){
   });
 
   // Caracteres que o PDF não conseguiria imprimir com a fonte embarcada.
+  // v14: os que têm equivalente (PDF_EQUIVALENTES) não são problema — o PDF os
+  // imprime pelo equivalente; ficam registrados só como observação informativa.
   if(typeof CARLITO_COBERTURA === "string"){
-    const cobertura = new Set(Array.from(CARLITO_COBERTURA).concat(["\n","\t","\r"]));
+    const cobertura = new Set(Array.from(CARLITO_COBERTURA).concat(["\n","\t","\r","\u2060"]));
+    const equivalentes = (typeof PDF_EQUIVALENTES === "object" && PDF_EQUIVALENTES) || {};
     lista.forEach((q, idx) => {
       if(!q || !q.data) return;
       quiCamposDaQuestao(q, idx).forEach(campo => {
-        const fora = Array.from(new Set(Array.from(campo.texto).filter(ch => !cobertura.has(ch))));
+        const todos = Array.from(new Set(Array.from(campo.texto).filter(ch => !cobertura.has(ch))));
+        const fora = todos.filter(ch => equivalentes[ch] === undefined);
+        const subst = todos.filter(ch => equivalentes[ch] !== undefined && equivalentes[ch] !== "");
         if(fora.length) problemas.push({ questao: campo.questao, campo: campo.rotulo,
           ocorrencia: "caractere sem glifo na fonte do PDF: " + fora.join(" ") });
+        if(subst.length) problemas.push({ questao: campo.questao, campo: campo.rotulo, informativo: true,
+          ocorrencia: "no PDF, " + subst.map(ch => ch + " sai como " + equivalentes[ch]).join("; ") });
       });
     });
   }
@@ -2222,7 +2229,11 @@ function auditaQuestaoLocal(q){
   if(state.area === "natureza"){
     try{
       const probs = auditaQuimica([q]);
-      if(probs.length) aviso("Notação química: " + probs.length + " ocorrência(s) suspeita(s) — ex.: " + String(probs[0].ocorrencia || "").slice(0, 80) + ".");
+      // v14: substituições de caractere no PDF (⁄ → /) são informativas, não alerta.
+      const graves = probs.filter(p => !p.informativo);
+      const infos = probs.filter(p => p.informativo);
+      if(graves.length) aviso("Notação química: " + graves.length + " ocorrência(s) suspeita(s) — ex.: " + String(graves[0].ocorrencia || "").slice(0, 80) + ".");
+      if(infos.length) info("Caractere fora da fonte do PDF com equivalente — " + String(infos[0].ocorrencia || "").slice(0, 80) + (infos.length > 1 ? " (+" + (infos.length - 1) + ")" : "") + ".");
     }catch(e){ /* nunca interrompe */ }
   }
   return itens;
@@ -2962,6 +2973,38 @@ let enemFonteEmbarcada = false;                 // ligado por enemRegistraFontes
 const PDF_FORA_DO_SUBCONJUNTO = new Set();
 let CARLITO_SET = null;
 
+/* v14 — EQUIVALENTES PARA CARACTERES SEM GLIFO NA FONTE DO PDF.
+
+   Caso real (11/09/2026, Química, questão 1 do simulado sobre Nox do cloro):
+   o modelo escreveu a fração como "3⁄2 O₂(g)" com a BARRA DE FRAÇÃO Unicode
+   (U+2044), que a Carlito embarcada não tem. Na tela, no Word e no HTML ela
+   aparece; no PDF saía "3□2" e a auditoria avisava "caractere sem glifo".
+   Varredura do banco inteiro (337 questões): só dois casos — este e um "⅓"
+   numa questão de Matemática, que também saía como "□".
+
+   Aqui, um caractere SEM glifo que tenha um equivalente EXATO com glifo é
+   trocado por ele em vez de virar "□". Só entra em ação para caracteres fora
+   da fonte — o que a fonte tem fica intacto —, e só no caminho do PDF (tela,
+   Word e HTML nunca passam por aqui). O que não tiver equivalente continua
+   virando "□" e sendo apontado pela auditoria, como antes.
+   Todos os substitutos abaixo existem na fonte (conferido pelo teste). */
+const PDF_EQUIVALENTES = {
+  "\u2044": "/", "\u2215": "/",                                   // ⁄ barra de fração, ∕ barra de divisão
+  "\u2153": "1/3", "\u2154": "2/3", "\u2155": "1/5", "\u2156": "2/5", "\u2157": "3/5", "\u2158": "4/5",
+  "\u2159": "1/6", "\u215A": "5/6", "\u215B": "1/8", "\u215C": "3/8", "\u215D": "5/8", "\u215E": "7/8",
+  "\u22C5": "\u00B7", "\u2219": "\u00B7",                          // ⋅ ∙ → ·
+  "\u21C4": "\u21CC",                                             // ⇄ → ⇌ (reação reversível)
+  "\u27F6": "\u2192", "\u27F5": "\u2190", "\u27F7": "\u2194",      // setas longas → curtas
+  "\u2103": "\u00B0C", "\u2109": "\u00B0F", "\u1D52": "\u00B0",    // ℃ ℉ e "ᵒ" usado como grau
+  "\u2113": "L",                                                  // ℓ (litro)
+  "\u2032": "'", "\u2033": "\"",                                  // ′ ″
+  "\u2010": "-", "\u2011": "-", "\u2012": "-",                    // hifens/traço de algarismo
+  "\uFB01": "fi", "\uFB02": "fl", "\uFB00": "ff",                 // ligaduras
+  "\u2009": " ", "\u200A": " ", "\u202F": " ", "\u2005": " ", "\u2006": " ", "\u2007": " ", "\u2008": " ",
+  "\u200B": "", "\u200C": "", "\u200D": "", "\uFEFF": "",          // invisíveis
+  "\u2090": "a", "\u2091": "e", "\u2092": "o", "\u2099": "n", "\u2093": "x", "\u1D62": "i", "\u2095": "h", "\u2096": "k", "\u2098": "m", "\u209A": "p", "\u209B": "s", "\u209C": "t",  // letras subscritas: Kₐ → Ka
+};
+
 function pdfSanitizeText(text){
   if(text == null) return text;
   const s = quiJuntaFormula(String(text));
@@ -2974,6 +3017,7 @@ function pdfSanitizeText(text){
   for(const ch of s){
     if(ch === "\u2060") continue;                 // juntador: invisível, só serve ao Word e ao HTML
     if(ch === "\n" || ch === "\t" || ch === "\r" || CARLITO_SET.has(ch)) out += ch;
+    else if(PDF_EQUIVALENTES[ch] !== undefined) out += PDF_EQUIVALENTES[ch];   // v14: equivalente com glifo
     else { PDF_FORA_DO_SUBCONJUNTO.add(ch); out += "\u25A1"; }
   }
   return out;
