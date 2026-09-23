@@ -50,6 +50,10 @@ const FERRAMENTA_DOSSIE_FONTE = { name: "entregar_dossie_fonte" };
 export const __banco: any = { resposta: null, consultas: [] as any[], guardados: [] as any[] };
 async function consultarBancoFontes(o: any, evitar: string[]) { __banco.consultas.push({ o, evitar: [...evitar] }); return __banco.resposta; }
 async function guardarNoBancoFontes(o: any, d: any) { __banco.guardados.push({ o, d }); }
+/* v74.25 — dublê da camada zero (textos das provas do ENEM) + a função real de URLs da referência */
+export const __enem: any = { resposta: null, consultas: [] as any[] };
+async function consultarTextosEnem(o: any, evitar: string[]) { __enem.consultas.push({ o, evitar: [...evitar] }); return __enem.resposta; }
+${fatiar("function urlsDaReferencia(", "\nfunction dossieDoTextoEnem(")}
 const ACERVOS_PRIORITARIOS: { nome: string; url: string; dominio: string }[] = ${mAcervos[1]};
 const DOMINIOS_ACERVO_PRIORITARIO: string[] = Array.from(new Set(ACERVOS_PRIORITARIOS.map((a) => a.dominio)));
 ${recortaConstArray("DOMINIOS_VETADOS")}
@@ -81,7 +85,7 @@ export { pesquisarFonteReal, liberaGeracao, liberaRestritoAoConfirmado, conferen
 const tmp = await Deno.makeTempDir();
 await Deno.writeTextFile(`${tmp}/mod.ts`, modulo);
 const M: any = await import("file://" + `${tmp}/mod.ts`);
-const { pesquisarFonteReal, __stub, __banco, MODO_VALIDADOR } = M;
+const { pesquisarFonteReal, __stub, __banco, __enem, MODO_VALIDADOR } = M;
 
 let ok = 0, bad = 0;
 const t = (n: string, c: boolean, extra = "") => { if (c) { ok++; console.log("PASS " + n); } else { bad++; console.log("FAIL " + n + (extra ? "\n     " + extra : "")); } };
@@ -279,6 +283,32 @@ t("K1 fonte da lista do app é reprovada na conferência prévia (fonte_evitada)
 t("K2 o prompt da rodada 1 já traz a lista do app, e a consulta ao banco recebe a mesma lista",
   __stub.chamadas[0].userMsg.includes("FONTES JÁ REPROVADAS PELO VALIDADOR") && __stub.chamadas[0].userMsg.includes(URL_ACERVO)
   && __banco.consultas.length === 1 && __banco.consultas[0].evitar.includes(URL_ACERVO));
+
+/* L — v74.25: camada zero (textos das provas do ENEM) antes do banco e da web */
+__enem.consultas = []; __banco.consultas = [];
+__enem.resposta = { encontrou: true, autor: "Nicolau Sevcenko", obra: "O Renascimento", referencia: "SEVCENKO, N. O Renascimento. Disponível em: www.exemplo.org.br/renascimento. Acesso em: 1 jan. 2016.", url: "", trecho: "t", doEnem: { chave: "2016-regular-12", ano: 2016, numero: 12 }, rodadas: 0, fontesTentadas: [], validacao: { libera: true, estado: "aprovado_enem", nivel: "A", fonteAberta: true, doEnem: true } };
+roteiro(); buscas = [];
+r = await pesquisarFonteReal({ area: "humanas", disciplina: "História", tema: "Renascimento", fontesEvitar: ["enem:2009-regular-49"] }, [], buscas, muitoTempo);
+t("L1 texto do ENEM encontrado: volta aprovado SEM chamada à IA e SEM consultar o banco de fontes nem a web",
+  r && r.doEnem && r.validacao.estado === "aprovado_enem" && __stub.chamadas.length === 0 && __banco.consultas.length === 0
+  && __enem.consultas.length === 1 && __enem.consultas[0].evitar.includes("enem:2009-regular-49"));
+t("L2 a URL impressa na referência do INEP entra nas buscas reais da chamada",
+  buscas.length === 1 && buscas[0].url === "http://www.exemplo.org.br/renascimento" && buscas[0].title.includes("INEP"));
+__enem.resposta = null; __enem.consultas = []; __banco.resposta = null; __banco.consultas = [];
+roteiro(
+  { resposta: dossieBom("https://www.scielo.br/j/x"), buscas: [{ url: "https://www.scielo.br/j/x", title: "" }] },
+  { resposta: vAprovado },
+);
+r = await pesquisarFonteReal({ area: "humanas", disciplina: "História", tema: "Canudos" }, [], [], muitoTempo);
+t("L3 sem texto do ENEM para o tema: segue o fluxo de sempre (banco de fontes → pesquisador → validador)",
+  __enem.consultas.length === 1 && __banco.consultas.length === 1 && __stub.chamadas.length === 2 && r.validacao.libera === true);
+roteiro(
+  { resposta: dossieBom("https://www.scielo.br/j/x"), buscas: [{ url: "https://www.scielo.br/j/x", title: "" }] },
+  { resposta: vAprovado },
+);
+__enem.consultas = [];
+r = await pesquisarFonteReal({ area: "humanas", disciplina: "História", tema: "Canudos", usarTextosEnem: false }, [], [], muitoTempo);
+t("L4 textosEnem:false desliga só a camada zero", __enem.consultas.length === 0 && r.validacao.libera === true);
 
 /* H — fora do escopo */
 roteiro();

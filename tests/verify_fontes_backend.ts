@@ -170,6 +170,8 @@ const REELABORACOES_MAX = 2;
 ` + recorta("ferramentaFetchPara") + `
 ` + recorta("ferramentaBuscaNoDominioPara") + `
 ` + recorta("liberaRestritoAoConfirmado") + `
+// v74.25 — a camada zero (textos das provas do ENEM), inteira, como está no arquivo de produção
+` + fonte.slice(fonte.indexOf("const TEXTOS_ENEM_MINIMO_PONTOS = "), fonte.indexOf("/* ═══════════ FIM DA CAMADA ZERO")) + `
 const MINIMO_FATOS_APROVACAO_RESTRITA = 3;
 const DISCIPLINAS_SEM_APROVACAO_RESTRITA: string[] = [];
 ` + recortaConstArray("DOMINIOS_VETADOS") + `
@@ -189,6 +191,7 @@ export { DOMINIOS_VETADOS, DOMINIOS_NIVEL_A, DOMINIOS_NIVEL_B, ehDominioVetado, 
 export { ACERVOS_PRIORITARIOS, DISCIPLINAS_COM_ACERVO_PRIORITARIO, temAcervoPrioritario, buildAcervosPrioritarios };
 export { DOMINIOS_ACERVO_PRIORITARIO, hostDaUrl, ehDominioDeAcervo, acervoFoiConsultado, consultaCombinadaAcervos };
 export { existenciaProvadaPeloValidador, ITENS_DE_EXISTENCIA_DA_FICHA };
+export { pontuaTextoEnem, dossieDoTextoEnem, buildBlocoTextoEnem, urlsDaReferencia, conferenciaIneditismo, buildIneditismoParaAuditoria, DISCIPLINAS_TEXTOS_ENEM, chaveEvitarEnem };
 export { conferenciaFontes, conferenciaDossie, tokensDeFonte, normalizaUrl, buildAuditoriaFontesPrompt,
          garantirFontesReais, FERRAMENTA_AUDITORIA_FONTE, MENSAGEM_FONTE_BLOQUEIO, fontesReaisEstrito,
          buscaDaGeracao, buildDossieFonte,
@@ -208,6 +211,7 @@ const { conferenciaFontes, conferenciaDossie, normalizaUrl, buildAuditoriaFontes
         DOMINIOS_VETADOS, DOMINIOS_NIVEL_A, DOMINIOS_NIVEL_B, ehDominioVetado, nivelDoDominio, piorNivel, conferenciaPreviaDossie,
         liberaGeracao, liberaRestritoAoConfirmado, buildValidacaoPrompt, ferramentaFetchPara, ferramentaBuscaNoDominioPara, SISTEMA_VALIDACAO_FONTE, FERRAMENTA_VALIDACAO_FONTE, buildBlocoValidacaoDossie,
         existenciaProvadaPeloValidador, ITENS_DE_EXISTENCIA_DA_FICHA,
+        pontuaTextoEnem, dossieDoTextoEnem, buildBlocoTextoEnem, urlsDaReferencia, conferenciaIneditismo, buildIneditismoParaAuditoria, DISCIPLINAS_TEXTOS_ENEM, chaveEvitarEnem,
         __stub } = M;
 
 let ok = 0, bad = 0;
@@ -286,8 +290,8 @@ t("E2 a auditoria recebe a legenda do recurso visual quando existe",
 t("E3 SEM dossiê, a auditoria manda usar a busca e não confiar na memória",
   promptAud.includes("web_search") && promptAud.includes("memória"));
 t("E4 a auditoria manda reprovar na dúvida", promptAud.includes("na dúvida, verificar; sem confirmação, não utilizar"));
-t("E5 a ficha da ferramenta tem as DEZ perguntas do professor (12 positivos + varredor + item do validador (v74.21) + veredito + motivo)",
-  FERRAMENTA_AUDITORIA_FONTE.input_schema.required.length === 16
+t("E5 a ficha da ferramenta tem as DEZ perguntas do professor (12 positivos + varredor + item do validador (v74.21) + item de ineditismo (v74.25) + veredito + motivo)",
+  FERRAMENTA_AUDITORIA_FONTE.input_schema.required.length === 17 && FERRAMENTA_AUDITORIA_FONTE.input_schema.required.includes("questaoInedita")
   && ["autorExiste", "obraExiste", "obraPertenceAoAutor", "fonteExiste", "instituicaoExiste",
       "trechoConferidoNaFonte", "parafraseFielAFonte", "usoIdentificadoCorretamente",
       "referenciaLocalizavelEConfirmada", "nadaFoiInventado", "nenhumaFraseAtribuidaIndevidamente",
@@ -848,7 +852,7 @@ t("P1 o handler lê tentativa, fontesEvitar, ultimoRecurso e bancoFontes do pedi
   fonte.includes("const fontesEvitar: string[] = listaCurta(body.fontesEvitar, MAX_FONTES_EVITAR, 300);")
   && fonte.includes("const ultimoRecursoPedido = body.ultimoRecurso === true;")
   && fonte.includes("const usarBanco = body.bancoFontes !== false;")
-  && handlerP.includes("pesquisarFonteReal({ area, disciplina, tema, eixoTematico, recorte, fontesEvitar, usarBanco }"));
+  && handlerP.includes("pesquisarFonteReal({ area, disciplina, tema, eixoTematico, recorte, fontesEvitar, usarBanco, usarTextosEnem }"));
 t("P2 sem fonte validada: bloqueia (422) com as fontes tentadas — EXCETO quando o app pediu o último recurso, que vira texto próprio",
   handlerP.includes("if (!ultimoRecursoPedido) {") && handlerP.includes("tentativa: tentativaApp, fontesTentadas }")
   && handlerP.includes("textoProprio = { tentativa: tentativaApp, motivo };") && handlerP.includes("dossie = null;")
@@ -873,6 +877,76 @@ t("P5 o bloco de texto próprio proíbe atribuir qualquer coisa a terceiros e ex
   fonte.includes("SITUAÇÃO-PROBLEMA DE AUTORIA PRÓPRIA") && fonte.includes("autor, instituicao, obra, ano, referencia e urlVerificacao VAZIOS")
   && fonte.includes("É PROIBIDO afirmar qualquer fato sobre autor, obra, movimento, data, enredo")
   && fonte.includes("A fonte do dossiê continua válida e é a MESMA.") && fonte.includes("não troque a fonte."));
+
+/* ─────────────── Q. v74.25 — camada zero (textos das provas do ENEM) e auditor de ineditismo ─────────────── */
+const linhaEnem: any = { id: 7, chave: "2016-regular-12", ano: 2016, numero: 12, tipo_texto: "academico", autor: "Nicolau Sevcenko", instituicao: "", obra: "O Renascimento", ano_obra: "1988", referencia: "SEVCENKO, N. O Renascimento. São Paulo: Atual, 1988 (adaptado).", texto: "O humanismo renascentista valorizou o estudo dos textos antigos e a dignidade do homem, deslocando o centro das preocupações intelectuais.", comando_original: "A valorização dos textos antigos pelos humanistas do Renascimento teve como consequência", alternativas_originais: { A: "o fortalecimento da escolástica medieval nas universidades", B: "a difusão de uma nova concepção do homem como centro do saber", C: "o abandono completo do latim nas obras eruditas", D: "a submissão da arte aos dogmas definidos pela Igreja", E: "a recusa de qualquer investigação sobre a natureza" }, gabarito_original: "B", habilidade_original: "H13", usos: 3 };
+const dEnem = dossieDoTextoEnem(linhaEnem, 11);
+t("Q1 o dossiê do ENEM sai aprovado, sem URL, com a referência do INEP, material literal e a lista de afirmações limitada à autoria/obra/referência",
+  dEnem.encontrou === true && dEnem.url === "" && dEnem.trechoEhLiteral === true && dEnem.abriuAFonte === true
+  && dEnem.validacao.libera === true && dEnem.validacao.estado === "aprovado_enem" && dEnem.validacao.doEnem === true && dEnem.validacao.fonteAberta === true
+  && dEnem.validacao.afirmacoesComSuporte.length === 2 && dEnem.validacao.afirmacoesComSuporte[1].includes(linhaEnem.referencia)
+  && dEnem.doEnem.chave === "2016-regular-12" && dEnem.doEnem.gabaritoOriginal === "B" && dEnem.doEnem.literario === false);
+const blocoQ = buildDossieFonte(dEnem);
+t("Q2 o elaborador recebe o texto, a questão original SÓ PARA EVITAR, a regra de uso (não literário: literal ou adaptação leve) e a proibição de citar 'ENEM' na referência",
+  blocoQ.includes(linhaEnem.texto) && blocoQ.includes("PROVA OFICIAL DO ENEM 2016 (questão 12)") && blocoQ.includes("só para você EVITAR")
+  && blocoQ.includes(linhaEnem.comando_original) && blocoQ.includes("a difusão de uma nova concepção do homem")
+  && blocoQ.includes('"tipoUso": "adaptacao"') && blocoQ.includes('não escreva "ENEM" na referência')
+  && blocoQ.includes("A imagem, se o recurso pedir, é NOVA")
+  && buildBlocoTextoEnem({ ...dEnem, doEnem: { ...dEnem.doEnem, literario: true, tipoTexto: "poema" } }).includes("use trecho LITERAL")
+  && !buildDossieFonte({ ...dEnem, doEnem: undefined }).includes("PROVA OFICIAL DO ENEM"));
+t("Q3 o material do texto do ENEM vai até 3.000 caracteres ao elaborador (fonte da web continua em 1.200)",
+  buildDossieFonte({ ...dEnem, trecho: "x".repeat(4000) }).includes("x".repeat(3000)) && !buildDossieFonte({ ...dEnem, trecho: "x".repeat(4000) }).includes("x".repeat(3001))
+  && !buildDossieFonte({ ...dEnem, doEnem: undefined, trecho: "x".repeat(4000) }).includes("x".repeat(1201)));
+t("Q4 pontuação: autor e tema catalogado casam; obra diferente do mesmo autor, tema genérico e 'ruptura com o romantismo' não",
+  pontuaTextoEnem("Renascimento", { temas: ["renascimento", "humanismo"], autor: "Nicolau Sevcenko", obra: "O Renascimento" }) >= 10
+  && pontuaTextoEnem("Graciliano Ramos - Vidas Secas", { temas: ["graciliano ramos", "sao bernardo"], autor: "Graciliano Ramos", obra: "São Bernardo" }) === 0
+  && pontuaTextoEnem("História", { temas: ["historia", "renascimento"], autor: "", obra: "" }) === 0
+  && pontuaTextoEnem("Romantismo", { temas: ["machado de assis", "ruptura com o romantismo"], autor: "Machado de Assis", obra: "Memórias" }) < 10
+  && pontuaTextoEnem("Max Weber", { temas: [], autor: "Max Weber", obra: "A ciência como vocação" }) >= 10
+  && DISCIPLINAS_TEXTOS_ENEM["Práticas Corporais"].includes("Educação Física") && DISCIPLINAS_TEXTOS_ENEM["Língua Portuguesa"].includes("Tecnologias da Informação")
+  && !("Língua Estrangeira (Inglês/Espanhol)" in DISCIPLINAS_TEXTOS_ENEM) && chaveEvitarEnem("2016-regular-12") === "enem:2016-regular-12");
+t("Q5 URLs impressas na referência do INEP viram URLs reais da geração (com e sem http)",
+  JSON.stringify(urlsDaReferencia("Disponível em: http://www.brasilescola.com. Acesso em: 18 maio 2010. Ver também www.ibge.gov.br/x;")) === JSON.stringify(["http://www.brasilescola.com", "http://www.ibge.gov.br/x"])
+  && urlsDaReferencia(linhaEnem.referencia).length === 0);
+const qNova = (comando: string, alts: any, gabarito = "C") => ({ ...questao(fonteBoa({ autor: "Nicolau Sevcenko", instituicao: "", obra: "O Renascimento", referencia: linhaEnem.referencia, urlVerificacao: "", tipoUso: "adaptacao", conferidoNaFonte: true })), comando, alternativas: alts, gabarito });
+const altsInedi = { A: "a crítica aos métodos experimentais defendidos pelos naturalistas", B: "a defesa do poder papal sobre os governantes seculares da Europa", C: "o deslocamento do interesse intelectual para a experiência humana", D: "a rejeição das línguas vernáculas na produção literária do período", E: "a adoção de normas rígidas para a representação pictórica do divino" };
+t("Q6 ineditismo em código: comando copiado reprova; comando e resposta novos passam; resposta correta copiada reprova; sem texto do ENEM não se aplica",
+  conferenciaIneditismo(qNova(linhaEnem.comando_original, altsInedi), dEnem).estado === "repetida"
+  && conferenciaIneditismo(qNova("Segundo o texto, a mudança no foco dos estudos humanistas relaciona-se com", altsInedi), dEnem).estado === "ok"
+  && conferenciaIneditismo(qNova("Segundo o texto, a mudança no foco dos estudos humanistas relaciona-se com", { ...altsInedi, C: "a difusão de uma nova concepção do homem como centro do saber" }), dEnem).estado === "repetida"
+  && conferenciaIneditismo(qNova("No texto, o autor", altsInedi), dEnem).comando === 0
+  && conferenciaIneditismo(qNova(linhaEnem.comando_original, altsInedi), doss).estado === "nao_se_aplica");
+__stub.resposta = fichaBoa({ questaoDentroDasAfirmacoes: true, questaoInedita: true }); __stub.erro = null; __stub.chamadas = 0;
+const qQ7: any = qNova(linhaEnem.comando_original, altsInedi);
+const dQ7 = await roda(qQ7, "humanas", 120_000, [], dEnem);
+t("Q7 cópia da questão original é reprovada EM CÓDIGO, sem gastar a chamada do auditor, e vai para a reelaboração com o item questaoInedita",
+  dQ7.estado === "reprovado" && __stub.chamadas === 0 && dQ7.ineditismo.estado === "repetida" && JSON.stringify(dQ7.itensReprovados) === JSON.stringify(["questaoInedita"])
+  && qQ7.fonteNaoVerificada && qQ7.fonteNaoVerificada.etapa === "ineditismo");
+__stub.resposta = fichaBoa({ fonteExiste: false, autorExiste: false, questaoDentroDasAfirmacoes: true, questaoInedita: true }); __stub.chamadas = 0;
+const qQ8: any = qNova("Segundo o texto, a mudança no foco dos estudos humanistas relaciona-se com", altsInedi);
+const dQ8 = await roda(qQ8, "humanas", 120_000, [], dEnem);
+t("Q8 questão inédita sobre texto do ENEM: auditor sem busca que nega existência é vencido (a referência é do INEP); a auditoria vê a questão original",
+  dQ8.estado === "aprovado" && __stub.chamadas === 1 && dQ8.existenciaPeloValidador === true
+  && JSON.stringify(dQ8.fichaDivergente) === JSON.stringify(["autorExiste", "fonteExiste"]) && dQ8.ficha.questaoInedita === true
+  && __stub.ultimoPrompt.includes("QUESTÃO ORIGINAL DO ENEM 2016 (questão 12)") && __stub.ultimoPrompt.includes("questaoInedita")
+  && __stub.buscaLigada === false, JSON.stringify({ estado: dQ8.estado, motivo: dQ8.motivo, ficha: dQ8.ficha }));
+__stub.resposta = fichaBoa({ questaoDentroDasAfirmacoes: true, questaoInedita: false, aprovado: false, motivo: "parafraseia a questão original" }); __stub.chamadas = 0;
+const qQ9: any = qNova("Segundo o texto, a mudança no foco dos estudos humanistas relaciona-se com", altsInedi);
+const dQ9 = await roda(qQ9, "humanas", 120_000, [], dEnem);
+t("Q9 auditor detecta paráfrase da questão original → reprovado com questaoInedita",
+  dQ9.estado === "reprovado" && qQ9.fonteNaoVerificada.itens.includes("questaoInedita"));
+__stub.resposta = fichaBoa({ questaoDentroDasAfirmacoes: true, questaoInedita: false }); __stub.chamadas = 0;
+const dQ10 = await roda(questao(fonteBoa()), "linguagens", 120_000, [], null);
+t("Q10 sem texto do ENEM o item de ineditismo não entra na ficha (não reprova fonte da web)",
+  dQ10.estado === "aprovado" && !("questaoInedita" in dQ10.ficha) && buildIneditismoParaAuditoria(doss) === "");
+t("Q11 handler: flag textosEnem, marca doEnem na resposta (sem a questão original) e no log; a camada zero vem antes do banco de fontes",
+  fonte.includes("const usarTextosEnem = body.textosEnem !== false;")
+  && handlerP.includes("if (textoEnem) fontesDiag.doEnem = textoEnem;")
+  && handlerP.includes("{ chave: String(dossie.doEnem.chave), ano: dossie.doEnem.ano, numero: dossie.doEnem.numero }")
+  && handlerP.includes("fonteEnem: !!textoEnem, textoEnemChave:")
+  && fonte.includes("novas.fonte_enem = extra.fonteEnem") && fonte.includes("novas.texto_enem_chave")
+  && fonte.indexOf("await consultarTextosEnem(o, evitar)") < fonte.indexOf("await consultarBancoFontes(o, evitar)")
+  && fonte.includes("|| d.doBanco || d.doEnem) return;"));
 
 console.log(`\n${ok} verificações passaram, ${bad} falharam.`);
 if (bad) Deno.exit(1);

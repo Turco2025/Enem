@@ -124,7 +124,7 @@ Teste: `verify_fontes_app.js` — 19 verificações; as seções B e C bis prova
 quatro marcas ligadas ao mesmo tempo nenhuma conferência bloqueia, e que nenhuma delas tem sequer um
 `return true` no corpo. `verify_gabarito_coerente.js` H1 passou a exigir o contrário do que exigia.
 
-## O agente validador entre a pesquisa e a elaboração — e o custo que o log mostrou (generate-question v74.21 → v74.24 · app v18.28, 20/09/2026)
+## O agente validador entre a pesquisa e a elaboração — e o custo que o log mostrou (generate-question v74.21 → v74.25 · app v18.29, 20–22/09/2026)
 
 Pedido do professor (20/09): um squad de quatro agentes — **pesquisador, validador, elaborador e
 auditor** — em que o elaborador só escreve depois que a fonte foi aprovada, com o prompt "AGENTE
@@ -434,6 +434,42 @@ Três mudanças, autorizadas pelo professor:
 
 Custo: zero quando a imagem passa de primeira; na recusa, uma chamada curta de reescrita (≈ US$ 0,01)
 no lugar de duas imagens recusadas. Self-test `v7424_moderacaoImagem`.
+
+### Oitavo passo (22/09, v74.25 · app v18.29 · classificar-textos-enem v1.1): as provas antigas do ENEM como camada zero
+
+Decisão do professor (21/09): usar os textos das provas oficiais — autor, obra e referência já
+conferidos e **impressos pelo INEP** — como a primeira fonte do pesquisador, e criar questões
+**novas** em cima deles.
+
+1. **Extração** (`tests/extrair_textos_enem.py`): as provas 2009–2025 em `provas/<ano>/` (2021
+   fica de fora: a fonte do PDF está corrompida) viram `provas/extracao/textos_enem_bruto.jsonl`
+   — 3.040 questões, com texto, referência, comando, alternativas e gabarito.
+2. **Classificação** (`supabase/functions/classificar-textos-enem`): as 1.238 de Linguagens e Humanas
+   (sem língua estrangeira) foram separadas e catalogadas pelo modelo — disciplina, tipo de texto,
+   autor, obra, habilidade original, temas — na tabela `textos_enem`. **1.106 aproveitáveis**; as
+   demais dependiam de imagem/mapa/gráfico ausente ou vieram corrompidas do PDF. Custo: US$ 16,60.
+   A v1.1 acrescenta a ação `retemas`, que refaz só os temas das 163 linhas que ficaram sem eles.
+3. **Camada zero** (`generate-question` v74.25): com tema digitado, antes do banco de fontes e antes
+   da web, `consultarTextosEnem` procura um texto da disciplina que **cubra o tema** (autor, tema
+   catalogado, ≥ 60% das palavras do tema — "Graciliano Ramos - Vidas Secas" não traz São Bernardo).
+   O recorte reservado desempata; depois, o texto menos usado. O dossiê sai aprovado **sem pesquisa
+   e sem validador** (custo zero nessas etapas); a lista de afirmações permitidas é só a
+   autoria/obra/referência. Literário (prosa, poema, canção): trecho **literal**. Não literário:
+   literal ou adaptação leve. Imagem sempre nova. Sem texto que sirva, o fluxo é o de sempre.
+4. **Auditor de ineditismo**: a questão original vai ao elaborador só para ser evitada e é conferida
+   duas vezes — em código (`conferenciaIneditismo`: comando, resposta correta e alternativas
+   copiados ou quase copiados reprovam sem gastar o auditor) e pelo auditor (item `questaoInedita`,
+   que pega a paráfrase). Repetiu → reelaboração com o mesmo texto; persistindo, o app pede de novo e
+   o texto entra na lista a evitar (`enem:<chave>`). Existência (autor, obra, referência) de texto
+   do ENEM é tida como provada — a referência é do INEP.
+5. **App v18.29**: linha na ficha ("Texto-base da prova oficial do ENEM 2016 (questão 12)…"), fonte
+   exibida como "banco de textos das provas oficiais do ENEM", e a chave do texto reprovado na lista a
+   evitar. Só tela: PDF, impressão e DOCX não mudam.
+6. **Log**: `question_generation_log.fonte_enem` e `texto_enem_chave`.
+
+Não muda: Matriz de Referência, método de construção do INEP, elaborador, calibração (continua só
+com 2022–2025), protocolo de imagem. Testes: seção **Q** (11) em `verify_fontes_backend.ts` (152),
+cenários **L1–L4** em `verify_validador_v7421.ts` (34); self-test `v7425_textosEnem`.
 
 ### Custo esperado e o que ainda falta medir
 

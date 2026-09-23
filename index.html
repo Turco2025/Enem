@@ -3624,6 +3624,13 @@ async function generateQuestion(q){
         const f = payload.question.fonte || {};
         const chave = f.urlVerificacao ? String(f.urlVerificacao) : (f.autor || f.obra ? String(f.autor || "") + " — " + String(f.obra || "") : "");
         if(chave && fontesEvitar.indexOf(chave) < 0) fontesEvitar.push(chave);
+        /* v18.29 — texto-base da prova do ENEM (backend v74.25): a chave do texto vai
+           na frente da lista, para o próximo pedido usar OUTRO texto da prova. */
+        const doEnemRep = payload.fontesDiag && payload.fontesDiag.doEnem;
+        if(doEnemRep && doEnemRep.chave){
+          const ce = "enem:" + String(doEnemRep.chave);
+          if(fontesEvitar.indexOf(ce) < 0) fontesEvitar.unshift(ce);
+        }
         diagImagem(q, "auditoria_reprovou", `tentativa ${tentativaFonte}: ${String(payload.question.fonteNaoVerificada.motivo || "").slice(0, 300)} · pedindo de novo com outra fonte`);
         continue;
       }
@@ -3660,6 +3667,7 @@ async function generateQuestion(q){
       doBanco: payload.fontesDiag.doBanco === true,
       ultimoRecurso: payload.fontesDiag.ultimoRecurso || null,
       fontesDescartadas: fontesEvitar.length,
+      doEnem: payload.fontesDiag.doEnem || null,   // v18.29 — texto-base da prova oficial do ENEM (backend v74.25)
     } : null;
     // Rede de segurança: a letra planejada tem de ser mesmo a correta.
     q.gabaritoStatus = aplicaGabaritoAlvo(q.data, gabaritoAlvoDe(state.questions.indexOf(q)));
@@ -5092,6 +5100,11 @@ function auditaQuestaoLocal(q){
            (i.reelaboracoes ? " · reelaborada " + i.reelaboracoes + "× após o auditor" : "") +
            (i.doBanco ? " · fonte reaproveitada do banco de fontes validadas" : "") + ".");
     }
+    /* v18.29 — texto-base da prova oficial do ENEM (backend v74.25). Só tela. */
+    if(i.doEnem && !i.ultimoRecurso){
+      info("Texto-base da prova oficial do ENEM " + String(i.doEnem.ano || "?") + " (questão " + String(i.doEnem.numero || "?") + "), com autor, obra e referência impressos pelo INEP. " +
+           "A questão é inédita: o comando, as alternativas e o gabarito foram conferidos contra os da questão original.");
+    }
   }
 
   /* v18.25 — o veredito do agente validador (backend v74.21), quando houve.
@@ -5104,6 +5117,10 @@ function auditaQuestaoLocal(q){
          descartou o trecho literal e liberou só os fatos que confirmou; a
          questão é paráfrase com referência, sem citação. */
       const restrita = v.estado === "aprovado_restrito";
+      /* v18.29 — texto da prova do ENEM: não houve pesquisa nem validador na web. */
+      if(v.estado === "aprovado_enem"){
+        info("Fonte: banco de textos das provas oficiais do ENEM · referência impressa pelo INEP · sem pesquisa na web.");
+      } else
       info("Fonte validada pelo agente validador" + (restrita ? " (aprovação restrita ao confirmado — paráfrase, sem citação literal)" : "") +
            " · nível " + String(v.nivel || "?") + " · suporte " + String(v.suporte || "?") +
            " · confiança " + String(v.confianca || "?") + (v.fonteAberta ? " · página localizada" : " · página não localizada pela busca restrita") +
