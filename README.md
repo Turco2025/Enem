@@ -22,7 +22,8 @@ duas Supabase Edge Functions próprias para gerar conteúdo com segurança:
   atende o modo "refazer recurso visual", que gera só uma nova versão do gráfico/tabela/
   imagem de uma questão já pronta, mantendo o resto intacto.
 - **`generate-image`** — recebe uma descrição e chama a API de imagens da OpenAI
-  (`gpt-image-2` por padrão) para gerar a ilustração usada nas questões do tipo "imagem".
+  (`gpt-image-2.5-flare`, fixo no código desde a v33) para gerar a ilustração usada nas
+  questões do tipo "imagem".
 - **`whatsapp-webhook`** — recebe as mensagens do WhatsApp (Meta Cloud API) enviadas ao
   número oficial do Gerador ENEM. Nesta fase faz o **pareamento**: o professor clica em
   "Solicitar simulados pelo WhatsApp → Vincular meu WhatsApp" no app, recebe um código de
@@ -123,6 +124,42 @@ Teste: `verify_fontes_app.js` — 19 verificações; as seções B e C bis prova
 **não** bloqueia, que o aviso mantém a mensagem literal e não se apresenta como erro, que com as
 quatro marcas ligadas ao mesmo tempo nenhuma conferência bloqueia, e que nenhuma delas tem sequer um
 `return true` no corpo. `verify_gabarito_coerente.js` H1 passou a exigir o contrário do que exigia.
+
+## Imagens no GPT-Image-2.5 Flare (generate-image v33, 23/09/2026)
+
+Pedido do professor (23/09): *"a partir de agora, a API para geração de imagens do meu aplicativo
+usa o image GPT 2.5 Flare"*. O modelo fica fixo no código, no snapshot datado
+`gpt-image-2.5-flare-2026-09-08` (apelido `gpt-image-2.5-flare` só como rede de segurança de nome,
+nunca outro modelo); a variável `OPENAI_IMAGE_MODEL` continua ignorada. Qualidade `low`,
+moderação `low`, tamanho e formato (1536×1024, WebP 80 pedido pelo app) não mudam.
+
+O que mudou em `supabase/functions/generate-image/index.ts`:
+
+1. **Modelo** — `gpt-image-2-2026-04-21` → `gpt-image-2.5-flare-2026-09-08`.
+2. **Preço** — o cálculo de custo passa a usar `PRECO_IMAGEM_USD_POR_M` (texto de entrada
+   US$ 5/M, imagem de saída US$ 30/M, preços oficiais conferidos em 23/09), declarado ao lado do
+   nome do modelo. Antes os números 2,5 e 15 estavam soltos na conta.
+3. **Verificação da organização** — em 08/09 (v24) a OpenAI recusou com 403 todas as imagens de
+   uma leva no 2.5 Flare porque a organização não estava verificada. Se isso voltar, a função
+   devolve `code "organization_verification_required"` com a instrução para o professor, sem
+   repetir e sem trocar de modelo por conta própria.
+
+Nada muda no app: ele já usa o custo e o tempo devolvidos pela função.
+
+Ensaio antes da publicação (slug de teste `gi-teste-flare`, arquivo idêntico ao da v33, login
+substituído por um token descartável; desativado depois), com dois `promptImagem` reais da leva
+de Química de 22/09:
+
+| Prompt | gpt-image-2 (produção, 22/09) | gpt-image-2.5-flare (teste, 23/09) |
+|---|---|---|
+| Diluição (bancada, 3 rótulos) | 12 s · 686/158 tokens · US$ 0,00409 | 10 s · 686/158 tokens · US$ 0,00817 |
+| Proteção catódica (corte do solo, 3 setas) | 15 s · 780/158 tokens · US$ 0,00432 | 14 s · 780/158 tokens · US$ 0,00864 |
+
+A organização já não recebe o 403 de 08/09; o snapshot datado, `moderation: "low"`, WebP e
+1536×1024 foram aceitos. Mesmos tokens, preço por token dobrado: **cerca de US$ 0,009 por imagem**
+(média do gpt-image-2 em 487 imagens: US$ 0,0047) e tempo um pouco menor.
+
+Volta atrás: republicar o stub da produção apontando para o commit anterior (v32, `5dddee13`).
 
 ## O agente validador entre a pesquisa e a elaboração — e o custo que o log mostrou (generate-question v74.21 → v74.25 · app v18.29, 20–22/09/2026)
 

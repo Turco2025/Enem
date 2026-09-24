@@ -9,27 +9,38 @@ const CORS_HEADERS = {
 
 // Usa a API oficial da OpenAI (Image API, "ChatGPT Images").
 const OPENAI_API_KEY = Deno.env.get("OPENAI_API_KEY");
-/* MODELO FIXO EM "GPT-Image-2" (snapshot datado), QUALIDADE FIXA EM "low"
-   — decisão do professor em 09/09/2026. Histórico: no lançamento do ChatGPT
-   Images 2.5 (08/09/2026) a função chegou a ser fixada no gpt-image-2.5-flare
-   (v24), mas a OpenAI exige "verificação de organização" para esse modelo
-   (erro 403 em todas as imagens de uma leva) e, no mesmo dia, cortou o preço
-   do gpt-image-2 pela metade. O professor optou por voltar ao gpt-image-2 —
-   metade do custo, sem verificação, mesmo pipeline que já gerou 74 imagens
-   com 100% de sucesso. Isto é intencional e definitivo: a variável de
-   ambiente OPENAI_IMAGE_MODEL NÃO é lida — mesmo que exista nos secrets do
-   projeto, é ignorada de propósito, para que nenhuma configuração externa
-   troque o modelo sem editar este arquivo (mesmo critério do modelo de texto
-   em generate-question). O snapshot datado garante que o modelo não muda por
-   baixo dos panos quando a OpenAI atualizar o apelido "gpt-image-2".
-   Preços vigentes (por milhão de tokens): texto de entrada US$ 2,50, imagem
-   de saída US$ 15 — os mesmos usados no cálculo de custo abaixo. */
-const IMAGE_MODEL = "gpt-image-2-2026-04-21";
+/* v33 (23/09/2026) — MODELO FIXO EM "GPT-Image-2.5 Flare" (snapshot datado),
+   QUALIDADE FIXA EM "low" — decisão do professor em 23/09/2026: "a partir de
+   agora, a geração de imagens usa o image GPT 2.5 Flare".
+   Histórico: no lançamento do ChatGPT Images 2.5 (08/09/2026) a função chegou
+   a ser fixada no gpt-image-2.5-flare (v24), mas a OpenAI exigia
+   "verificação de organização" para esse modelo (erro 403 em todas as imagens
+   de uma leva) e, no mesmo dia, cortou o preço do gpt-image-2 pela metade; em
+   09/09 o professor voltou ao gpt-image-2 (v25–v32, 487 imagens). Agora o
+   professor decidiu pelo 2.5 Flare, sabendo que o preço por token é o DOBRO
+   do gpt-image-2. Se a OpenAI voltar a exigir a verificação da organização, a
+   função devolve uma mensagem clara (ver "verificação" abaixo) em vez do erro
+   cru — sem trocar de modelo por conta própria.
+   Isto é intencional e definitivo: a variável de ambiente OPENAI_IMAGE_MODEL
+   NÃO é lida — mesmo que exista nos secrets do projeto, é ignorada de
+   propósito, para que nenhuma configuração externa troque o modelo sem editar
+   este arquivo (mesmo critério do modelo de texto em generate-question). O
+   snapshot datado garante que o modelo não muda por baixo dos panos quando a
+   OpenAI atualizar o apelido "gpt-image-2.5-flare".
+   Preços vigentes do gpt-image-2.5-flare (developers.openai.com/api/docs/
+   pricing, conferidos em 23/09/2026), por milhão de tokens: texto de entrada
+   US$ 5,00, imagem de saída US$ 30 — os mesmos usados no cálculo de custo
+   abaixo (PRECO_IMAGEM_USD_POR_M). */
+const IMAGE_MODEL = "gpt-image-2.5-flare-2026-09-08";
 /* Rede de segurança de nome, não de modelo: se a OpenAI recusar o snapshot
    datado (404/400 "model"), a MESMA imagem é pedida ao apelido oficial do
-   mesmo modelo, "gpt-image-2" — nunca a outro modelo. O nome efetivamente
-   usado volta em "uso.modelo" e fica no log. */
-const IMAGE_MODEL_ALIAS = "gpt-image-2";
+   mesmo modelo, "gpt-image-2.5-flare" — nunca a outro modelo. O nome
+   efetivamente usado volta em "uso.modelo" e fica no log. */
+const IMAGE_MODEL_ALIAS = "gpt-image-2.5-flare";
+/* Preço do modelo acima, por milhão de tokens (texto de entrada e imagem de
+   saída). Fica junto do nome do modelo: trocar um sem o outro faria o log de
+   custo mentir. */
+const PRECO_IMAGEM_USD_POR_M = { textoEntrada: 5.0, imagemSaida: 30.0 };
 // SEM TETO DIÁRIO (decisão do professor): ausente, 0 ou negativo = ilimitado.
 // Para reativar um limite depois, basta definir MAX_DAILY_IMAGES com um número
 // positivo nos secrets do projeto Supabase — não é preciso reimplantar a função.
@@ -134,7 +145,7 @@ Deno.serve(async (req: Request) => {
   }
 
   try {
-    // OBS: a API de imagens da OpenAI para o gpt-image-2 (e gpt-image-1) já
+    // OBS: a API de imagens da OpenAI para o gpt-image-2.5, o gpt-image-2 e o gpt-image-1 já
     // devolve a imagem em base64 por padrão — o parâmetro "response_format"
     // NÃO é mais aceito por esse endpoint e causa erro 400 "Unknown parameter"
     // se enviado. Por isso ele foi removido do corpo da requisição abaixo.
@@ -193,6 +204,20 @@ Deno.serve(async (req: Request) => {
           if (tentativa === 3) return jsonResponse({ error: `Falha ao gerar imagem na OpenAI (${ultimoErro})` }, 502);
           continue;
         }
+        /* v33 — VERIFICAÇÃO DA ORGANIZAÇÃO. Em 08/09 a OpenAI recusou com 403
+           todas as imagens de uma leva no gpt-image-2.5-flare porque a
+           organização não estava verificada. Repetir não resolve (nem trocar
+           de modelo por conta própria): a mensagem diz ao professor o que
+           fazer, e o erro original segue em "detalhe". */
+        const verificacao = res.status === 403 && /verif/i.test(errText);
+        if (verificacao) {
+          console.error(`[imagem] OpenAI exige verificação da organização para ${modeloUsado}: ${errText.slice(0, 200).replace(/\s+/g, " ")}`);
+          return jsonResponse({
+            error: "A OpenAI exige a verificação da organização para usar o modelo de imagem GPT-Image-2.5 Flare. Faça a verificação em platform.openai.com (Settings → Organization → General) e tente de novo.",
+            code: "organization_verification_required",
+            detalhe: errText.slice(0, 300),
+          }, 502);
+        }
         /* v32 (20/09/2026) — RECUSA DA MODERAÇÃO. Cinco imagens de uma leva de
            Literatura voltaram com "Your request was rejected by the safety
            system" (crianças em fotorrealismo, cenas de morte/violência), e o
@@ -238,13 +263,14 @@ Deno.serve(async (req: Request) => {
 
     /* O custo da imagem é verificável, não estimado: a OpenAI devolve, em
        "usage", quantos tokens de texto entraram e quantos tokens de imagem
-       saíram. Multiplicando pelos preços vigentes (US$ 2,50 e US$ 15 por milhão)
+       saíram. Multiplicando pelos preços vigentes do modelo em uso
+       (PRECO_IMAGEM_USD_POR_M: US$ 5 e US$ 30 por milhão no gpt-image-2.5-flare)
        sai o preço real daquela imagem — dá para comparar qualidades sem
        depender de tabela publicada.                                          */
     const uso = data.usage || {};
     const tokensEntrada = Number(uso.input_tokens) || 0;
     const tokensSaida = Number(uso.output_tokens) || 0;
-    const custoUSD = Number(((tokensEntrada * 2.5 + tokensSaida * 15) / 1e6).toFixed(5));
+    const custoUSD = Number(((tokensEntrada * PRECO_IMAGEM_USD_POR_M.textoEntrada + tokensSaida * PRECO_IMAGEM_USD_POR_M.imagemSaida) / 1e6).toFixed(5));
 
     /* O log agora guarda os mesmos números que já eram calculados e devolvidos
        ao app (segundos, tokens, custo) — antes só o prompt ficava registrado,
