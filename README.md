@@ -125,6 +125,49 @@ Teste: `verify_fontes_app.js` — 19 verificações; as seções B e C bis prova
 quatro marcas ligadas ao mesmo tempo nenhuma conferência bloqueia, e que nenhuma delas tem sequer um
 `return true` no corpo. `verify_gabarito_coerente.js` H1 passou a exigir o contrário do que exigia.
 
+## Biblioteca de textos do professor; Literatura, Língua Portuguesa e Artes sem pesquisa na internet (generate-question v74.28, 26/09/2026)
+
+Decisões do professor (26/09): **Literatura, Língua Portuguesa e Artes não pesquisam mais na
+internet**. As questões passam a usar os textos e as referências que ele envia — questões de
+vestibulares e outras provas, em PDF, entre elas as provas de 50 anos da Fuvest (1977–2026) —, além
+dos textos das provas do ENEM que já estavam no banco.
+
+Por quê — medido de 21 a 25/09 (374 gerações, US$ 55,44): pesquisa + validação de fonte na web
+custaram **US$ 31,11 (56%)**, e **US$ 15,38** foram gastos em tentativas cuja fonte o validador
+reprovou e que não viraram questão. Nas 10 de Literatura de 26/09, a única que pesquisou custou
+US$ 0,375 das US$ 1,26 da leva.
+
+O que mudou:
+
+1. **Tabela `textos_enem`, coluna nova `prova`** (`supabase/migrations/2026-09-26_textos_enem_prova.sql`):
+   `'ENEM'` nos 1.238 textos do INEP (padrão, nada muda neles) e o nome da prova nos textos do
+   professor (`'Unesp 2026'`). O texto de outra prova é apresentado ao elaborador, ao auditor e na
+   tela como tal — nunca como ENEM. Nos textos do ENEM os prompts ficam idênticos aos da v74.25.
+   Quando a prova não imprimiu a referência completa, ela fica com autor, título e prova de origem;
+   o elaborador é proibido de inventar livro, editora ou ano. O comando e as alternativas originais
+   ficam guardados só para a conferência anti-cópia (o app não os mostra).
+2. **Literatura, Língua Portuguesa e Artes sem internet em etapa nenhuma** (pesquisador, validador,
+   elaborador, auditor).
+   Ordem: texto da biblioteca que casa com o tema (camada zero da v74.25) → banco de fontes já
+   validadas → **o texto mais próximo da biblioteca** (escolha do professor), com o recorte da
+   questão ajustado a ele. Mais próximo = mais palavras do pedido nos temas, autor ou obra do
+   texto, com peso maior para as palavras raras na biblioteca; empate → o menos usado. Nunca
+   inventa texto. História, Geografia, Sociologia e Língua Estrangeira seguem pesquisando (o
+   professor decide depois); História, Geografia e Sociologia passam a achar também os textos da
+   Fuvest na camada zero quando o tema casa. A biblioteca é lida em páginas de 1000 linhas (antes a
+   camada zero lia só 500).
+3. **App** (`index.html`, v18.30): a observação da questão diz de que prova veio o texto e avisa
+   quando foi usado o texto mais próximo.
+4. **Extração dos PDFs**: `tests/extrair_textos_professor.py` (PDF exportado do Super Professor →
+   texto-base, referência impressa, comando/alternativas/gabarito originais; não guarda resolução
+   nem comentário). A classificação (disciplina, tipo de texto, temas) é revista lote a lote.
+   **Os textos extraídos não vão para este repositório, que é público: ficam só no banco.**
+
+Testes: `tests/verify_biblioteca_v7428.ts` (23 verificações: prova de origem, texto do ENEM
+inalterado, escolha do mais próximo, Literatura/Língua Portuguesa/Artes sem nenhuma chamada ao
+pesquisador, História ainda pesquisando, leitura em páginas, geração e auditoria sem web) e o selftest
+`v7428_biblioteca`. As demais suítes seguem passando.
+
 ## Conferência das alternativas antes da entrega (generate-question v74.27, 25/09/2026)
 
 Pedido do professor (25/09): resolver três defeitos que continuavam aparecendo nas questões, mesmo

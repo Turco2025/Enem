@@ -5102,8 +5102,16 @@ function auditaQuestaoLocal(q){
     }
     /* v18.29 — texto-base da prova oficial do ENEM (backend v74.25). Só tela. */
     if(i.doEnem && !i.ultimoRecurso){
-      info("Texto-base da prova oficial do ENEM " + String(i.doEnem.ano || "?") + " (questão " + String(i.doEnem.numero || "?") + "), com autor, obra e referência impressos pelo INEP. " +
+      /* v18.30 — biblioteca de textos do professor (backend v74.28): texto de outra
+         prova aparece com o nome dela, nunca como ENEM; e o aviso de "mais próximo". */
+      const outraProva = i.doEnem.prova && i.doEnem.prova !== "ENEM" ? String(i.doEnem.prova) : "";
+      info((outraProva
+             ? "Texto-base da prova " + outraProva + " (biblioteca de textos do professor), com autor, obra e referência como impressos na prova. "
+             : "Texto-base da prova oficial do ENEM " + String(i.doEnem.ano || "?") + " (questão " + String(i.doEnem.numero || "?") + "), com autor, obra e referência impressos pelo INEP. ") +
            "A questão é inédita: o comando, as alternativas e o gabarito foram conferidos contra os da questão original.");
+      if(i.doEnem.aproximado){
+        info("A biblioteca não tinha um texto para o tema pedido; foi usado o texto mais próximo, e a questão foi ajustada a ele (Literatura, Língua Portuguesa e Artes não pesquisam na internet).");
+      }
     }
   }
 
@@ -5119,7 +5127,10 @@ function auditaQuestaoLocal(q){
       const restrita = v.estado === "aprovado_restrito";
       /* v18.29 — texto da prova do ENEM: não houve pesquisa nem validador na web. */
       if(v.estado === "aprovado_enem"){
-        info("Fonte: banco de textos das provas oficiais do ENEM · referência impressa pelo INEP · sem pesquisa na web.");
+        const provaDoTexto = q.insistencia && q.insistencia.doEnem && q.insistencia.doEnem.prova && q.insistencia.doEnem.prova !== "ENEM" ? String(q.insistencia.doEnem.prova) : "";
+        info(provaDoTexto
+          ? "Fonte: biblioteca de textos do professor · prova " + provaDoTexto + " · referência como impressa na prova · sem pesquisa na web."
+          : "Fonte: banco de textos das provas oficiais do ENEM · referência impressa pelo INEP · sem pesquisa na web.");
       } else
       info("Fonte validada pelo agente validador" + (restrita ? " (aprovação restrita ao confirmado — paráfrase, sem citação literal)" : "") +
            " · nível " + String(v.nivel || "?") + " · suporte " + String(v.suporte || "?") +

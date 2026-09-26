@@ -955,7 +955,7 @@ Uma etapa anterior pesquisou o assunto e trouxe esta fonte real. Use ESTA fonte 
 · obra/página: ${String(d.obra || "(no corpo da referência)")}
 · ano confirmado: ${String(d.ano || "(não confirmado — NÃO invente uma data)")}
 · referência: ${String(d.referencia || "")}
-· url verificada: ${d.doEnem ? "(fonte impressa — texto da prova oficial do ENEM; não há URL a declarar além da que a referência trouxer)" : String(d.url || "")}
+· url verificada: ${d.doEnem ? (d.doEnem.prova && d.doEnem.prova !== "ENEM" ? `(fonte impressa — texto da prova ${d.doEnem.prova}; não há URL a declarar além da que a referência trouxer)` : "(fonte impressa — texto da prova oficial do ENEM; não há URL a declarar além da que a referência trouxer)") : String(d.url || "")}
 · a fonte foi aberta e lida: ${d.abriuAFonte === true ? "sim" : "não — só o resumo da busca"}
 · MATERIAL (${d.trechoEhLiteral === true ? "trecho literal" : d.restritoAoConfirmado === true ? "fatos confirmados pelo VALIDADOR — só estes" : "fatos confirmados"}):
 """
@@ -1491,22 +1491,115 @@ function urlsDaReferencia(ref: string): string[] {
   const achadas = String(ref || "").match(/(https?:\/\/[^\s)<>"]+|www\.[^\s)<>"]+)/gi) || [];
   return Array.from(new Set(achadas.map((u) => u.replace(/[.,;:]+$/, "")).map((u) => (/^https?:/i.test(u) ? u : `http://${u}`))));
 }
+/* ═══════════ v74.28 — BIBLIOTECA DE TEXTOS E LITERATURA SEM PESQUISA NA INTERNET (26/09/2026) ═══════════
+   Decisões do professor (26/09): "Não quero mais que você faça pesquisa na
+   internet de literatura. Você vai usar esses textos extraídos e as
+   referências." e, com as provas de 50 anos da Fuvest: "eu não quero que faça
+   pesquisa para língua portuguesa, artes e nem literatura na internet". Motivo medido: de 21 a 25/09, pesquisa + validação na web
+   custaram US$ 31,11 de US$ 55,44 (56%); US$ 15,38 em tentativas reprovadas.
+   1. A tabela textos_enem passa a guardar também os textos que o professor
+      envia (questões de vestibulares e outras provas, extraídas dos PDFs dele):
+      coluna "prova" ("ENEM" nos 1.238 textos do INEP; "Unesp 2026" etc. nos
+      dele). O texto de outra prova é apresentado como tal — nunca como ENEM.
+      Nos textos do ENEM, os prompts ficam idênticos aos da v74.25.
+   2. Literatura, Língua Portuguesa e Artes não pesquisam na internet em etapa
+      nenhuma (pesquisador, validador, elaborador, auditor). Ordem: texto da
+      biblioteca que casa com o tema (a mesma camada zero da v74.25) → banco de
+      fontes já validadas → o texto MAIS PRÓXIMO da biblioteca (escolha do
+      professor: "usar o mais próximo"), com o recorte da questão ajustado ao
+      texto. Nunca inventa texto. As demais disciplinas seguem como estavam
+      (História, Geografia e Sociologia passam a achar também os textos da
+      Fuvest na camada zero, quando o tema casa).
+   3. A biblioteca é lida em páginas de 1000 linhas (limite da API do Supabase
+      por consulta): com os textos da Fuvest, Língua Portuguesa e Literatura
+      passam das 500 linhas que a camada zero lia antes. */
+const DISCIPLINAS_SEM_PESQUISA_WEB = ["Literatura", "Língua Portuguesa", "Artes"];
+const BIBLIOTECA_LIMITE_LINHAS = 6000;
+const BIBLIOTECA_PAGINA = 1000;
+/* Todas as linhas aproveitáveis da biblioteca para estas disciplinas, só as colunas
+   leves (sem o texto), em páginas de BIBLIOTECA_PAGINA, ordenadas por id. */
+async function linhasDaBiblioteca(discs: string[]): Promise<any[]> {
+  const todas: any[] = [];
+  for (let de = 0; de < BIBLIOTECA_LIMITE_LINHAS; de += BIBLIOTECA_PAGINA) {
+    const { data, error } = await supabase.from("textos_enem")
+      .select("id, chave, temas, autor, instituicao, obra, referencia, usos")
+      .in("disciplina", discs).eq("aproveitavel", true).order("id", { ascending: true }).range(de, de + BIBLIOTECA_PAGINA - 1);
+    if (error) { if (!todas.length) throw error; break; }
+    if (!Array.isArray(data) || !data.length) break;
+    todas.push(...data);
+    if (data.length < BIBLIOTECA_PAGINA) break;
+  }
+  return todas;
+}
+function semPesquisaWeb(disciplina: string): boolean {
+  return DISCIPLINAS_SEM_PESQUISA_WEB.includes(String(disciplina || "").trim());
+}
+/* "" = prova oficial do ENEM (texto do INEP); senão, o nome da prova ("Unesp 2026"). */
+function provaDoTexto(t: any): string {
+  const p = String((t && t.prova) || "").trim();
+  return p && p.toUpperCase() !== "ENEM" ? p : "";
+}
+/* O texto MAIS PRÓXIMO do que foi pedido: cada palavra do pedido que aparece nos
+   temas, no autor ou na obra do texto vale mais quanto MAIS RARA ela é na
+   biblioteca ("condoreirismo" pesa mais que "poesia"). Empate: o menos usado,
+   sorteado. Nada em comum: o menos usado de todos, sorteado (rodízio). */
+function escolheTextoMaisProximo(pedido: string, rows: any[], sorteio: () => number = Math.random): { row: any; pontos: number } | null {
+  if (!Array.isArray(rows) || !rows.length) return null;
+  const radicais = (x: string) => new Set(tokensDeFonte(x).filter((w) => !TEXTOS_ENEM_TEMAS_GENERICOS.has(w)).map(radicalEnem));
+  const doPedido = [...radicais(pedido)];
+  const docs = rows.map((row) => radicais(`${(Array.isArray(row.temas) ? row.temas : []).join(" ")} ${row.autor || ""} ${row.obra || ""}`));
+  const n = rows.length;
+  const pesos = new Map(doPedido.map((w) => [w, Math.log((n + 1) / (1 + docs.filter((d) => d.has(w)).length))]));
+  const pontos = docs.map((d) => doPedido.reduce((soma, w) => soma + (d.has(w) ? (pesos.get(w) || 0) : 0), 0));
+  const melhor = Math.max(0, ...pontos);
+  let faixa = rows.map((row, i) => ({ row, p: pontos[i] })).filter((c) => c.p >= melhor - 1e-9);
+  const menosUsos = Math.min(...faixa.map((c) => Number(c.row.usos) || 0));
+  faixa = faixa.filter((c) => (Number(c.row.usos) || 0) === menosUsos);
+  const c = faixa[Math.min(faixa.length - 1, Math.floor(sorteio() * faixa.length))];
+  return { row: c.row, pontos: Math.round(c.p * 100) / 100 };
+}
+async function consultarTextoMaisProximo(o: { disciplina: string; tema: string; recorte?: string; eixoTematico?: string }, evitar: string[]): Promise<any | null> {
+  try {
+    const discs = DISCIPLINAS_TEXTOS_ENEM[o.disciplina];
+    if (!discs) return null;
+    const data = await linhasDaBiblioteca(discs);
+    if (!data.length) return null;
+    const validos = data.filter((row: any) => String(row.referencia || "").trim() && (String(row.autor || "").trim() || String(row.instituicao || "").trim())
+      && !evitar.includes(chaveEvitarEnem(row.chave)) && !fonteEstaNaListaDeEvitar({ url: "", obra: row.obra }, evitar));
+    const escolha = escolheTextoMaisProximo(`${o.tema || ""} ${o.recorte || ""} ${o.eixoTematico || ""}`, validos);
+    if (!escolha) return null;
+    const { data: t, error: e2 } = await supabase.from("textos_enem")
+      .select("id, chave, ano, numero, prova, tipo_texto, autor, instituicao, obra, ano_obra, referencia, texto, comando_original, alternativas_originais, gabarito_original, habilidade_original, usos")
+      .eq("id", escolha.row.id).maybeSingle();
+    if (e2 || !t || !String(t.texto || "").trim()) return null;
+    const d = dossieDoTextoEnem(t, escolha.pontos);
+    d.doEnem.aproximado = true;
+    console.log(`[biblioteca] sem texto que case com o tema — o mais próximo (${escolha.pontos} ponto(s), ${validos.length} na biblioteca): ${provaDoTexto(t) || `ENEM ${t.ano}`} · ${String(t.referencia || "").slice(0, 100)}`);
+    supabase.from("textos_enem").update({ usos: (Number(t.usos) || 0) + 1, updated_at: new Date().toISOString() }).eq("id", t.id).then(() => {}, () => {});
+    return d;
+  } catch (e) {
+    console.warn(`[biblioteca] consulta do mais próximo ignorada: ${String((e as any)?.message || e).slice(0, 120)}`);
+    return null;
+  }
+}
+/* ═══════════ FIM DA BIBLIOTECA (v74.28) ═══════════ */
 function dossieDoTextoEnem(t: any, pontos = 0): any {
   const literario = TEXTOS_ENEM_LITERARIOS.includes(String(t.tipo_texto || ""));
   const autor = String(t.autor || "").trim(), inst = String(t.instituicao || "").trim(), obra = String(t.obra || "").trim();
   const ano = String(t.ano_obra || "").trim(), ref = String(t.referencia || "").trim();
   const quem = autor ? `de autoria de ${autor}` : `publicado por ${inst}`;
+  const outra = provaDoTexto(t);   // v74.28 — "" = ENEM (textos de antes, sem mudança)
   const afirmacoes = [
-    `O texto-base é ${quem}${obra ? `, em "${obra}"` : ""}${ano ? ` (${ano})` : ""} — conforme a referência impressa pelo INEP na prova oficial do ENEM ${t.ano}.`,
+    `O texto-base é ${quem}${obra ? `, em "${obra}"` : ""}${ano ? ` (${ano})` : ""} — conforme a referência impressa ${outra ? `na prova ${outra}` : `pelo INEP na prova oficial do ENEM ${t.ano}`}.`,
     `Referência bibliográfica, como impressa na prova: ${ref}`,
   ];
   const alts = (t.alternativas_originais && typeof t.alternativas_originais === "object") ? t.alternativas_originais : {};
   return {
     encontrou: true, autor, instituicao: inst, obra, ano, referencia: ref, url: "",
     trecho: String(t.texto || ""), trechoEhLiteral: true, restritoAoConfirmado: false,
-    abriuAFonte: true, comoVerificou: `texto-base da prova oficial do ENEM ${t.ano} (questão ${t.numero}), com a referência impressa pelo INEP`,
+    abriuAFonte: true, comoVerificou: outra ? `texto-base da prova ${outra} (biblioteca de textos do professor), com a referência impressa na prova` : `texto-base da prova oficial do ENEM ${t.ano} (questão ${t.numero}), com a referência impressa pelo INEP`,
     doEnem: {
-      id: t.id, chave: String(t.chave || ""), ano: Number(t.ano) || 0, numero: Number(t.numero) || 0, literario,
+      id: t.id, chave: String(t.chave || ""), ano: Number(t.ano) || 0, numero: Number(t.numero) || 0, literario, prova: outra || "ENEM",
       tipoTexto: String(t.tipo_texto || ""), pontos, usos: Number(t.usos) || 0,
       comandoOriginal: String(t.comando_original || "").slice(0, 600),
       alternativasOriginais: Object.fromEntries(LETRAS_ALT_FONTE.map((L) => [L, String(alts[L] || "").slice(0, 300)])),
@@ -1518,7 +1611,7 @@ function dossieDoTextoEnem(t: any, pontos = 0): any {
       estado: "aprovado_enem", etapa: "banco_textos_enem", libera: true, motivo: "", rodada: 0, modo: "banco_textos_enem",
       fonteAberta: true, nivel: "A", suporte: "direto", confianca: "alta", natureza: literario ? "texto_literario" : "texto_de_prova_oficial",
       afirmacoesComSuporte: afirmacoes, afirmacoesSemSuporte: [], correcoes: [], observacoes: "", divergencia: "",
-      comoVerificou: "texto e referência impressos pelo INEP na prova oficial do ENEM", doEnem: true,
+      comoVerificou: outra ? `texto e referência impressos na prova ${outra}` : "texto e referência impressos pelo INEP na prova oficial do ENEM", doEnem: true,
     },
   };
 }
@@ -1527,10 +1620,8 @@ async function consultarTextosEnem(o: { disciplina: string; tema: string; recort
     const tema = String(o.tema || "").trim();
     const discs = DISCIPLINAS_TEXTOS_ENEM[o.disciplina];
     if (!tema || !discs) return null;
-    const { data, error } = await supabase.from("textos_enem")
-      .select("id, chave, temas, autor, instituicao, obra, referencia, usos")
-      .in("disciplina", discs).eq("aproveitavel", true).limit(500);
-    if (error || !Array.isArray(data) || !data.length) return null;
+    const data = await linhasDaBiblioteca(discs);   // v74.28 — era .limit(500): com os textos do professor a biblioteca passa disso
+    if (!data.length) return null;
     const doRecorte = new Set(tokensDeFonte(o.recorte || "").map(radicalEnem));
     const cands: { row: any; p: number; bonus: number }[] = [];
     for (const row of data) {
@@ -1550,11 +1641,11 @@ async function consultarTextosEnem(o: { disciplina: string; tema: string; recort
     faixa.sort((a, b) => (b.bonus - a.bonus) || ((Number(a.row.usos) || 0) - (Number(b.row.usos) || 0)));
     const escolhido = faixa[0];
     const { data: t, error: e2 } = await supabase.from("textos_enem")
-      .select("id, chave, ano, numero, tipo_texto, autor, instituicao, obra, ano_obra, referencia, texto, comando_original, alternativas_originais, gabarito_original, habilidade_original, usos")
+      .select("id, chave, ano, numero, prova, tipo_texto, autor, instituicao, obra, ano_obra, referencia, texto, comando_original, alternativas_originais, gabarito_original, habilidade_original, usos")
       .eq("id", escolhido.row.id).maybeSingle();
     if (e2 || !t || !String(t.texto || "").trim()) return null;
     const d = dossieDoTextoEnem(t, escolhido.p);
-    console.log(`[textos-enem] camada zero: ENEM ${t.ano} q${t.numero} (${escolhido.p} ponto(s), ${faixa.length} na disputa, ${Number(t.usos) || 0} uso(s)): ${String(t.referencia || "").slice(0, 100)}`);
+    console.log(`[textos-enem] camada zero: ${provaDoTexto(t) || `ENEM ${t.ano} q${t.numero}`} (${escolhido.p} ponto(s), ${faixa.length} na disputa, ${Number(t.usos) || 0} uso(s)): ${String(t.referencia || "").slice(0, 100)}`);
     supabase.from("textos_enem").update({ usos: (Number(t.usos) || 0) + 1, updated_at: new Date().toISOString() }).eq("id", t.id).then(() => {}, () => {});
     return d;
   } catch (e) {
@@ -1567,8 +1658,9 @@ function buildBlocoTextoEnem(d: any): string {
   const e = d && d.doEnem;
   if (!e) return "";
   const correta = e.gabaritoOriginal && e.alternativasOriginais ? String(e.alternativasOriginais[e.gabaritoOriginal] || "") : "";
+  const outra = e.prova && e.prova !== "ENEM" ? String(e.prova) : "";   // v74.28
   return `
-🆕 ESTE TEXTO-BASE VEIO DA PROVA OFICIAL DO ENEM ${e.ano} (questão ${e.numero}). Autor, obra e referência são os que o INEP imprimiu. A questão que você vai escrever tem de ser INÉDITA:
+🆕 ESTE TEXTO-BASE VEIO ${outra ? `DA PROVA ${outra.toUpperCase()} (biblioteca de textos do professor). Autor, obra e referência são os impressos na prova` : `DA PROVA OFICIAL DO ENEM ${e.ano} (questão ${e.numero}). Autor, obra e referência são os que o INEP imprimiu`}. A questão que você vai escrever tem de ser INÉDITA:
 · A questão ORIGINAL — só para você EVITAR, nunca para reaproveitar:
   comando original: «${String(e.comandoOriginal || "(não extraído)").slice(0, 400)}»${correta ? `
   resposta correta original (${e.gabaritoOriginal}): «${correta.slice(0, 260)}»` : ""}
@@ -1576,8 +1668,9 @@ function buildBlocoTextoEnem(d: any): string {
 · USO DO TEXTO: ${e.literario
     ? `texto LITERÁRIO (${e.tipoTexto}) — use trecho LITERAL: pode recortar versos, estrofes ou parágrafos, marcando supressões com [...], mas nunca troque, acrescente ou atualize palavras. "tipoUso": "citacao", "conferidoNaFonte": true.`
     : `texto NÃO LITERÁRIO — use o trecho literal ("tipoUso": "citacao", "conferidoNaFonte": true) ou uma adaptação LEVE (enxugar, recortar, trocar a ordem de frases), sem mudar o sentido nem acrescentar informação ("tipoUso": "adaptacao"; a referência termina com "(adaptado)").`}
-· REFERÊNCIA: copie a do dossiê, que é a do INEP. A fonte é a OBRA ORIGINAL — não escreva "ENEM" na referência, no texto-base nem no comando. Deixe "urlVerificacao" vazio, a não ser que a própria referência traga o endereço.
-· O recorte reservado a esta questão (se houver) vale como ÂNGULO de abordagem DENTRO deste texto; se não couber nele, prevalece o texto.
+· REFERÊNCIA: ${outra ? `copie a do dossiê EXATAMENTE como está — é a impressa na prova, e quando a prova não trouxe livro, editora ou ano a referência fica sem eles: NÃO os invente nem os complete de memória. Não escreva "ENEM" em lugar nenhum` : `copie a do dossiê, que é a do INEP. A fonte é a OBRA ORIGINAL — não escreva "ENEM" na referência, no texto-base nem no comando`}. Deixe "urlVerificacao" vazio, a não ser que a própria referência traga o endereço.
+· O recorte reservado a esta questão (se houver) vale como ÂNGULO de abordagem DENTRO deste texto; se não couber nele, prevalece o texto.${e.aproximado ? `
+· TEXTO MAIS PRÓXIMO DA BIBLIOTECA: não há, na biblioteca de textos, um texto para o tema pedido, e nesta disciplina não se pesquisa na internet. Este é o texto mais próximo. Escreva a questão sobre o que ESTE texto permite cobrar — do tema pedido, aproveite só o que o texto de fato sustenta. Não force o tema sobre o texto e não acrescente ao texto-base, ao comando ou às alternativas informação sobre a obra, o autor ou o período que o próprio texto não traga.` : ""}
 · A imagem, se o recurso pedir, é NOVA — nada de reproduzir a da prova.
 `;
 }
@@ -1633,6 +1726,16 @@ async function pesquisarFonteReal(
       if (Array.isArray(buscas) && doBanco.url) buscas.push({ url: String(doBanco.url), title: "fonte validada — banco de fontes (validador localizou a página)" });
       return doBanco;
     }
+  }
+  /* v74.28 — SEM PESQUISA NA INTERNET nesta disciplina: o texto mais próximo da biblioteca. */
+  if (semPesquisaWeb(o.disciplina)) {
+    const proximo = await consultarTextoMaisProximo(o, evitar);
+    if (proximo) {
+      if (Array.isArray(buscas)) for (const u of urlsDaReferencia(proximo.referencia)) buscas.push({ url: u, title: "referência impressa na prova — biblioteca de textos" });
+      return proximo;
+    }
+    console.warn(`[biblioteca] ${o.disciplina}: nenhum texto disponível na biblioteca — sem pesquisa na internet nesta disciplina`);
+    return { encontrou: false, bloqueado: true, semPesquisaWeb: true, motivo: `a biblioteca de textos de ${o.disciplina} não devolveu texto (nesta disciplina não se pesquisa na internet)`, validacao: null, rodadas: 0, fontesTentadas: tentadas };
   }
   const sistema: SistemaPrompt = [{ type: "text", text: SISTEMA_PESQUISA_FONTE, cache_control: cacheControlAtual() }];
   const exigeAcervo = temAcervoPrioritario(o.disciplina);
@@ -2360,6 +2463,7 @@ function webSearchTool(disciplina: string) {
    fonte verificada por outra lembrada de memória. Sem dossiê (fora de
    Linguagens e Humanas, ou quando a pesquisa não achou nada), nada muda. */
 function buscaDaGeracao(dossie: any, area: string, disciplina: string) {
+  if (semPesquisaWeb(disciplina)) return false;   // v74.28 — Literatura não pesquisa na internet
   const temDossie = !!(dossie && dossie.encontrou === true && String(dossie.trecho || "").trim());
   if (temDossie) return false;
   return (fontesReaisEstrito(area) || precisaFontesReais(disciplina)) ? webSearchTool(disciplina) : false;
@@ -4329,7 +4433,7 @@ function conferenciaIneditismo(data: any, dossie: any): { estado: string; motivo
   if (correta >= INEDITISMO_LIMITE) motivos.push(`a resposta correta repete a da questão original (semelhança ${r(correta)})`);
   if (alternativasParecidas >= 2) motivos.push(`${alternativasParecidas} alternativas repetem alternativas da questão original`);
   if (!motivos.length) return { estado: "ok", motivo: "", ...base };
-  return { estado: "repetida", motivo: `questão não inédita em relação à original do ENEM ${e.ano} (questão ${e.numero}): ${motivos.join("; ")}`, ...base };
+  return { estado: "repetida", motivo: `questão não inédita em relação à original ${e.prova && e.prova !== "ENEM" ? `da prova ${e.prova}` : `do ENEM ${e.ano} (questão ${e.numero})`}: ${motivos.join("; ")}`, ...base };
 }
 function buildIneditismoParaAuditoria(dossie: any): string {
   const e = dossie && dossie.doEnem;
@@ -4337,12 +4441,12 @@ function buildIneditismoParaAuditoria(dossie: any): string {
   const origs = e.alternativasOriginais || {};
   return `
 
-QUESTÃO ORIGINAL DO ENEM ${e.ano} (questão ${e.numero}) QUE USOU ESTE MESMO TEXTO-BASE — só para conferir o INEDITISMO
+QUESTÃO ORIGINAL ${e.prova && e.prova !== "ENEM" ? `DA PROVA ${String(e.prova).toUpperCase()}` : `DO ENEM ${e.ano} (questão ${e.numero})`} QUE USOU ESTE MESMO TEXTO-BASE — só para conferir o INEDITISMO
 · comando original: ${String(e.comandoOriginal || "(não extraído)").slice(0, 500)}
 ${LETRAS_ALT_FONTE.map((L) => `· ${L}) ${String(origs[L] || "").slice(0, 220)}`).join("\n")}
 · gabarito original: ${String(e.gabaritoOriginal || "(desconhecido)")}
 · "questaoInedita": a questão nova é INÉDITA em relação a essa? Responda false se ela repete o comando, a resposta correta ou as alternativas da original — ainda que com outras palavras — ou se pede a mesma operação sobre o mesmo trecho e chega à mesma conclusão. Usar o MESMO texto-base é permitido e esperado: cobrar OUTRO aspecto dele é o que torna o item inédito, e isso NÃO reprova.
-· Os itens de existência (autor, obra, fonte, instituição, referência) desta fonte estão provados: o texto e a referência foram impressos pelo INEP. Se a questão declara esta fonte, eles são true.`;
+· Os itens de existência (autor, obra, fonte, instituição, referência) desta fonte estão provados: o texto e a referência foram impressos ${e.prova && e.prova !== "ENEM" ? `na prova ${e.prova}` : "pelo INEP"}. Se a questão declara esta fonte, eles são true.`;
 }
 function buildAuditoriaFontesPrompt(data: any, dossie?: any): string {
   const alts = (data && data.alternativas) || {};
@@ -4367,7 +4471,7 @@ DOSSIÊ DA PESQUISA PRÉVIA — esta é a fonte real, já pesquisada e aberta, d
 · obra/página: ${String(dossie.obra || "(no corpo da referência)")}
 · ano confirmado: ${String(dossie.ano || "(não confirmado)")}
 · referência: ${String(dossie.referencia || "")}
-· url verificada: ${dossie.doEnem ? "(fonte impressa — texto e referência da prova oficial do ENEM, impressos pelo INEP)" : String(dossie.url || "")}
+· url verificada: ${dossie.doEnem ? (dossie.doEnem.prova && dossie.doEnem.prova !== "ENEM" ? `(fonte impressa — texto e referência da prova ${dossie.doEnem.prova}, como impressos na prova)` : "(fonte impressa — texto e referência da prova oficial do ENEM, impressos pelo INEP)") : String(dossie.url || "")}
 · a fonte foi aberta e lida: ${dossie.abriuAFonte === true ? "sim" : "não — só o resumo da busca"}
 · MATERIAL CONFIRMADO (${dossie.trechoEhLiteral === true ? "trecho literal" : "fatos confirmados"}):
 """
@@ -4487,7 +4591,7 @@ function existenciaProvadaPeloValidador(dossie: any, fonteDaQuestao: any, estado
    a regra 8 manda interromper a questão afetada e pedir a fonte ao professor. */
 async function garantirFontesReais(
   data: any, system: SistemaPrompt, usos: any[], restanteMs: number,
-  area: string, buscas: { url: string; title: string }[], dossiePrevio?: any,
+  area: string, buscas: { url: string; title: string }[], dossiePrevio?: any, disciplina = "",
 ) {
   const diag: any = { aplicavel: fontesReaisEstrito(area), chamadas: 0, buscasReais: (buscas || []).length, pesquisaPrevia: !!dossiePrevio };
   // v74.21 — o veredito do validador segue para o app e para o log
@@ -4554,7 +4658,8 @@ async function garantirFontesReais(
        repete a pesquisa — era a segunda maior fatia do custo. Sem dossiê, ela
        continua buscando, com teto de 2. */
     const buscaDaAuditoria = diag.dossie === "sem_dossie" ? BUSCA_AUDITORIA : false;
-    diag.auditoriaBuscou = !!buscaDaAuditoria;
+    const auditoriaSemWeb = semPesquisaWeb(disciplina || String((data && data.disciplina) || ""));   // v74.28
+    diag.auditoriaBuscou = !!buscaDaAuditoria && !auditoriaSemWeb;
     /* v74.15 — a auditoria usa o SISTEMA DELA, não o da geração (ver
        SISTEMA_AUDITORIA_FONTES). O parâmetro `system` continua na assinatura
        porque o restante do fluxo o passa, mas esta chamada não o usa mais. */
@@ -4562,7 +4667,7 @@ async function garantirFontesReais(
       { type: "text", text: SISTEMA_AUDITORIA_FONTES, cache_control: cacheControlAtual() },
     ];
     const bruto = await callClaudeForJSON(
-      sistemaAuditoria, buildAuditoriaFontesPrompt(data, dossiePrevio), buscaDaAuditoria, usos, FERRAMENTA_AUDITORIA_FONTE,
+      sistemaAuditoria, buildAuditoriaFontesPrompt(data, dossiePrevio), auditoriaSemWeb ? false : buscaDaAuditoria, usos, FERRAMENTA_AUDITORIA_FONTE,
       undefined, "auditoria",
     );
     diag.chamadas = 1;
@@ -4750,6 +4855,8 @@ function selfTestResponse() {
     buildCorrecaoAlternativasPrompt.toString(), aplicaCorrecaoAlternativas.toString(), garantirAlternativasConformes.toString(), JSON.stringify(FERRAMENTA_ALTERNATIVAS),
     contaMarcasIdioma.toString(), linguaEstrangeiraEm.toString(), idiomaDoItem.toString(), buildPortuguesDoItemPrompt.toString(), aplicaPortuguesDoItem.toString(),   // v74.27 (b)
     passarItemParaPortugues.toString(), ehLinguaEstrangeira.toString(), buildRegraIdiomaLinguaEstrangeira.toString(), JSON.stringify(FERRAMENTA_IDIOMA),
+    semPesquisaWeb.toString(), provaDoTexto.toString(), escolheTextoMaisProximo.toString(), consultarTextoMaisProximo.toString(),   // v74.28
+    linhasDaBiblioteca.toString(), JSON.stringify([DISCIPLINAS_SEM_PESQUISA_WEB, BIBLIOTECA_LIMITE_LINHAS, BIBLIOTECA_PAGINA]),
     JSON.stringify([Object.fromEntries(Object.entries(MARCAS_IDIOMA).map(([k, v]) => [k, [...v]])), IDIOMA_MIN_MARCAS, ENEM_REAL_IDIOMA]),
     JSON.stringify([ABSOLUTOS_ALTERNATIVAS, ABSOLUTOS_EXIBICAO, [...PALAVRAS_VAZIAS_ECO], ECO_MIN_LETRAS, CORRETA_DOMINANTE_MINIMO, CORRETA_DOMINANTE_RAZAO, CORRETA_DOMINANTE_CARACTERES, CORRECOES_ALTERNATIVAS_MAX, MS_MINIMO_PARA_CORRIGIR_ALTERNATIVAS, ENEM_REAL_ALTERNATIVAS]),
     JSON.stringify([TEXTOS_ENEM_MINIMO_PONTOS, TEXTOS_ENEM_COBERTURA_MINIMA, TEXTOS_ENEM_FAIXA_EMPATE, DISCIPLINAS_TEXTOS_ENEM, TEXTOS_ENEM_LITERARIOS, [...TEXTOS_ENEM_TEMAS_GENERICOS], INEDITISMO_LIMITE, INEDITISMO_MIN_TOKENS_COMANDO, INEDITISMO_MIN_TOKENS_ALTERNATIVA]),
@@ -5084,7 +5191,7 @@ function selfTestResponse() {
         ).estado === "ok",
         // a geração desliga a busca com dossiê — e SÓ com dossiê
         geracaoDesligaBuscaComDossie: buscaDaGeracao(doss, "linguagens", "Artes") === false
-          && buscaDaGeracao(null, "linguagens", "Artes") !== false
+          && buscaDaGeracao(null, "linguagens", "Práticas Corporais") !== false   // v74.28: Artes deixou de pesquisar (ver v7428_biblioteca)
           && buscaDaGeracao({ encontrou: false }, "humanas", "História") !== false
           && buscaDaGeracao({ encontrou: true, trecho: "" }, "humanas", "História") !== false
           && buscaDaGeracao(null, "matematica", "Matemática") === false,
@@ -5317,6 +5424,41 @@ function selfTestResponse() {
             && buildBlocoFixo.toString().includes("${buildRegraAlternativas()}${buildRegraIdiomaLinguaEstrangeira(opts.disciplina)}")
             && ehLinguaEstrangeira("Língua Estrangeira (Inglês/Espanhol)") && !ehLinguaEstrangeira("Língua Portuguesa")
             && ENEM_REAL_IDIOMA.itens === 612 && ENEM_REAL_IDIOMA.sinalizados === 0 && IDIOMA_MIN_MARCAS === 3;
+        })(),
+        v7428_biblioteca: (() => {
+          const base: any = { id: 7, chave: "sp-262494", ano: 2026, numero: 0, tipo_texto: "ensaio", autor: "Jorge Coli", instituicao: "", obra: "Bom dia, senhor Courbet!", ano_obra: "",
+            referencia: "COLI, J. Bom dia, senhor Courbet! Trecho inicial do ensaio, reproduzido na prova do vestibular Unesp 2026.", texto: "Gustave Courbet (1819-1877) e sua obra revelam...",
+            comando_original: "De acordo com Jorge Coli, a obra de Courbet, em contradição com o modo de ser do artista, caracteriza-se", alternativas_originais: { A: "pela eloquência.", B: "pela discrição.", C: "pelo escárnio.", D: "pelo rebuscamento.", E: "pela combatividade." }, gabarito_original: "B", habilidade_original: "", usos: 0 };
+          const unesp = dossieDoTextoEnem({ ...base, prova: "Unesp 2026" }, 3);
+          const enem = dossieDoTextoEnem({ ...base, chave: "2011-regular-3", ano: 2011, numero: 3, prova: "ENEM" }, 3);
+          const semColuna = dossieDoTextoEnem({ ...base, chave: "2011-regular-3", ano: 2011, numero: 3 }, 3);
+          const blocoU = buildBlocoTextoEnem(unesp), blocoE = buildBlocoTextoEnem(enem);
+          const blocoA = buildBlocoTextoEnem({ ...unesp, doEnem: { ...unesp.doEnem, aproximado: true } });
+          const rows = [
+            { id: 1, temas: ["castro alves", "condoreirismo", "romantismo"], autor: "Castro Alves", obra: "Navio negreiro", usos: 2 },
+            { id: 2, temas: ["modernismo", "poesia"], autor: "Carlos Drummond de Andrade", obra: "Alguma poesia", usos: 0 },
+            { id: 3, temas: ["romantismo", "indianismo"], autor: "José de Alencar", obra: "Iracema", usos: 0 },
+          ];
+          const zero = () => 0;
+          return semPesquisaWeb("Literatura") && semPesquisaWeb("Língua Portuguesa") && semPesquisaWeb("Artes") && !semPesquisaWeb("História") && !semPesquisaWeb("Geografia") && !semPesquisaWeb("Sociologia") && !semPesquisaWeb("Língua Estrangeira (Inglês/Espanhol)")
+            && provaDoTexto({ prova: "Unesp 2026" }) === "Unesp 2026" && provaDoTexto({ prova: "ENEM" }) === "" && provaDoTexto({}) === ""
+            && unesp.doEnem.prova === "Unesp 2026" && unesp.validacao.afirmacoesComSuporte[0].includes("na prova Unesp 2026") && !unesp.validacao.afirmacoesComSuporte[0].includes("INEP")
+            && enem.doEnem.prova === "ENEM" && semColuna.doEnem.prova === "ENEM" && JSON.stringify(enem.validacao) === JSON.stringify(semColuna.validacao)
+            && blocoU.includes("DA PROVA UNESP 2026 (biblioteca de textos do professor)") && !blocoU.includes("ENEM 2026") && blocoU.includes("NÃO os invente")
+            && blocoE.includes("DA PROVA OFICIAL DO ENEM 2011 (questão 3). Autor, obra e referência são os que o INEP imprimiu. A questão que você vai escrever tem de ser INÉDITA:")
+            && blocoE.includes('copie a do dossiê, que é a do INEP. A fonte é a OBRA ORIGINAL — não escreva "ENEM" na referência, no texto-base nem no comando.')
+            && !blocoE.includes("TEXTO MAIS PRÓXIMO") && blocoA.includes("TEXTO MAIS PRÓXIMO DA BIBLIOTECA")
+            && buildIneditismoParaAuditoria(unesp).includes("DA PROVA UNESP 2026") && buildIneditismoParaAuditoria(enem).includes("DO ENEM 2011 (questão 3)")
+            && escolheTextoMaisProximo("Romantismo brasileiro da terceira geração condoreira", rows, zero)!.row.id === 1
+            && escolheTextoMaisProximo("Indianismo romântico", rows, zero)!.row.id === 3
+            && escolheTextoMaisProximo("Literatura", rows, zero)!.row.id === 2 && escolheTextoMaisProximo("Literatura", rows, zero)!.pontos === 0
+            && escolheTextoMaisProximo("x", [], zero) === null
+            && buscaDaGeracao(null, "linguagens", "Literatura") === false && buscaDaGeracao(null, "linguagens", "Artes") === false && buscaDaGeracao(null, "humanas", "História") !== false
+            && pesquisarFonteReal.toString().indexOf("semPesquisaWeb(o.disciplina)") > pesquisarFonteReal.toString().indexOf("await consultarBancoFontes(o, evitar)")
+            && pesquisarFonteReal.toString().indexOf("semPesquisaWeb(o.disciplina)") < pesquisarFonteReal.toString().indexOf("SISTEMA_PESQUISA_FONTE")
+            && garantirFontesReais.toString().includes("auditoriaSemWeb ? false : buscaDaAuditoria")
+            && DISCIPLINAS_SEM_PESQUISA_WEB.join() === "Literatura,Língua Portuguesa,Artes" && DISCIPLINAS_TEXTOS_ENEM["Literatura"][0] === "Literatura"
+            && linhasDaBiblioteca.toString().includes(".range(de, de + BIBLIOTECA_PAGINA - 1)") && BIBLIOTECA_PAGINA === 1000;
         })(),
         v7425_textosEnem: (() => {
           const row = (temas: string[], autor = "", obra = "") => ({ temas, autor, obra });
@@ -5853,6 +5995,7 @@ ATENÇÃO — sua resposta anterior não pôde ser usada: o argumento da ferrame
     const fonteDoBanco = !!(dossie && dossie.doBanco);
     // v74.25 — de qual prova do ENEM veio o texto-base (sem a questão original, que não sai do backend)
     const textoEnem = dossie && dossie.doEnem ? { chave: String(dossie.doEnem.chave), ano: dossie.doEnem.ano, numero: dossie.doEnem.numero } : null;
+    if (textoEnem) Object.assign(textoEnem, { prova: String(dossie.doEnem.prova || "ENEM"), aproximado: dossie.doEnem.aproximado === true });   // v74.28 — de que prova veio; se foi o texto mais próximo
     let textoProprio: { tentativa: number; motivo: string } | null = null;
     /* v74.21 — SEM FONTE VALIDADA = SEM QUESTÃO (protocolo do professor, 20/09).
        Em Linguagens e Humanas o elaborador só é chamado com dossiê APROVADO pelo
@@ -5987,7 +6130,7 @@ ATENÇÃO — sua resposta anterior não pôde ser usada: o argumento da ferrame
     const objetoDiag = garantirObjetoDaDisciplina(data, area, disciplina);
 
     let fontesDiag = await garantirFontesReais(
-      data, system, usos, LIMITE_FUNCAO_MS - (Date.now() - inicioReq), area, buscasWeb, dossie,
+      data, system, usos, LIMITE_FUNCAO_MS - (Date.now() - inicioReq), area, buscasWeb, dossie, disciplina,
     );
     /* v74.23 — REELABORAÇÃO AUTOMÁTICA. O auditor reprovou a QUESTÃO (a fonte
        continua válida, ou é texto próprio): em vez de entregar marcada, o
@@ -6021,7 +6164,7 @@ ATENÇÃO — sua resposta anterior não pôde ser usada: o argumento da ferrame
       const gd2 = await garantirGabaritoCoerente(nova, system, usos, LIMITE_FUNCAO_MS - (Date.now() - inicioReq));
       const ad2 = await garantirAlternativasConformes(nova, system, usos, LIMITE_FUNCAO_MS - (Date.now() - inicioReq));   // v74.27
       const od2 = garantirObjetoDaDisciplina(nova, area, disciplina);
-      const fd2 = await garantirFontesReais(nova, system, usos, LIMITE_FUNCAO_MS - (Date.now() - inicioReq), area, buscasWeb, dossie);
+      const fd2 = await garantirFontesReais(nova, system, usos, LIMITE_FUNCAO_MS - (Date.now() - inicioReq), area, buscasWeb, dossie, disciplina);
       data = nova;
       Object.assign(gabaritoDiag, gd2);
       alternativasDiag.aposReelaboracao = ad2;   // v74.27

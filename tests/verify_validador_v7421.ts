@@ -82,8 +82,14 @@ async function callClaudeForJSON(_s: any, userMsg: string, ferramentaServidor: a
 }
 export { pesquisarFonteReal, liberaGeracao, liberaRestritoAoConfirmado, conferenciaPreviaDossie, MODO_VALIDADOR, DOMINIOS_VETADOS, RODADAS_VALIDACAO, MS_MINIMO_PARA_VALIDAR, MS_MINIMO_PARA_SEGUNDA_RODADA, REELABORACOES_MAX };
 `;
+/* v74.28 — Literatura, Língua Portuguesa e Artes deixaram de pesquisar na internet (a decisão
+   é provada em verify_biblioteca_v7428.ts). Este arquivo prova a MÁQUINA de pesquisa e validação,
+   que segue valendo para as demais disciplinas (e para essas três, se o professor religar a
+   pesquisa): aqui, e só aqui, a lista das disciplinas sem pesquisa fica vazia. */
+const moduloComPesquisa = modulo.replace(/const DISCIPLINAS_SEM_PESQUISA_WEB = \[[^\]]*\];/, "const DISCIPLINAS_SEM_PESQUISA_WEB: string[] = [];");
+if (moduloComPesquisa === modulo) { console.error("FALHA: não achei DISCIPLINAS_SEM_PESQUISA_WEB no trecho recortado"); Deno.exit(1); }
 const tmp = await Deno.makeTempDir();
-await Deno.writeTextFile(`${tmp}/mod.ts`, modulo);
+await Deno.writeTextFile(`${tmp}/mod.ts`, moduloComPesquisa);
 const M: any = await import("file://" + `${tmp}/mod.ts`);
 const { pesquisarFonteReal, __stub, __banco, __enem, MODO_VALIDADOR } = M;
 

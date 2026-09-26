@@ -423,8 +423,8 @@ t("H3 a segunda tentativa do pesquisador existe e é onde a segunda busca ficou"
   BUSCA_PESQUISADOR_RETRY.max_uses === 1 && BUSCA_PESQUISADOR_RETRY.max_uses >= BUSCA_PESQUISADOR.max_uses);   // v74.21: era 2
 t("H4 a auditoria sem dossiê tem teto 2", BUSCA_AUDITORIA.max_uses === 2);
 t("H5 COM dossiê validado a geração NÃO busca", buscaDaGeracao(doss, "linguagens", "Artes") === false);
-t("H6 SEM dossiê a geração continua buscando em Linguagens",
-  !!buscaDaGeracao(null, "linguagens", "Artes"));
+t("H6 SEM dossiê a geração continua buscando em Linguagens (v74.28: nas disciplinas que ainda pesquisam — Literatura, Língua Portuguesa e Artes não pesquisam mais)",
+  !!buscaDaGeracao(null, "linguagens", "Práticas Corporais") && buscaDaGeracao(null, "linguagens", "Artes") === false);
 t("H7 dossiê vazio ou sem trecho não desliga a busca (não achou fonte = continua procurando)",
   !!buscaDaGeracao({ encontrou: false }, "humanas", "História")
   && !!buscaDaGeracao({ encontrou: true, trecho: "   " }, "humanas", "História"));
