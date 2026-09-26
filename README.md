@@ -125,6 +125,103 @@ Teste: `verify_fontes_app.js` — 19 verificações; as seções B e C bis prova
 quatro marcas ligadas ao mesmo tempo nenhuma conferência bloqueia, e que nenhuma delas tem sequer um
 `return true` no corpo. `verify_gabarito_coerente.js` H1 passou a exigir o contrário do que exigia.
 
+## Conferência das alternativas antes da entrega (generate-question v74.27, 25/09/2026)
+
+Pedido do professor (25/09): resolver três defeitos que continuavam aparecendo nas questões, mesmo
+proibidos no prompt — **linguagem absolutista nas alternativas** ("qualquer", "sem qualquer",
+"apenas", "todos"...), **a correta maior que as demais** e **a correta como a única que repete
+palavra do comando** (no caso real de 25/09, "A repetição de versos..." → "reforça, pela
+repetição, ..."). As três já eram regras do app (lista do `universalModel`, REGRA DAS CINCO
+ALTERNATIVAS item 2, Guia do Inep); faltava conferir.
+
+Medição antes de mexer, com as regras exatamente como ficaram no código:
+
+| | Questões do app (470, 16–24/09) | Provas reais 2022–2025 (612 itens) |
+|---|---|---|
+| Linguagem absolutista em alguma alternativa | 33,4% (Humanas 46%, Linguagens 41%, Natureza 25%, Matemática 4%) | 1,8% |
+| Correta é a única que repete palavra do comando | 8,9% (Linguagens 13%) | 1,3% |
+| Correta maior que a 2ª maior (> 1,25 vez ou 25 caracteres) | 0,9% | 0,3% |
+| Ao menos uma das três | **38,7%** | **3,4%** |
+
+O que mudou em `supabase/functions/generate-question/index.ts` (v74.27; a v74.26 foi o ensaio com
+o GPT-6 Luna, descartado e nunca publicado):
+
+1. **`conferenciaAlternativas`** — roda em toda questão, sem custo. Termos proibidos: a lista do
+   `universalModel` com as flexões, mais os equivalentes diretos que o modelo usa no lugar deles
+   ("apenas", "por completo", "absolutamente", "inteiramente", "obrigatoriamente",
+   "automaticamente", "definitivamente"). Termo presente nas cinco alternativas é estrutura paralela
+   e não conta (o ENEM 2023 tem "somente" nas cinco de uma questão). Tamanho e eco não se aplicam
+   a alternativas de número. O eco só conta palavras de 6 letras ou mais, fora de uma lista de
+   palavras de tarefa ("evidencia", "decorre", "corresponde"...).
+2. **`garantirAlternativasConformes`** — só quando a conferência acha problema: UMA chamada de
+   **reescrita dirigida** (ferramenta `entregar_alternativas`), com o prompt do sistema lido do
+   cache. Reescreve só as alternativas apontadas (e o comentário delas; a resolução só se a correta
+   mudar). Texto-base, comando, gabarito e as alternativas sãs não mudam — o que o modelo mexer fora
+   das letras apontadas é descartado. A proposta passa de novo pela conferência e pela coerência da
+   resposta (v74.6); recusada, há uma 2ª tentativa; recusada de novo, a questão sai como estava
+   (nunca deixa de ser entregue) e `alternativasDiag` registra o que ficou pendente.
+3. Roda **depois da coerência da resposta e antes do auditor** (que audita a versão final), e de
+   novo dentro da reelaboração. Precisa de 40 s de folga no relógio da função; sem folga, não chama.
+
+Custo: zero na questão sã. Na que é corrigida, cerca de US$ 0,01 a 0,02 (menos que uma
+reelaboração completa com nova auditoria, ~US$ 0,045). Com a taxa medida (38,7%), a média sobe
+algo como US$ 0,005 a 0,008 por questão. A chamada aparece no registro de custos como a etapa
+`alternativas-1` (e `alternativas-2`, quando há segunda tentativa).
+
+Testes: `tests/verify_alternativas_v7427.ts` (seções A–C, 28 verificações, sem chamar a IA — inclui
+três itens reais do ENEM que precisam passar sem apontamento e os dois casos de produção de 25/09) e
+o selftest `v7427_conferenciaAlternativas`. As suítes existentes seguem passando (gabarito 20,
+fontes 152, validador 34, extensão 30, cache 29).
+
+### Idioma do item de Língua Estrangeira (mesma v74.27, 26/09/2026)
+
+Relato do professor: parte das questões de Língua Estrangeira saía com **comando e alternativas em
+inglês** — no ENEM real o texto vem em inglês ou espanhol, mas o comando e as cinco alternativas vêm
+**sempre em português**.
+
+Medição antes de mexer, com o código exatamente como ficou:
+
+| | Sinalizadas |
+|---|---|
+| Provas reais 2022–2025 (612 itens, 19 de língua estrangeira) | 0 |
+| Questões do app, Língua Estrangeira (8, até 25/09) | **3** (comando e alternativas em inglês) |
+| Questões do app, demais disciplinas (955) | 0 |
+| Resolução comentada ou comentários fora do português (963) | 0 |
+
+O que mudou (no mesmo `index.ts`):
+
+1. **Regra no prompt de geração, só para Língua Estrangeira** (`buildRegraIdiomaLinguaEstrangeira`,
+   no bloco fixo): texto-base em inglês ou espanhol, no idioma em que a fonte foi publicada, sem
+   tradução nem paráfrase para outro idioma; comando, alternativas, resolução e comentários em
+   português; expressão do texto citada no original, entre aspas. Nas outras disciplinas o bloco
+   cacheado fica **idêntico** ao de antes (nenhuma regravação de cache fora de Língua Estrangeira).
+2. **Conferência do idioma** (`idiomaDoItem`, dentro de `conferenciaAlternativas`, custo zero):
+   conta palavras gramaticais que só existem em português, só em inglês ou só em espanhol, fora das
+   aspas. Comando + alternativas: estrangeiro com ao menos 3 dessas palavras (3 diferentes) e mais
+   que o dobro das portuguesas; o comando sozinho, com 3 e nenhuma portuguesa. Título de obra em
+   inglês dentro de um comando em português não dispara. O texto-base não entra (nele a língua
+   estrangeira é a regra).
+3. **Passagem para o português** (`passarItemParaPortugues`, ferramenta
+   `entregar_item_em_portugues`), só quando a conferência aponta: UMA chamada que devolve comando,
+   alternativas, comentários e resolução em português, com o mesmo sentido, o mesmo erro de
+   raciocínio em cada distrator e a mesma letra correta. Texto-base, gabarito, status e ordem não
+   mudam. A proposta é conferida de novo (idioma e coerência da resposta); aceita, a questão segue
+   para a conferência normal das alternativas (absolutos, tamanho, eco) já em português. Recusada
+   duas vezes, sai como estava e `alternativasDiag.idioma` registra — nunca deixa de ser entregue.
+
+Ensaio com o Sonnet 5 de verdade (função de teste, 26/09) nas três questões reais em inglês: as três
+passaram ao português na 1ª tentativa, sem mudar texto-base nem gabarito; em todas a conferência
+normal pegou em seguida um termo absoluto que a tradução trouxe ("por completo", "apenas",
+"qualquer", "somente") e o corrigiu. Custo medido por questão sinalizada: US$ 0,027–0,028 com o
+prompt do sistema já em cache; US$ 0,079 na primeira da leva (gravação do cache). Na questão em
+português, custo zero. A chamada aparece no registro de custos como `idioma-1` (e `idioma-2`).
+
+Testes: seção D de `tests/verify_alternativas_v7427.ts` (13 verificações: os 3 casos reais de
+produção apontados e os 5 da mesma leva não; títulos, citações entre aspas e fórmulas não disparam;
+espanhol; o fluxo com dublê do modelo; a regra só em Língua Estrangeira). Com o extrato das provas
+como 2º argumento (`provas/extracao/textos_enem_bruto.jsonl`), D2 confere os 612 itens reais:
+41 verificações; sem ele, 40. Selftest: `v7427_idiomaDoItem`.
+
 ## Imagens no GPT-Image-2.5 Flare (generate-image v33, 23/09/2026)
 
 Pedido do professor (23/09): *"a partir de agora, a API para geração de imagens do meu aplicativo

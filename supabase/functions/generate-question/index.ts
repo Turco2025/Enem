@@ -609,9 +609,26 @@ As instruções abaixo valem para a questão pedida no prompt do usuário e deve
 ${buildRecorteDaDisciplina(opts.area, opts.disciplina)}${buildRegraFontesReais(opts.disciplina, opts.area)}
 ${buildCalibracaoExtensao(opts.disciplina)}
 
-${buildRegraAlternativas()}
+${buildRegraAlternativas()}${buildRegraIdiomaLinguaEstrangeira(opts.disciplina)}
 
 ${JSON_SCHEMA_TXT}`;
+}
+
+/* v74.27 (b) — IDIOMA DO ITEM DE LÍNGUA ESTRANGEIRA. Só para essa disciplina:
+   nas demais a função devolve "" e o bloco cacheado fica idêntico ao de antes
+   (nenhuma regravação de cache fora de Língua Estrangeira). Ver idiomaDoItem. */
+function ehLinguaEstrangeira(disciplina: string): boolean {
+  return /l[ií]ngua estrangeira|ingl[eê]s|espanhol/i.test(String(disciplina || ""));
+}
+function buildRegraIdiomaLinguaEstrangeira(disciplina: string): string {
+  if (!ehLinguaEstrangeira(disciplina)) return "";
+  return `
+
+IDIOMA DO ITEM — LÍNGUA ESTRANGEIRA (é assim em todas as provas do ENEM de 2022 a 2025: o texto em inglês ou espanhol; a pergunta e as respostas em português)
+· TEXTO-BASE: em inglês ou em espanhol, no idioma em que a fonte foi publicada — sem tradução e sem paráfrase para outro idioma (nunca, por exemplo, um resumo em inglês de uma reportagem publicada em espanhol).
+· COMANDO e as CINCO ALTERNATIVAS: SEMPRE em PORTUGUÊS do Brasil. O candidato lê o texto na língua estrangeira e responde em português; comando ou alternativa em inglês ou espanhol não existe no ENEM. Palavra ou expressão do texto que o item precise citar vai no original, entre aspas, dentro da frase em português (ex.: No texto, a expressão “...” indica que).
+· RESOLUÇÃO COMENTADA e COMENTÁRIOS das alternativas: em português.
+Questão com comando ou alternativas em inglês ou espanhol volta para ser passada ao português antes de chegar ao professor — é uma chamada a mais e atrasa a entrega.`;
 }
 
 /* v18.6 / v74.5 — ORIENTAÇÕES ADICIONAIS DO PROFESSOR (campo opcional).
@@ -3391,6 +3408,508 @@ async function garantirVisual(data: any, opts: { area: string; disciplina: strin
   return diag;
 }
 
+/* ═══════════ v74.27 — CONFERÊNCIA DAS ALTERNATIVAS (custo zero; reescrita dirigida só quando falha) ═══════════
+   Pedido do professor (25/09/2026): "resolve esse problema" — distratores com
+   linguagem absolutista ("qualquer", "sem qualquer", "automático"), a correta
+   mais longa que as demais e a correta como a ÚNICA que repete palavra do
+   comando. As três já eram regras do app — universalModel: "PROIBIDO usar
+   linguagem absolutista/totalizante (...) em NENHUMA alternativa"; REGRA DAS
+   CINCO ALTERNATIVAS, item 2 (a correta não passa de 25% nem de 25 caracteres
+   acima da segunda maior); Guia do Inep: as alternativas não repetem palavras
+   do enunciado —, mas só o prompt as pedia, e o modelo não as cumpre sempre.
+
+   Medido antes de mexer (25/09), com as regras exatamente como estão abaixo:
+   · 470 questões geradas pelo app de 16 a 24/09 (simulados): alguma
+     alternativa com linguagem absolutista em 33,4% (Humanas 46%, Linguagens
+     41%, Natureza 25%, Matemática 4%), quase sempre num distrator; a correta
+     como única a repetir palavra do comando em 8,9% (Linguagens 13%); a
+     correta dominante pelo tamanho em 0,9%. Ao menos uma das três: 38,7%;
+   · 612 itens das provas reais 2022–2025 (extrato do repositório, mesmo
+     código): 1,8%, 1,3% e 0,3% — ao menos uma das três em 3,4%. O ENEM quase
+     não faz nenhuma delas; o app fazia em mais de um terço das questões.
+
+   O que passa a acontecer: a conferência roda em toda questão e não custa
+   nada. Só quando ela acha problema o backend faz UMA chamada de REESCRITA
+   DIRIGIDA: só as alternativas apontadas (com o comentário delas; a resolução
+   só se a correta mudar). Texto-base, comando, gabarito, ordem e as
+   alternativas sãs não são tocados. A proposta é conferida de novo pelas
+   mesmas regras e pela coerência da resposta; recusada, há uma segunda
+   tentativa; recusada de novo, a questão segue como estava — nunca deixa de
+   ser entregue — e o diagnóstico registra o que ficou pendente.
+   Custo: zero na questão sã; na corrigida, uma chamada curta (prompt do
+   sistema lido do cache + a questão + a resposta), cerca de US$ 0,01 a 0,02 —
+   menos que uma reelaboração completa com nova auditoria (~US$ 0,045). */
+
+/* Termos proibidos, já sem acento e em minúsculas (comparação por palavra
+   inteira sobre o texto normalizado). Os da primeira linha são a lista do
+   próprio app (universalModel), com as flexões; os da segunda são os
+   equivalentes diretos que o modelo usa no lugar deles ("ou equivalentes",
+   mesma regra) e que as provas reais quase não usam. */
+const ABSOLUTOS_ALTERNATIVAS: string[] = [
+  "sempre", "nunca", "jamais", "todos", "todas", "todo", "toda", "qualquer", "quaisquer", "totalmente", "completamente", "integralmente", "exclusivamente", "unicamente", "somente", "drasticamente", "sem excecao", "em absoluto", "de forma alguma", "irrestrito", "irrestrita", "irrestritos", "irrestritas", "rejeicao completa",
+  "apenas", "por completo", "absolutamente", "inteiramente", "obrigatoriamente", "automaticamente", "definitivamente",
+];
+const ABSOLUTOS_EXIBICAO = `"sempre", "nunca", "jamais", "todo(s)/toda(s)", "qualquer/quaisquer", "totalmente", "completamente", "integralmente", "exclusivamente", "unicamente", "somente", "apenas", "drasticamente", "sem exceção", "em absoluto", "de forma alguma", "irrestrito", "rejeição completa", "por completo", "absolutamente", "inteiramente", "obrigatoriamente", "automaticamente", "definitivamente"`;
+/* Palavras de comando que não entregam resposta nenhuma (verbos de tarefa,
+   rótulos do suporte). Só entram no eco palavras de 6 letras ou mais. */
+const PALAVRAS_VAZIAS_ECO = new Set<string>([
+  "evidencia", "evidenciam", "evidenciar", "apresenta", "apresentam", "apresentado", "apresentada", "apresentados", "apresentadas",
+  "descrito", "descrita", "descritos", "descritas", "exposto", "exposta", "relacao", "relacoes", "situacao", "processo", "sentido",
+  "segundo", "conforme", "considerando", "considera", "principal", "principalmente", "sobretudo", "partir", "questao", "alternativa",
+  "trecho", "fragmento", "autora", "cancao", "charge", "tirinha", "imagem", "grafico", "tabela", "figura", "corresponde", "correspondem",
+  "consiste", "consistem", "decorre", "decorrem", "indica", "indicam", "revela", "revelam", "demonstra", "demonstram", "expressa",
+  "expressam", "refere", "referem", "maneira", "atraves", "quanto", "quando", "texto", "textos", "leitura", "leitor", "leitores",
+  "caracteriza", "caracterizam", "permite", "permitem", "estabelece", "estabelecem", "constitui", "constituem", "represente",
+  "representa", "representam", "associada", "associado", "associacao", "presente", "presentes", "citado", "citada", "mencionado",
+  "mencionada", "destacado", "destacada", "utilizado", "utilizada", "empregado", "empregada", "emprego", "funcao", "finalidade",
+  "objetivo", "intencao", "efeito", "estrategia", "recurso", "aspecto", "elemento", "elementos", "contexto", "possivel", "correto",
+  "correta", "adequado", "adequada", "entendimento", "compreensao", "analise", "descricao", "exemplo", "exemplifica",
+  "durante", "resulta", "resultam", "resultou", "resultado", "resultados",
+]);
+const ECO_MIN_LETRAS = 6;
+const CORRETA_DOMINANTE_MINIMO = 40, CORRETA_DOMINANTE_RAZAO = 1.25, CORRETA_DOMINANTE_CARACTERES = 25;   // os mesmos da REGRA DAS CINCO ALTERNATIVAS (item 2) e da auditoria local do app
+const CORRECOES_ALTERNATIVAS_MAX = 2;
+const MS_MINIMO_PARA_CORRIGIR_ALTERNATIVAS = 40_000;   // reescrita (~10 s) + auditoria que vem depois (~8 s) + margem
+/* Medição nas provas reais 2022–2025 (612 itens do extrato, 25/09/2026), com
+   este mesmo código. Fica no código (e na impressão digital do selftest) para
+   que uma mudança nas listas acima venha acompanhada de nova medição. */
+const ENEM_REAL_ALTERNATIVAS = { itens: 612, absoluto: "1,8%", eco: "1,3%", dominante: "0,3%", algumaDasTres: "3,4%", geradasPeloApp: "38,7% de 470 (16–24/09)" };
+
+function normalizaAlternativa(s: unknown): string {
+  return String(s ?? "").normalize("NFD").replace(/\p{M}/gu, "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+}
+function termosAbsolutosEm(s: unknown): string[] {
+  const t = " " + normalizaAlternativa(s) + " ";
+  return ABSOLUTOS_ALTERNATIVAS.filter((w) => t.includes(" " + w + " "));
+}
+/* Alternativa "de número": curta e com algarismo (valor, fração, fórmula,
+   medida). Com quatro ou mais assim, tamanho e eco não se aplicam. */
+function alternativaDeNumero(s: unknown): boolean {
+  const t = String(s ?? "").trim();
+  return t.length <= 30 && /\d/.test(t);
+}
+function radicaisEco(s: unknown): Set<string> {
+  return new Set(normalizaAlternativa(s).split(" ")
+    .filter((w) => w.length >= ECO_MIN_LETRAS && !PALAVRAS_VAZIAS_ECO.has(w))
+    .map((w) => w.slice(0, 6)));
+}
+
+/* ─────────── v74.27 (b) — IDIOMA DO ITEM (26/09/2026) ───────────
+   Relato do professor: "parte das questões de Língua Estrangeira sai com
+   comando e alternativas em inglês, e no ENEM real eles vêm em português".
+   Medido antes de mexer, com o código abaixo:
+   · 612 itens das provas reais 2022–2025 (19 de língua estrangeira): nenhum
+     sinalizado — no ENEM o texto vem em inglês ou espanhol e o comando e as
+     cinco alternativas, SEMPRE em português;
+   · 963 questões geradas pelo app (simulados até 25/09): 3 sinalizadas, as três
+     de Língua Estrangeira (3 de 8), comando e alternativas em inglês; nenhuma
+     das 955 das outras disciplinas; resolução e comentários, nenhum.
+   Como decide: conta palavras gramaticais (artigos, preposições, conjunções,
+   pronomes) que só existem em português, só em inglês ou só em espanhol, fora
+   das aspas (a expressão do texto citada entre aspas, como faz o ENEM, não
+   conta). Comando + alternativas juntos: estrangeiro quando há ao menos 3
+   dessas palavras (3 diferentes) e mais que o dobro das portuguesas; o comando
+   sozinho, quando tem 3 e nenhuma portuguesa. Título de obra em inglês dentro
+   de comando em português ("Na canção Where is the love, o eu lírico…") não
+   dispara. O texto-base não entra: nele, a língua estrangeira é a regra.
+   Sinalizada, a questão passa por UMA chamada que põe comando, alternativas,
+   comentários e resolução em português, com o mesmo sentido e a mesma letra
+   correta; conferida de novo (idioma e coerência da resposta), segue para a
+   conferência normal das alternativas. Custo: zero na questão em português;
+   na sinalizada, ~US$ 0,01–0,02. Recusada duas vezes, fica como estava e o
+   diagnóstico registra — nunca deixa de ser entregue. */
+const MARCAS_IDIOMA: Record<string, Set<string>> = {
+  pt: new Set(["o", "os", "do", "da", "dos", "das", "em", "num", "numa", "um", "uma", "uns", "umas", "com", "não", "ao", "aos", "à", "às",
+    "pelo", "pela", "pelos", "pelas", "é", "são", "na", "nas", "seu", "sua", "seus", "suas", "isso", "isto", "esse", "essa", "esses", "essas",
+    "aquele", "aquela", "ou", "quando", "onde", "foi", "já", "mesmo", "muito", "muita", "há", "mais", "também", "pois", "sem", "nem",
+    "lhe", "lhes", "ela", "ele", "eles", "elas", "pode", "podem", "deve", "devem", "e"]),
+  en: new Set(["the", "of", "and", "to", "is", "are", "was", "were", "be", "been", "being", "that", "which", "who", "whom", "whose", "with",
+    "from", "their", "they", "them", "this", "these", "those", "it", "its", "an", "by", "can", "could", "would", "should", "will", "has", "have",
+    "had", "not", "on", "at", "or", "into", "than", "because", "such", "about", "between", "among", "rather", "only", "how", "what", "when",
+    "where", "while", "whereas", "through", "without", "within", "more", "most", "other", "some", "any", "each", "his", "her", "she", "we",
+    "our", "you", "your", "does", "did", "may", "might", "must", "there", "all", "also", "but", "if", "up", "out", "over", "under", "upon"]),
+  es: new Set(["el", "los", "las", "del", "al", "y", "es", "su", "sus", "una", "unos", "unas", "un", "en", "con", "lo", "la", "le", "les",
+    "pero", "muy", "también", "hay", "fue", "fueron", "son", "sin", "cuando", "cuándo", "donde", "dónde", "ya", "mismo", "misma", "hacia",
+    "según", "aunque", "sino", "ni", "más", "están", "puede", "pueden", "tiene", "tienen", "estos", "ese", "esa", "eso", "esos", "esas",
+    "nuestro", "nuestra", "cual", "cuales", "cuál", "cuáles", "quien", "quienes", "quién", "quiénes"]),
+};
+const IDIOMA_MIN_MARCAS = 3;
+const ENEM_REAL_IDIOMA = { itens: 612, itensLinguaEstrangeira: 19, sinalizados: 0, geradasPeloApp: "3 de 8 de Língua Estrangeira; 0 de 955 das demais (até 25/09)" };
+
+function contaMarcasIdioma(s: unknown): { pt: number; en: number; es: number; enDistintas: number; esDistintas: number } {
+  const t = String(s ?? "").normalize("NFC").toLowerCase()
+    .replace(/[“"«][^“”"«»]{0,250}[”"»]/g, " ")   // expressão citada entre aspas fica no original e não conta
+    .replace(/‘[^‘’]{0,250}’/g, " ");
+  const c = { pt: 0, en: 0, es: 0, enDistintas: 0, esDistintas: 0 };
+  const en = new Set<string>(), es = new Set<string>();
+  for (const w of t.match(/[\p{L}\p{N}]+(?:['’-][\p{L}\p{N}]+)*/gu) || []) {
+    if (MARCAS_IDIOMA.pt.has(w)) c.pt++;
+    if (MARCAS_IDIOMA.en.has(w)) { c.en++; en.add(w); }
+    if (MARCAS_IDIOMA.es.has(w)) { c.es++; es.add(w); }
+  }
+  c.enDistintas = en.size; c.esDistintas = es.size;
+  return c;
+}
+/* "" quando o trecho está em português (ou não dá para dizer); "inglês" ou
+   "espanhol" quando a língua estrangeira predomina. semPortugues: exige que
+   não haja NENHUMA palavra portuguesa (é o critério do comando sozinho). */
+function linguaEstrangeiraEm(s: unknown, semPortugues = false): string {
+  const c = contaMarcasIdioma(s);
+  const lingua = c.en >= c.es ? "inglês" : "espanhol";
+  const est = Math.max(c.en, c.es), distintas = lingua === "inglês" ? c.enDistintas : c.esDistintas;
+  const predomina = semPortugues ? c.pt === 0 : est > 2 * c.pt;
+  return est >= IDIOMA_MIN_MARCAS && distintas >= IDIOMA_MIN_MARCAS && predomina ? lingua : "";
+}
+function idiomaDoItem(d: any): { lingua: string; partes: string[] } {
+  const alts: any = (d && d.alternativas && typeof d.alternativas === "object") ? d.alternativas : {};
+  const an: any = (d && d.analiseAlternativas && typeof d.analiseAlternativas === "object") ? d.analiseAlternativas : {};
+  const partes: string[] = [];
+  let lingua = "";
+  const marca = (parte: string, l: string) => { if (l) { partes.push(parte); if (!lingua) lingua = l; } };
+  marca("o comando e as alternativas", linguaEstrangeiraEm([d?.comando, ...LETRAS_ALTERNATIVAS.map((k) => alts[k])].map((x) => String(x ?? "")).join(" . "))
+    || linguaEstrangeiraEm(d?.comando, true));
+  marca("a resolução comentada", linguaEstrangeiraEm(d?.resolucaoComentada));
+  marca("os comentários das alternativas", linguaEstrangeiraEm(LETRAS_ALTERNATIVAS.map((k) => String(an[k]?.comentario ?? "")).join(" . ")));
+  return { lingua, partes };
+}
+
+const FERRAMENTA_IDIOMA = {
+  name: "entregar_item_em_portugues",
+  description: "Entrega o comando e as cinco alternativas em português (mesmo sentido, mesma letra correta), os comentários das cinco e a resolução comentada, também em português.",
+  input_schema: {
+    type: "object",
+    properties: {
+      comando: { type: "string", description: "O comando em português do Brasil, declarativo, completado pelas alternativas." },
+      alternativas: {
+        type: "object",
+        description: "As cinco, em português, na MESMA ordem, com o MESMO sentido e a MESMA letra correta.",
+        properties: { A: { type: "string" }, B: { type: "string" }, C: { type: "string" }, D: { type: "string" }, E: { type: "string" } },
+        required: ["A", "B", "C", "D", "E"],
+      },
+      comentarios: {
+        type: "object",
+        description: 'Os comentários das cinco alternativas, em português: {"A": "...", ...}. Na correta, por que ela é a resposta; no distrator, o erro de raciocínio em termos conceituais.',
+        properties: { A: { type: "string" }, B: { type: "string" }, C: { type: "string" }, D: { type: "string" }, E: { type: "string" } },
+      },
+      resolucaoComentada: { type: "string", description: "A resolução comentada completa, em português." },
+    },
+    required: ["comando", "alternativas", "comentarios", "resolucaoComentada"],
+  },
+};
+
+function buildPortuguesDoItemPrompt(data: any, detalhe: string, tentativa = 1, recusaAnterior = ""): string {
+  const alts = (data && data.alternativas) || {};
+  const gab = String(data?.gabarito || "");
+  const an = (data && data.analiseAlternativas) || {};
+  const linhas = LETRAS_ALTERNATIVAS.map((k) => `${k}) ${String(alts[k] || "")}${k === gab ? "   ← CORRETA" : ""}`).join("\n");
+  const coments = LETRAS_ALTERNATIVAS.map((k) => `${k}: ${String((an as any)[k]?.comentario || "").slice(0, 800)}`).join("\n");
+  return `IDIOMA DO ITEM${tentativa > 1 ? ` — TENTATIVA ${tentativa}` : ""} — a questão abaixo está pronta, mas ${detalhe}. No ENEM, o item de língua estrangeira traz o texto-base no idioma original (inglês ou espanhol), e o COMANDO, as CINCO ALTERNATIVAS e toda a explicação vêm em PORTUGUÊS — é assim em todas as provas de 2022 a 2025.${recusaAnterior ? `\nA proposta anterior foi recusada pela conferência automática: ${recusaAnterior}.` : ""}
+
+O QUE FAZER
+· Passe para o português do Brasil o comando e as cinco alternativas; e também a resolução comentada e os comentários, no que não estiver em português.
+· Tradução fiel do SENTIDO: nada acrescentado, nada retirado. Cada distrator conserva o MESMO erro de raciocínio; a correta continua a ÚNICA defensável, na MESMA letra (${gab}).
+· O comando continua declarativo, apresenta a tarefa sem revelar a resposta e é completado pelas alternativas, com concordância. Cada alternativa: uma única oração, começando com letra minúscula e terminando com ponto, com paralelismo e extensão parecida entre as cinco, sem termos absolutos (${ABSOLUTOS_EXIBICAO}).
+· Palavra ou expressão do texto-base que o item precise citar fica no original, entre aspas, dentro da frase em português.
+· Os comentários explicam, em português, por que cada alternativa é correta ou incorreta — o mesmo raciocínio de antes, agora citando as alternativas já em português.
+NÃO MEXA: no texto-base (fica no idioma original), na letra correta (continua ${gab}), na ordem das alternativas e no conteúdo de cada uma.
+
+TEXTO-BASE (só para contexto — não o traduza)
+${String(data?.textoBase || "").slice(0, 2500)}
+
+COMANDO
+${String(data?.comando || "")}
+
+ALTERNATIVAS
+${linhas}
+
+COMENTÁRIOS ATUAIS
+${coments}
+
+RESOLUÇÃO ATUAL
+${String(data?.resolucaoComentada || "").slice(0, 4000)}
+
+Devolva pela ferramenta "entregar_item_em_portugues": "comando", "alternativas" (as cinco), "comentarios" (as cinco) e "resolucaoComentada" (completa).`;
+}
+
+/* Monta a versão em português sem confiar na resposta: exige comando e as cinco
+   alternativas, recusa tamanhos absurdos, mantém o status de cada alternativa e
+   a letra correta; comentário ou resolução que vier vazio fica como estava. */
+function aplicaPortuguesDoItem(data: any, bruto: any): { ok: boolean; motivo: string; nova: any } {
+  const falha = (motivo: string) => ({ ok: false, motivo, nova: null });
+  if (!bruto || typeof bruto !== "object") return falha("a resposta veio vazia");
+  const comando = String(bruto.comando ?? "").trim();
+  if (!comando) return falha("o comando voltou vazio");
+  const c0 = String(data?.comando ?? "").trim().length;
+  if (c0 >= 20 && (comando.length < 0.5 * c0 || comando.length > 2.5 * c0)) return falha(`o comando mudou de tamanho demais (${c0} → ${comando.length} caracteres)`);
+  if (!bruto.alternativas || typeof bruto.alternativas !== "object") return falha("a resposta veio sem as alternativas");
+  const antes: any = data.alternativas || {};
+  const novas: any = {};
+  for (const k of LETRAS_ALTERNATIVAS) {
+    const t = String(bruto.alternativas[k] ?? "").trim();
+    if (!t) return falha(`a alternativa ${k} voltou vazia`);
+    const a = String(antes[k] ?? "").trim().length;
+    if (a >= 20 && (t.length < 0.5 * a || t.length > 2 * a)) return falha(`a alternativa ${k} mudou de tamanho demais (${a} → ${t.length} caracteres)`);
+    novas[k] = t;
+  }
+  const coments: any = (bruto.comentarios && typeof bruto.comentarios === "object") ? bruto.comentarios : {};
+  const anAntes: any = (data.analiseAlternativas && typeof data.analiseAlternativas === "object") ? data.analiseAlternativas : {};
+  const an: any = {};
+  for (const k of LETRAS_ALTERNATIVAS) {
+    const v = anAntes[k] && typeof anAntes[k] === "object" ? { ...anAntes[k] } : {};
+    const c = String(coments[k] ?? "").trim();
+    if (c) v.comentario = c;
+    an[k] = v;
+  }
+  const resol = String(bruto.resolucaoComentada ?? "").trim();
+  const nova = { ...data, comando, alternativas: novas, analiseAlternativas: an, resolucaoComentada: resol || data.resolucaoComentada };
+  return { ok: true, motivo: "", nova };
+}
+
+async function passarItemParaPortugues(data: any, system: SistemaPrompt, usos: any[], prazo: number, detalhe: string) {
+  const di: any = { detalhe, chamadas: 0, corrigido: false };
+  console.warn(`[idioma] ${detalhe}`);
+  let recusa = "";
+  for (let tentativa = 1; tentativa <= CORRECOES_ALTERNATIVAS_MAX; tentativa++) {
+    const restante = prazo - Date.now();
+    if (restante < MS_MINIMO_PARA_CORRIGIR_ALTERNATIVAS) { di.pulado = `sem tempo para passar ao português (restavam ${Math.round(restante / 1000)} s)`; break; }
+    try {
+      const bruto = await callClaudeForJSON(system, buildPortuguesDoItemPrompt(data, detalhe, tentativa, recusa), false, usos, FERRAMENTA_IDIOMA, undefined, `idioma-${tentativa}`);
+      di.chamadas++;
+      const p = aplicaPortuguesDoItem(data, bruto);
+      if (!p.ok) { recusa = p.motivo; continue; }
+      const id2 = idiomaDoItem(p.nova);
+      const gab2 = conferenciaGabarito(p.nova);
+      const naResolucao = letraNaResolucao(p.nova.resolucaoComentada);
+      if (id2.partes.length) { recusa = `${id2.partes.join(", ")} continua(m) em ${id2.lingua}`; continue; }
+      if (gab2.estado !== "ok" || gab2.letra !== data.gabarito || (naResolucao && naResolucao !== data.gabarito)) { recusa = `a resposta deixou de ser coerente (${gab2.motivo || `a resolução conclui pela ${naResolucao}`})`; continue; }
+      data.comando = p.nova.comando;
+      data.alternativas = p.nova.alternativas;
+      data.analiseAlternativas = p.nova.analiseAlternativas;
+      data.resolucaoComentada = p.nova.resolucaoComentada;
+      di.corrigido = true; di.tentativas = tentativa;
+      console.log(`[idioma] passada ao português na tentativa ${tentativa}`);
+      return di;
+    } catch (e) {
+      di.erro = String((e as any)?.message || e).slice(0, 200);
+      break;
+    }
+  }
+  if (recusa) di.motivoRecusa = recusa;
+  console.warn(`[idioma] ficou como estava (${di.pulado || di.erro || recusa || "sem correção"})`);
+  return di;
+}
+
+function conferenciaAlternativas(d: any): { estado: string; problemas: { tipo: string; letras: string[]; termos: string[]; detalhe: string }[]; letras: string[] } {
+  const vazio = { estado: "indefinido", problemas: [] as any[], letras: [] as string[] };
+  if (!d || typeof d !== "object" || !d.alternativas || typeof d.alternativas !== "object") return vazio;
+  const alts: any = d.alternativas;
+  const gab = LETRAS_ALTERNATIVAS.includes(d.gabarito) ? String(d.gabarito) : "";
+  if (!gab || LETRAS_ALTERNATIVAS.some((k) => !String(alts[k] ?? "").trim())) return vazio;
+
+  /* 0. Idioma (v74.27 b): comando e alternativas em inglês ou espanhol. Vem
+     antes das demais, que só fazem sentido no texto já em português. */
+  const idioma = idiomaDoItem(d);
+  if (idioma.partes.length) {
+    return { estado: "corrigir", letras: [...LETRAS_ALTERNATIVAS],
+      problemas: [{ tipo: "idioma", letras: [...LETRAS_ALTERNATIVAS], termos: idioma.partes, detalhe: `${idioma.partes.join(", ")} saíram em ${idioma.lingua}` }] };
+  }
+  const problemas: { tipo: string; letras: string[]; termos: string[]; detalhe: string }[] = [];
+
+  /* 1. Linguagem absolutista — em qualquer alternativa, inclusive a correta.
+     Termo que aparece nas CINCO é estrutura paralela do item (o ENEM 2023
+     tem "somente" nas cinco alternativas de uma questão), não pista: fica. */
+  const porLetra: Record<string, string[]> = {};
+  for (const k of LETRAS_ALTERNATIVAS) porLetra[k] = termosAbsolutosEm(alts[k]);
+  const nasCinco = new Set(ABSOLUTOS_ALTERNATIVAS.filter((w) => LETRAS_ALTERNATIVAS.every((k) => porLetra[k].includes(w))));
+  const letrasAbs = LETRAS_ALTERNATIVAS.filter((k) => porLetra[k].some((w) => !nasCinco.has(w)));
+  if (letrasAbs.length) {
+    const termos = [...new Set(letrasAbs.flatMap((k) => porLetra[k].filter((w) => !nasCinco.has(w))))];
+    problemas.push({ tipo: "absoluto", letras: letrasAbs, termos,
+      detalhe: letrasAbs.map((k) => `${k} (${porLetra[k].filter((w) => !nasCinco.has(w)).map((w) => `"${w}"`).join(", ")})`).join("; ") });
+  }
+
+  const deNumero = LETRAS_ALTERNATIVAS.filter((k) => alternativaDeNumero(alts[k])).length >= 4;
+  if (!deNumero) {
+    /* 2. A correta não pode se destacar pelo tamanho (mesmo critério do prompt). */
+    const tam = (k: string) => String(alts[k] ?? "").trim().length;
+    const g = tam(gab);
+    const segunda = Math.max(...LETRAS_ALTERNATIVAS.filter((k) => k !== gab).map(tam));
+    if (g > CORRETA_DOMINANTE_MINIMO && segunda > 0 && (g > CORRETA_DOMINANTE_RAZAO * segunda || g - segunda >= CORRETA_DOMINANTE_CARACTERES)) {
+      problemas.push({ tipo: "dominante", letras: [gab], termos: [], detalhe: `a correta (${gab}) tem ${g} caracteres e a segunda maior, ${segunda}` });
+    }
+    /* 3. A correta não pode ser a ÚNICA a repetir palavra do comando. */
+    const doComando = radicaisEco(d.comando);
+    if (doComando.size) {
+      const daCorreta = radicaisEco(alts[gab]);
+      const dosDistratores = new Set<string>();
+      for (const k of LETRAS_ALTERNATIVAS) if (k !== gab) for (const r of radicaisEco(alts[k])) dosDistratores.add(r);
+      const palavrasCmd = normalizaAlternativa(d.comando).split(" ");
+      const eco = [...doComando].filter((r) => daCorreta.has(r) && !dosDistratores.has(r));
+      if (eco.length) {
+        const palavras = [...new Set(eco.map((r) => palavrasCmd.find((w) => w.length >= ECO_MIN_LETRAS && w.startsWith(r)) || r))];
+        problemas.push({ tipo: "eco", letras: [gab], termos: palavras, detalhe: `a correta (${gab}) é a única que repete do comando: ${palavras.map((w) => `"${w}"`).join(", ")}` });
+      }
+    }
+  }
+  const letras = [...new Set(problemas.flatMap((p) => p.letras))].sort();
+  return { estado: problemas.length ? "corrigir" : "ok", problemas, letras };
+}
+
+const FERRAMENTA_ALTERNATIVAS = {
+  name: "entregar_alternativas",
+  description: "Entrega as cinco alternativas (as que não precisavam de correção, idênticas), o comentário das que foram reescritas e, se a correta mudou, a resolução comentada.",
+  input_schema: {
+    type: "object",
+    properties: {
+      alternativas: {
+        type: "object",
+        description: "As cinco, na MESMA ordem e com a MESMA letra correta. As que não foram apontadas voltam idênticas.",
+        properties: { A: { type: "string" }, B: { type: "string" }, C: { type: "string" }, D: { type: "string" }, E: { type: "string" } },
+        required: ["A", "B", "C", "D", "E"],
+      },
+      comentarios: {
+        type: "object",
+        description: 'Só as letras reescritas, cada uma com o comentário novo: {"B": "..."}. No distrator, nomeie o erro de raciocínio em termos conceituais; na correta, por que ela é a resposta.',
+        properties: { A: { type: "string" }, B: { type: "string" }, C: { type: "string" }, D: { type: "string" }, E: { type: "string" } },
+      },
+      resolucaoComentada: { type: "string", description: "A resolução reescrita SÓ se o texto da alternativa correta mudou; caso contrário, string vazia." },
+    },
+    required: ["alternativas", "comentarios", "resolucaoComentada"],
+  },
+};
+
+function buildCorrecaoAlternativasPrompt(data: any, conf: { problemas: { tipo: string; letras: string[]; termos: string[]; detalhe: string }[]; letras: string[] }, tentativa = 1, recusaAnterior = ""): string {
+  const alts = (data && data.alternativas) || {};
+  const gab = String(data?.gabarito || "");
+  const an = (data && data.analiseAlternativas) || {};
+  const ordens: string[] = [];
+  for (const p of conf.problemas) {
+    if (p.tipo === "absoluto") ordens.push(`· LINGUAGEM ABSOLUTISTA em ${p.detalhe}. Reescreva cada uma dessas alternativas SEM esses termos e sem nenhum equivalente (${ABSOLUTOS_EXIBICAO}). O distrator continua com o MESMO erro de raciocínio (o mesmo tipo de distrator), agora posto no CONTEÚDO da afirmação — uma relação, uma causa, um conceito ou uma conclusão errados — e não no tom. Se a apontada for a correta, ela continua dizendo a mesma coisa certa, sem o termo.`);
+    if (p.tipo === "dominante") ordens.push(`· CORRETA MAIOR QUE AS DEMAIS: ${p.detalhe}. ENCURTE a correta até, no máximo, o tamanho da segunda maior — sem alongar as outras, sem perder o sentido e sem ficar vaga.`);
+    if (p.tipo === "eco") ordens.push(`· ECO DO COMANDO: ${p.detalhe}. Reescreva a CORRETA sem essa(s) palavra(s), com formulação equivalente e o mesmo sentido. Se for termo técnico indispensável, mantenha-o na correta e faça-o aparecer também, com naturalidade, em pelo menos dois distratores (reescrevendo-os só o necessário).`);
+  }
+  const linhas = LETRAS_ALTERNATIVAS.map((k) => `${k}) ${String(alts[k] || "")}${k === gab ? "   ← CORRETA" : ""}${conf.letras.includes(k) ? "   ← CORRIGIR" : ""}`).join("\n");
+  const coments = LETRAS_ALTERNATIVAS.filter((k) => conf.letras.includes(k) || conf.problemas.some((p) => p.tipo === "eco"))
+    .map((k) => `${k}: ${String((an as any)[k]?.comentario || "").slice(0, 400)}`).join("\n");
+  return `CORREÇÃO DAS ALTERNATIVAS${tentativa > 1 ? ` — TENTATIVA ${tentativa}` : ""} — a questão abaixo está pronta; só as alternativas apontadas desrespeitam regras do professor e do Guia do Inep que valem para toda questão (REGRA DAS CINCO ALTERNATIVAS e a proibição de linguagem absolutista, no prompt do sistema).${recusaAnterior ? `\nA proposta anterior foi recusada pela conferência automática: ${recusaAnterior}.` : ""}
+
+O QUE CORRIGIR
+${ordens.join("\n")}
+
+EM TODA ALTERNATIVA QUE VOCÊ REESCREVER: uma única oração; mesmo registro, mesma construção sintática e extensão próxima das demais (paralelismo e paridade); nenhum dos termos proibidos; nada de pista pelo tom; o distrator segue plausível e com um erro de raciocínio identificável; a correta segue a única defensável.
+NÃO MEXA: no texto-base, no comando, na letra correta (continua ${gab}), na ordem das alternativas e nas alternativas que não foram apontadas — devolva-as IDÊNTICAS, caractere por caractere.
+
+TEXTO-BASE (só para contexto)
+${String(data?.textoBase || "").slice(0, 2500)}
+
+COMANDO
+${String(data?.comando || "")}
+
+ALTERNATIVAS
+${linhas}
+
+COMENTÁRIOS ATUAIS
+${coments}
+
+RESOLUÇÃO ATUAL (só para contexto)
+${String(data?.resolucaoComentada || "").slice(0, 1500)}
+
+Devolva pela ferramenta "entregar_alternativas": "alternativas" (as cinco), "comentarios" (só as letras que você reescreveu) e "resolucaoComentada" (reescrita só se o texto da correta mudou; senão, string vazia).`;
+}
+
+/* Monta a questão proposta a partir da resposta do modelo, sem confiar nela:
+   só aceita mudança nas letras PERMITIDAS (as apontadas; no eco, também os
+   distratores, para o caso do termo técnico) — o que vier mudado fora delas é
+   descartado e a alternativa original fica —, exige comentário nas letras
+   reescritas e recusa tamanhos absurdos. */
+function aplicaCorrecaoAlternativas(data: any, bruto: any, permitidas: string[] = LETRAS_ALTERNATIVAS): { ok: boolean; motivo: string; nova: any; mudadas: string[] } {
+  const falha = (motivo: string) => ({ ok: false, motivo, nova: null, mudadas: [] as string[] });
+  if (!bruto || typeof bruto !== "object" || !bruto.alternativas || typeof bruto.alternativas !== "object") return falha("a resposta veio sem as alternativas");
+  const antes: any = data.alternativas || {};
+  const novas: any = {};
+  const mudadas: string[] = [];
+  for (const k of LETRAS_ALTERNATIVAS) {
+    const original = String(antes[k] ?? "").trim();
+    if (!permitidas.includes(k)) { novas[k] = original; continue; }
+    const t = String(bruto.alternativas[k] ?? "").trim();
+    if (!t) return falha(`a alternativa ${k} voltou vazia`);
+    novas[k] = t;
+    if (t !== original) mudadas.push(k);
+  }
+  if (!mudadas.length) return falha("nenhuma alternativa foi alterada");
+  for (const k of mudadas) {
+    const a = String(antes[k] ?? "").trim().length, b = novas[k].length;
+    if (a >= 20 && (b < 0.4 * a || b > 1.6 * a)) return falha(`a alternativa ${k} mudou de tamanho demais (${a} → ${b} caracteres)`);
+  }
+  const coments: any = (bruto.comentarios && typeof bruto.comentarios === "object") ? bruto.comentarios : {};
+  const semComentario = mudadas.filter((k) => !String(coments[k] ?? "").trim());
+  if (semComentario.length) return falha(`faltou o comentário da(s) alternativa(s) reescrita(s): ${semComentario.join(", ")}`);
+  const an: any = {};
+  const anAntes: any = (data.analiseAlternativas && typeof data.analiseAlternativas === "object") ? data.analiseAlternativas : {};
+  for (const k of LETRAS_ALTERNATIVAS) {
+    const v = anAntes[k] && typeof anAntes[k] === "object" ? { ...anAntes[k] } : {};
+    if (mudadas.includes(k)) v.comentario = String(coments[k]).trim();
+    an[k] = v;
+  }
+  const nova = { ...data, alternativas: novas, analiseAlternativas: an };
+  const gab = String(data.gabarito || "");
+  const resol = String(bruto.resolucaoComentada ?? "").trim();
+  if (mudadas.includes(gab) && resol) nova.resolucaoComentada = resol;
+  return { ok: true, motivo: "", nova, mudadas };
+}
+
+/* Roda a conferência e, só quando ela falha, faz a reescrita dirigida.
+   A questão é alterada no lugar SÓ quando a proposta passa em tudo. */
+async function garantirAlternativasConformes(data: any, system: SistemaPrompt, usos: any[], restanteMs: number) {
+  const prazo = Date.now() + restanteMs;
+  const diag: any = { chamadas: 0, corrigido: false };
+  let conf = conferenciaAlternativas(data);
+  diag.estadoInicial = conf.estado;
+  const pIdioma = conf.problemas.find((p) => p.tipo === "idioma");
+  if (pIdioma) {   // v74.27 (b) — primeiro o português; depois, a conferência normal sobre ele
+    const di = await passarItemParaPortugues(data, system, usos, prazo, pIdioma.detalhe);
+    diag.idioma = di;
+    diag.chamadas += di.chamadas;
+    if (!di.corrigido) { diag.problemas = [`idioma: ${pIdioma.detalhe}`]; diag.estado = "pendente"; return diag; }
+    conf = conferenciaAlternativas(data);
+    if (conf.estado !== "corrigir") { diag.corrigido = true; diag.estado = "corrigido"; return diag; }
+  }
+  if (conf.estado !== "corrigir") { diag.estado = conf.estado; return diag; }
+  diag.problemas = conf.problemas.map((p) => `${p.tipo}: ${p.detalhe}`);
+  console.warn(`[alternativas] conferência: ${diag.problemas.join(" | ")}`);
+  const permitidas = conf.problemas.some((p) => p.tipo === "eco") ? LETRAS_ALTERNATIVAS : conf.letras;
+  let recusa = "";
+  for (let tentativa = 1; tentativa <= CORRECOES_ALTERNATIVAS_MAX; tentativa++) {
+    const restante = prazo - Date.now();
+    if (restante < MS_MINIMO_PARA_CORRIGIR_ALTERNATIVAS) { diag.pulado = `sem tempo para a reescrita (restavam ${Math.round(restante / 1000)} s)`; break; }
+    try {
+      const bruto = await callClaudeForJSON(system, buildCorrecaoAlternativasPrompt(data, conf, tentativa, recusa), false, usos, FERRAMENTA_ALTERNATIVAS, undefined, `alternativas-${tentativa}`);
+      diag.chamadas++;
+      const p = aplicaCorrecaoAlternativas(data, bruto, permitidas);
+      if (!p.ok) { recusa = p.motivo; continue; }
+      const conf2 = conferenciaAlternativas(p.nova);
+      const gab2 = conferenciaGabarito(p.nova);
+      const naResolucao = letraNaResolucao(p.nova.resolucaoComentada);
+      if (conf2.estado !== "ok") { recusa = `ainda há ${conf2.problemas.map((x) => `${x.tipo} (${x.detalhe})`).join("; ")}`; continue; }
+      if (gab2.estado !== "ok" || gab2.letra !== data.gabarito || (naResolucao && naResolucao !== data.gabarito)) { recusa = `a resposta deixou de ser coerente (${gab2.motivo || `a resolução conclui pela ${naResolucao}`})`; continue; }
+      data.alternativas = p.nova.alternativas;
+      data.analiseAlternativas = p.nova.analiseAlternativas;
+      data.resolucaoComentada = p.nova.resolucaoComentada;
+      diag.corrigido = true; diag.estado = "corrigido"; diag.letrasReescritas = p.mudadas; diag.tentativas = tentativa;
+      console.log(`[alternativas] corrigida na tentativa ${tentativa}: ${p.mudadas.join(", ")} reescrita(s)`);
+      return diag;
+    } catch (e) {
+      diag.erro = String((e as any)?.message || e).slice(0, 200);
+      break;
+    }
+  }
+  diag.estado = "pendente";
+  if (recusa) diag.motivoRecusa = recusa;
+  console.warn(`[alternativas] ficou como estava (${diag.pulado || diag.erro || recusa || "sem correção"})`);
+  return diag;
+}
+/* ═══════════ FIM DA CONFERÊNCIA DAS ALTERNATIVAS ═══════════ */
+
 /* ========= v74.6 — COERÊNCIA DA RESPOSTA, CONFERIDA ANTES DE ENTREGAR =========
 
    DEFEITO RELATADO (16/09/2026): "a alternativa identificada como correta nem
@@ -4227,6 +4746,12 @@ function selfTestResponse() {
     buildRestricaoSegurancaVisual.toString(),   // v74.24
     consultarTextosEnem.toString(), pontuaTextoEnem.toString(), dossieDoTextoEnem.toString(), buildBlocoTextoEnem.toString(), urlsDaReferencia.toString(),   // v74.25
     conferenciaIneditismo.toString(), similaridadeIneditismo.toString(), buildIneditismoParaAuditoria.toString(),
+    conferenciaAlternativas.toString(), termosAbsolutosEm.toString(), normalizaAlternativa.toString(), alternativaDeNumero.toString(), radicaisEco.toString(),   // v74.27
+    buildCorrecaoAlternativasPrompt.toString(), aplicaCorrecaoAlternativas.toString(), garantirAlternativasConformes.toString(), JSON.stringify(FERRAMENTA_ALTERNATIVAS),
+    contaMarcasIdioma.toString(), linguaEstrangeiraEm.toString(), idiomaDoItem.toString(), buildPortuguesDoItemPrompt.toString(), aplicaPortuguesDoItem.toString(),   // v74.27 (b)
+    passarItemParaPortugues.toString(), ehLinguaEstrangeira.toString(), buildRegraIdiomaLinguaEstrangeira.toString(), JSON.stringify(FERRAMENTA_IDIOMA),
+    JSON.stringify([Object.fromEntries(Object.entries(MARCAS_IDIOMA).map(([k, v]) => [k, [...v]])), IDIOMA_MIN_MARCAS, ENEM_REAL_IDIOMA]),
+    JSON.stringify([ABSOLUTOS_ALTERNATIVAS, ABSOLUTOS_EXIBICAO, [...PALAVRAS_VAZIAS_ECO], ECO_MIN_LETRAS, CORRETA_DOMINANTE_MINIMO, CORRETA_DOMINANTE_RAZAO, CORRETA_DOMINANTE_CARACTERES, CORRECOES_ALTERNATIVAS_MAX, MS_MINIMO_PARA_CORRIGIR_ALTERNATIVAS, ENEM_REAL_ALTERNATIVAS]),
     JSON.stringify([TEXTOS_ENEM_MINIMO_PONTOS, TEXTOS_ENEM_COBERTURA_MINIMA, TEXTOS_ENEM_FAIXA_EMPATE, DISCIPLINAS_TEXTOS_ENEM, TEXTOS_ENEM_LITERARIOS, [...TEXTOS_ENEM_TEMAS_GENERICOS], INEDITISMO_LIMITE, INEDITISMO_MIN_TOKENS_COMANDO, INEDITISMO_MIN_TOKENS_ALTERNATIVA]),
     JSON.stringify(ACERVOS_PRIORITARIOS), JSON.stringify(DISCIPLINAS_COM_ACERVO_PRIORITARIO), buildAcervosPrioritarios.toString(),   // v74.16
     JSON.stringify([WEB_SEARCH_TOOL, BUSCA_PESQUISADOR, BUSCA_PESQUISADOR_RETRY, BUSCA_AUDITORIA]),
@@ -4728,6 +5253,71 @@ function selfTestResponse() {
             && aquecerCacheResponse.toString().includes("SISTEMA_VALIDACAO_FONTE");
         })(),
         /* v74.25 — CAMADA ZERO (textos das provas do ENEM) e AUDITOR DE INEDITISMO. */
+        /* v74.27 — conferência das alternativas (absolutos, correta dominante, eco
+           do comando) e a montagem da reescrita dirigida, sem chamar a IA. */
+        v7427_conferenciaAlternativas: (() => {
+          const an = (c: string) => { const o: any = {}; for (const L of LETRAS_ALTERNATIVAS) o[L] = { status: L === c ? "correta" : "incorreta", comentario: "c" + L }; return o; };
+          const alts = { A: "a descrição precisa dos fatos que motivaram o exílio.", B: "a exposição de argumentos lógicos para o retorno.", C: "a narração ordenada dos episódios da infância.", D: "a intensificação do tom de súplica do eu lírico.", E: "a organização das estrofes em rimas livres." };
+          const base: any = { comando: "O efeito de sentido produzido pela repetição dos versos evidencia", gabarito: "D", alternativas: alts, analiseAlternativas: an("D"), resolucaoComentada: "A repetição reforça a súplica. Gabarito: D." };
+          const comAbs: any = { ...base, alternativas: { ...alts, B: "a exposição de argumentos lógicos, sem qualquer emoção.", E: "a organização das estrofes apenas em rimas livres." } };
+          const abs = conferenciaAlternativas(comAbs);
+          const dom = conferenciaAlternativas({ ...base, alternativas: { ...alts, D: "a intensificação do tom de súplica do eu lírico, que reitera a angústia do desejo de voltar à pátria distante." } });
+          const eco = conferenciaAlternativas({ ...base, alternativas: { ...alts, D: "a intensificação, pela repetição, do tom de súplica." } });
+          const numeros = conferenciaAlternativas({ comando: "O número de lotes descartados corresponde a", gabarito: "B", alternativas: { A: "somente 1 lote.", B: "somente 2 lotes.", C: "somente 3 lotes.", D: "somente 4 lotes.", E: "somente 5 lotes." } });
+          const prop = aplicaCorrecaoAlternativas(comAbs, { alternativas: alts, comentarios: { B: "novo B", E: "novo E" }, resolucaoComentada: "" });
+          const semComent = aplicaCorrecaoAlternativas(comAbs, { alternativas: alts, comentarios: { B: "novo B" }, resolucaoComentada: "" });
+          const foraDasPermitidas = aplicaCorrecaoAlternativas(comAbs, { alternativas: { ...alts, A: "outra A inventada pelo modelo." }, comentarios: { B: "novo B", E: "novo E" }, resolucaoComentada: "" }, ["B", "E"]);
+          const prompt = buildCorrecaoAlternativasPrompt(comAbs, abs);
+          return conferenciaAlternativas(base).estado === "ok"
+            && abs.estado === "corrigir" && abs.letras.join("") === "BE" && abs.problemas[0].termos.includes("qualquer") && abs.problemas[0].termos.includes("apenas")
+            && dom.estado === "corrigir" && dom.problemas.some((p) => p.tipo === "dominante" && p.letras[0] === "D")
+            && eco.estado === "corrigir" && eco.problemas.some((p) => p.tipo === "eco" && p.termos.includes("repeticao"))
+            && numeros.estado === "ok"
+            && termosAbsolutosEm("Sem exceção, TODOS votaram por completo.").join(",") === "todos,sem excecao,por completo"
+            && termosAbsolutosEm("sobretudo o método científico") .length === 0
+            && conferenciaAlternativas({ gabarito: "X", alternativas: alts }).estado === "indefinido"
+            && prop.ok === true && prop.mudadas.join("") === "BE" && prop.nova.analiseAlternativas.B.comentario === "novo B" && prop.nova.analiseAlternativas.B.status === "incorreta"
+            && prop.nova.analiseAlternativas.A.comentario === "cA" && conferenciaAlternativas(prop.nova).estado === "ok"
+            && semComent.ok === false
+            && foraDasPermitidas.ok === true && foraDasPermitidas.nova.alternativas.A === alts.A && foraDasPermitidas.mudadas.join("") === "BE"
+            && aplicaCorrecaoAlternativas(comAbs, { alternativas: comAbs.alternativas, comentarios: {}, resolucaoComentada: "" }).ok === false
+            && prompt.includes("NÃO MEXA") && prompt.includes("continua D") && prompt.includes("B (\"qualquer\")") && prompt.includes("← CORRIGIR")
+            && FERRAMENTA_ALTERNATIVAS.input_schema.required.length === 3
+            && CORRETA_DOMINANTE_RAZAO === 1.25 && CORRETA_DOMINANTE_CARACTERES === 25 && ENEM_REAL_ALTERNATIVAS.itens === 612;
+        })(),
+        v7427_idiomaDoItem: (() => {
+          const an = (c: string, txt = "comentário em português da letra") => { const o: any = {}; for (const L of LETRAS_ALTERNATIVAS) o[L] = { status: L === c ? "correta" : "incorreta", comentario: `${txt} ${L}` }; return o; };
+          const ing: any = { textoBase: "An online outlet reported that a hiring algorithm learned to penalize résumés.", comando: "The case described reveals that automated systems can", gabarito: "B",
+            alternativas: { A: "remove human bias entirely once hiring is automated.", B: "reproduce discriminatory patterns learned from past data.", C: "require feminine terms to guarantee fair evaluation.", D: "improve equally regardless of the data used to train them.", E: "replace recruiters because they judge résumés more accurately." },
+            analiseAlternativas: an("B"), resolucaoComentada: "O algoritmo reproduziu o viés dos dados de treinamento. Gabarito: B." };
+          const pt: any = { ...ing, comando: "O caso relatado revela que sistemas automatizados podem",
+            alternativas: { A: "eliminar o viés humano quando a contratação é automatizada.", B: "reproduzir padrões discriminatórios aprendidos com dados antigos.", C: "exigir termos femininos para garantir uma avaliação justa.", D: "melhorar igualmente, seja qual for o dado usado no treino.", E: "substituir recrutadores por julgarem currículos com mais acerto." } };
+          const titulo: any = { ...pt, comando: "Na canção Where is the love, o eu lírico questiona a" };
+          const citacao: any = { ...pt, comando: "Nesse texto, a expressão “a través de una pantalla” evidencia que a geração Alfa estabelece com o mundo uma relação marcada pelo(a)" };
+          const esp: any = { ...pt, comando: "Según el texto, la campaña busca", alternativas: { A: "sensibilizar a los turistas sobre el uso del plástico.", B: "vender un producto hecho con plástico reciclado.", C: "describir las especies marinas amenazadas.", D: "registrar el paisaje de la costa del país.", E: "informar datos técnicos sobre el reciclaje." } };
+          const c1 = conferenciaAlternativas(ing);
+          const prop = aplicaPortuguesDoItem(ing, { comando: pt.comando, alternativas: pt.alternativas, comentarios: { B: "Correta: o sistema reproduziu o padrão dos dados." }, resolucaoComentada: "" });
+          const prompt = buildPortuguesDoItemPrompt(ing, c1.problemas[0]?.detalhe || "");
+          const regraLE = buildRegraIdiomaLinguaEstrangeira("Língua Estrangeira (Inglês/Espanhol)");
+          return c1.estado === "corrigir" && c1.problemas.length === 1 && c1.problemas[0].tipo === "idioma" && c1.letras.join("") === "ABCDE" && c1.problemas[0].detalhe.includes("inglês")
+            && conferenciaAlternativas(pt).estado === "ok" && conferenciaAlternativas(titulo).estado === "ok" && conferenciaAlternativas(citacao).estado === "ok"
+            && idiomaDoItem(esp).lingua === "espanhol"
+            && idiomaDoItem({ ...pt, comando: "According to the curator, the renewal of festival traditions mainly functions to" }).partes.length === 1
+            && idiomaDoItem({ ...pt, resolucaoComentada: "The algorithm learned the bias of the data that was used to train it, and this is why B is the answer." }).partes.join() === "a resolução comentada"
+            && linguaEstrangeiraEm("LE = F . LE = F . LE = LF . LE = 4LF . LE = 8LF") === "" && linguaEstrangeiraEm("y = −3x + 20 . y = −3x + 16 . y = 3x − 16") === ""
+            && prop.ok === true && prop.nova.comando === pt.comando && prop.nova.alternativas.B === pt.alternativas.B && prop.nova.analiseAlternativas.B.status === "correta"
+            && prop.nova.analiseAlternativas.B.comentario.startsWith("Correta") && prop.nova.analiseAlternativas.A.comentario === ing.analiseAlternativas.A.comentario
+            && prop.nova.resolucaoComentada === ing.resolucaoComentada && prop.nova.textoBase === ing.textoBase && conferenciaAlternativas(prop.nova).estado === "ok"
+            && aplicaPortuguesDoItem(ing, { comando: "", alternativas: pt.alternativas }).ok === false
+            && aplicaPortuguesDoItem(ing, { comando: pt.comando, alternativas: { ...pt.alternativas, C: "" } }).ok === false
+            && aplicaPortuguesDoItem(ing, { comando: pt.comando, alternativas: { ...pt.alternativas, A: "eliminar." } }).ok === false
+            && prompt.includes("NÃO MEXA") && prompt.includes("MESMA letra (B)") && prompt.includes("← CORRETA") && prompt.includes("não o traduza")
+            && FERRAMENTA_IDIOMA.input_schema.required.length === 4
+            && regraLE.includes("IDIOMA DO ITEM — LÍNGUA ESTRANGEIRA") && buildRegraIdiomaLinguaEstrangeira("Artes") === ""
+            && buildBlocoFixo.toString().includes("${buildRegraAlternativas()}${buildRegraIdiomaLinguaEstrangeira(opts.disciplina)}")
+            && ehLinguaEstrangeira("Língua Estrangeira (Inglês/Espanhol)") && !ehLinguaEstrangeira("Língua Portuguesa")
+            && ENEM_REAL_IDIOMA.itens === 612 && ENEM_REAL_IDIOMA.sinalizados === 0 && IDIOMA_MIN_MARCAS === 3;
+        })(),
         v7425_textosEnem: (() => {
           const row = (temas: string[], autor = "", obra = "") => ({ temas, autor, obra });
           const t: any = { id: 1, chave: "2011-regular-3", ano: 2011, numero: 3, tipo_texto: "poema", autor: "Cláudio Manuel da Costa", instituicao: "", obra: "Poemas", ano_obra: "1996", referencia: "COSTA, C. M. Poemas. Disponível em: www.dominiopublico.gov.br. Acesso em: 7 jul. 2012.", texto: "Estes os olhos são da minha amada", comando_original: "No poema, o eu lírico associa a paisagem ao sentimento amoroso, o que revela a convenção árcade", alternativas_originais: { A: "a", B: "b", C: "a idealização da natureza como cenário bucólico do amor", D: "d", E: "e" }, gabarito_original: "C", habilidade_original: "H16", usos: 0 };
@@ -5381,6 +5971,13 @@ ATENÇÃO — sua resposta anterior não pôde ser usada: o argumento da ferrame
     const gabaritoDiag = await garantirGabaritoCoerente(
       data, system, usos, LIMITE_FUNCAO_MS - (Date.now() - inicioReq),
     );
+    /* v74.27 — CONFERÊNCIA DAS ALTERNATIVAS: linguagem absolutista, correta
+       maior que as demais e correta como única a repetir palavra do comando.
+       Custo zero na questão sã; na que falha, reescrita dirigida só das
+       alternativas apontadas. Antes do auditor, que confere a versão final. */
+    const alternativasDiag: any = await garantirAlternativasConformes(
+      data, system, usos, LIMITE_FUNCAO_MS - (Date.now() - inicioReq),
+    );
 
     /* v74.8 — VALIDAÇÃO OBRIGATÓRIA DE FONTES. Por último, depois de toda
        reescrita possível (visual, revisão matemática, coerência do gabarito):
@@ -5422,10 +6019,12 @@ ATENÇÃO — sua resposta anterior não pôde ser usada: o argumento da ferrame
       visualDiag.refeito += vd2.refeito; visualDiag.conforme = vd2.conforme; visualDiag.motivo = vd2.motivo; visualDiag.entregueTipo = vd2.entregueTipo; visualDiag.promptChars = vd2.promptChars;
       nova = normalizarNotacaoMatematica(normalizarNotacaoQuimica(nova, area, disciplina), disciplina);
       const gd2 = await garantirGabaritoCoerente(nova, system, usos, LIMITE_FUNCAO_MS - (Date.now() - inicioReq));
+      const ad2 = await garantirAlternativasConformes(nova, system, usos, LIMITE_FUNCAO_MS - (Date.now() - inicioReq));   // v74.27
       const od2 = garantirObjetoDaDisciplina(nova, area, disciplina);
       const fd2 = await garantirFontesReais(nova, system, usos, LIMITE_FUNCAO_MS - (Date.now() - inicioReq), area, buscasWeb, dossie);
       data = nova;
       Object.assign(gabaritoDiag, gd2);
+      alternativasDiag.aposReelaboracao = ad2;   // v74.27
       objetoDiagFinal = od2;
       fontesDiag = fd2;
     }
@@ -5475,7 +6074,7 @@ ATENÇÃO — sua resposta anterior não pôde ser usada: o argumento da ferrame
     notacaoDiag.residuoFinal = temResiduoNotacao(data, area);
     if (notacaoDiag.residuoFinal) console.warn(`[notação] resíduo ASCII na questão entregue (${disciplina}: "${String(data?.tema || "").slice(0, 60)}") — ` + JSON.stringify(notacaoDiag.notacao?.residuosDepois ?? notacaoDiag));
     else if (notacaoDiag.residuoAntesDoRevisor) console.log(`[notação] resíduo corrigido pelo revisor (${notacaoDiag.notacao?.tentativas ?? "?"} tentativa(s))`);
-    return jsonResponse({ question: corrigirQuebrasLiterais(data), uso, visualDiag, diversidadeDiag, notacaoDiag, gabaritoDiag, fontesDiag, objetoDiag: objetoDiagFinal });
+    return jsonResponse({ question: corrigirQuebrasLiterais(data), uso, visualDiag, diversidadeDiag, notacaoDiag, gabaritoDiag, alternativasDiag, fontesDiag, objetoDiag: objetoDiagFinal });
   } catch (err) {
     return jsonResponse({ error: `Erro ao gerar questão: ${String((err as any)?.message || err)}` }, 502);
   }
