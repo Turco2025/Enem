@@ -125,6 +125,27 @@ Teste: `verify_fontes_app.js` — 19 verificações; as seções B e C bis prova
 quatro marcas ligadas ao mesmo tempo nenhuma conferência bloqueia, e que nenhuma delas tem sequer um
 `return true` no corpo. `verify_gabarito_coerente.js` H1 passou a exigir o contrário do que exigia.
 
+## "[object Object]" abaixo da referência (app v18.31, 26/09/2026)
+
+Relato do professor (26/09): nas questões aparecia "[object Object]" logo abaixo da referência.
+Causa: desde o backend v74.8 o campo `fonte` da questão é o **registro da verificação**
+(`tipoUso`, `autor`, `obra`, `referencia`...), e não mais a linha da referência — que continua sendo
+o último parágrafo do texto-base. O PDF, o Word e a impressão/HTML faziam `String(fonte)`: o registro
+virava "[object Object]" e a referência verdadeira saía como parágrafo comum logo acima.
+
+Correção (só no app; o backend e as questões não mudam): `enemSeparaReferencia` é a mesma regra nas
+três saídas. Com `fonte` em registro, nada dele é impresso: ele só ajuda a reconhecer a referência no
+fim do texto-base (inclusive as da biblioteca do professor, "... Trecho reproduzido na prova da
+Fuvest 1980.", que o padrão ABNT não reconhecia), e ela sai uma vez, em itálico e à direita. Nada é
+acrescentado ao texto. Questões antigas (com `fonte` em texto, ou sem ela) saem exatamente como antes.
+A conferência de notação passa a ler `fonte.referencia`.
+
+Também: `src/app.js` recebeu as linhas da v18.30 (prova de origem do texto da biblioteca), que tinham
+ido só para o `index.html`. Sem isso, reconstruir o `index.html` com `src/combine.py` as apagaria.
+
+Teste: `tests/verify_referencia_objeto.js` (15 verificações; no app anterior falham 12). As demais
+suítes do app seguem como estavam.
+
 ## Custo sem mexer na qualidade (generate-question v74.29, 26/09/2026)
 
 Medido na leva de 26/09 (9 questões entregues, 12 gerações no log, **US$ 1,06**, média US$ 0,118 por

@@ -3898,7 +3898,8 @@ function quiCamposDaQuestao(q, idx){
   const campos = [];
   const add = (rotulo, valor) => { if(valor) campos.push({ rotulo, texto: String(valor) }); };
   add("texto-base", d.textoBase);
-  add("referência", d.fonte);
+  // v18.31: "fonte" pode ser o registro da verificação (backend v74.8+); confere-se a referência dele, nunca "[object Object]"
+  add("referência", d.fonte && typeof d.fonte === "object" ? d.fonte.referencia : d.fonte);
   add("comando", d.comando);
   if(d.visual){
     add("título do recurso visual", d.visual.titulo);
@@ -4308,8 +4309,16 @@ function auditaQuestaoLocal(q){
     }
     /* v18.29 — texto-base da prova oficial do ENEM (backend v74.25). Só tela. */
     if(i.doEnem && !i.ultimoRecurso){
-      info("Texto-base da prova oficial do ENEM " + String(i.doEnem.ano || "?") + " (questão " + String(i.doEnem.numero || "?") + "), com autor, obra e referência impressos pelo INEP. " +
+      /* v18.30 — biblioteca de textos do professor (backend v74.28): texto de outra
+         prova aparece com o nome dela, nunca como ENEM; e o aviso de "mais próximo". */
+      const outraProva = i.doEnem.prova && i.doEnem.prova !== "ENEM" ? String(i.doEnem.prova) : "";
+      info((outraProva
+             ? "Texto-base da prova " + outraProva + " (biblioteca de textos do professor), com autor, obra e referência como impressos na prova. "
+             : "Texto-base da prova oficial do ENEM " + String(i.doEnem.ano || "?") + " (questão " + String(i.doEnem.numero || "?") + "), com autor, obra e referência impressos pelo INEP. ") +
            "A questão é inédita: o comando, as alternativas e o gabarito foram conferidos contra os da questão original.");
+      if(i.doEnem.aproximado){
+        info("A biblioteca não tinha um texto para o tema pedido; foi usado o texto mais próximo, e a questão foi ajustada a ele (Literatura, Língua Portuguesa e Artes não pesquisam na internet).");
+      }
     }
   }
 
@@ -4325,7 +4334,10 @@ function auditaQuestaoLocal(q){
       const restrita = v.estado === "aprovado_restrito";
       /* v18.29 — texto da prova do ENEM: não houve pesquisa nem validador na web. */
       if(v.estado === "aprovado_enem"){
-        info("Fonte: banco de textos das provas oficiais do ENEM · referência impressa pelo INEP · sem pesquisa na web.");
+        const provaDoTexto = q.insistencia && q.insistencia.doEnem && q.insistencia.doEnem.prova && q.insistencia.doEnem.prova !== "ENEM" ? String(q.insistencia.doEnem.prova) : "";
+        info(provaDoTexto
+          ? "Fonte: biblioteca de textos do professor · prova " + provaDoTexto + " · referência como impressa na prova · sem pesquisa na web."
+          : "Fonte: banco de textos das provas oficiais do ENEM · referência impressa pelo INEP · sem pesquisa na web.");
       } else
       info("Fonte validada pelo agente validador" + (restrita ? " (aprovação restrita ao confirmado — paráfrase, sem citação literal)" : "") +
            " · nível " + String(v.nivel || "?") + " · suporte " + String(v.suporte || "?") +
@@ -6100,12 +6112,39 @@ function enemIsReference(par){
   return false;
 }
 
+/* v18.31 — "[object Object]" LOGO ABAIXO DA REFERÊNCIA (26/09/2026).
+   Desde o backend v74.8 o campo "fonte" chega como REGISTRO da verificação
+   ({ tipoUso, autor, obra, referencia, ... }) e não mais como a linha da
+   referência — que continua sendo o último parágrafo do texto-base. PDF, Word
+   e impressão faziam String(fonte): o registro virava "[object Object]" no
+   lugar da referência, e a referência verdadeira saía como parágrafo comum
+   logo acima. Agora:
+   · fonte em TEXTO (questões antigas): vale como antes, sem mudança;
+   · fonte em REGISTRO: nunca é impressa; só ajuda a RECONHECER a referência
+     no fim do texto-base (inclusive as da biblioteca do professor, como
+     "... Trecho reproduzido na prova da Fuvest 1980.", que o padrão ABNT de
+     enemIsReference não pega). Nada é acrescentado ao texto nem duplicado. */
+function enemMesmaReferencia(par, referencia){
+  const n = t => String(t || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+                   .toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+  const a = n(par), b = n(referencia);
+  if(String(par || "").trim().length > 600 || a.length < 12 || b.length < 12) return false;
+  return a === b || a.includes(b) || b.includes(a);
+}
+function enemSeparaReferencia(pars, fonte){
+  if(typeof fonte === "string" && fonte.trim()) return fonte.trim();
+  if(pars.length < 2) return "";
+  const ultimo = pars[pars.length - 1];
+  const doRegistro = fonte && typeof fonte === "object" ? String(fonte.referencia || "") : "";
+  if(enemIsReference(ultimo) || enemMesmaReferencia(ultimo, doRegistro)) return pars.pop();
+  return "";
+}
+
 // Texto-base: parágrafos de corpo e, se o último for a fonte bibliográfica,
 // ela sai no tratamento de referência do texto introdutório.
 function enemTextoBase(doc, ctx, flow, text, fonte){
   const pars = String(text || "").trim().split(/\n+/).filter(p => p.trim());
-  let ref = String(fonte || "").trim();
-  if(!ref && pars.length > 1 && enemIsReference(pars[pars.length - 1])) ref = pars.pop();
+  const ref = enemSeparaReferencia(pars, fonte);   // v18.31
   pars.forEach(par => enemParagraph(doc, ctx, flow, par));
   if(ref) enemCaption(doc, ctx, flow, ref, { align: "right", italic: true });
 }
@@ -6583,8 +6622,7 @@ function enemPrintRotulo(texto){
 // — itálico, à direita (§2.1). Mesma regra e mesma detecção do PDF.
 function enemPrintTextoBase(out, text, fonte){
   const pars = String(text || "").trim().split(/\n+/).filter(p => p.trim());
-  let ref = String(fonte || "").trim();
-  if(!ref && pars.length > 1 && enemIsReference(pars[pars.length - 1])) ref = pars.pop();
+  const ref = enemSeparaReferencia(pars, fonte);   // v18.31
   pars.forEach(p => out.push('<p class="corpo">' + enemPrintRich(p) + '</p>'));
   if(ref) out.push('<p class="ref ref-texto">' + enemPrintRich(ref) + '</p>');
 }
@@ -7104,8 +7142,7 @@ function enemDocxCaption(text, opts){
 
 function enemDocxTextoBase(text, fonte){
   const pars = String(text || "").trim().split(/\n+/).filter(x => x.trim());
-  let ref = String(fonte || "").trim();
-  if(!ref && pars.length > 1 && enemIsReference(pars[pars.length - 1])) ref = pars.pop();
+  const ref = enemSeparaReferencia(pars, fonte);   // v18.31
   const out = [];
   pars.forEach(par => out.push(...enemDocxParagraph(par)));
   if(ref) out.push(...enemDocxCaption(ref, { italic: true }));
