@@ -125,6 +125,47 @@ Teste: `verify_fontes_app.js` — 19 verificações; as seções B e C bis prova
 quatro marcas ligadas ao mesmo tempo nenhuma conferência bloqueia, e que nenhuma delas tem sequer um
 `return true` no corpo. `verify_gabarito_coerente.js` H1 passou a exigir o contrário do que exigia.
 
+## Custo sem mexer na qualidade (generate-question v74.29, 26/09/2026)
+
+Medido na leva de 26/09 (9 questões entregues, 12 gerações no log, **US$ 1,06**, média US$ 0,118 por
+questão), por etapa: elaborador US$ 0,44 · auditor US$ 0,23 · conferência das alternativas US$ 0,18 ·
+reescritas pedidas pelo auditor US$ 0,15 · planejamento US$ 0,06. Duas causas, nenhuma de qualidade:
+
+- **A conferência das alternativas gravava o próprio cache** (40 mil tokens gravados na leva, cerca
+  de US$ 0,10), porque mandava ao modelo uma lista de ferramentas diferente da do elaborador — e a
+  lista de ferramentas é o começo do prefixo do cache.
+- **Reprovações do auditor que não eram da questão, eram da fonte**: fonte do banco com texto
+  restrito (Mário de Andrade e Clarice Lispector, que o elaborador não podia transcrever e acabou
+  parafraseando) e texto da biblioteca trocado por outro poema do mesmo autor (Bilac).
+
+O que mudou (nenhum prompt de elaboração, da Matriz ou do método do INEP foi alterado; só se somou
+uma regra que reforça a fidelidade ao texto conferido):
+
+1. **Mesma lista de ferramentas em elaborador, reescrita, gabarito, alternativas e idioma**
+   (`montaFerramentas`, `ferramentasDaQuestao`). Muda só a ferramenta obrigatória de cada etapa, o
+   que não invalida o cache das ferramentas nem do sistema: a conferência das alternativas passa a
+   LER o cache que o elaborador já gravou. Com busca na web nada muda. O aquecimento do cache grava o
+   mesmo prefixo.
+2. **Literatura, Língua Portuguesa e Artes não recebem fonte restrita do banco de fontes**
+   (`consultarBancoFontes(..., semRestritos)`): sem internet, o texto restrito não pode ser
+   conferido nem transcrito. O fluxo segue para a biblioteca (texto mais próximo). As demais
+   disciplinas ficam como estavam.
+3. **O campo "fonte" é completado pelo dossiê validado** (`corrigeFonteDoDossie`) quando o elaborador
+   deixa referência ou autor incompletos, ou cita instituição que não está na referência. Não inventa
+   nada: copia o que o pesquisador/validador já conferiu. Não mexe em texto próprio, não "conserta"
+   instituição que aparece no texto da questão, e é desfeito se a conferência continuar falhando.
+   Antes, isso custava uma reescrita inteira.
+4. **O bloco do texto da biblioteca proíbe trocar o texto-base** por outro poema, conto ou trecho,
+   mesmo do mesmo autor ou da mesma obra.
+
+Estimativa, a confirmar com questões reais depois do deploy: cerca de US$ 0,07–0,08 por questão
+quando não há reprovação (antes US$ 0,118 na média). O log mostra `[cache] alternativas-N: ACERTO` e
+`diag.fonteCompletadaPeloDossie` quando as mudanças 1 e 3 agem.
+
+Testes: `tests/verify_custo_v7429.ts` (22 verificações), R1–R6 em `tests/verify_fontes_backend.ts`
+(158), C6 atualizado em `tests/verify_extensao_v7419.ts` (30) e o selftest `v7429_custo`. As demais
+suítes seguem passando (alternativas 41, biblioteca 23, cache 29, gabarito 20, validador 34).
+
 ## Carga da biblioteca: Fuvest, Unesp e Unicamp (26/09/2026)
 
 Com a v74.28 no ar (generate-question v100), a tabela `textos_enem` recebeu os textos-base das provas

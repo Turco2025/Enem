@@ -84,8 +84,13 @@ t("C4 texto-base e comando também ganham teto",
   src.includes("maxLength: t.texto") && src.includes("maxLength: t.comando"));
 t("C5 a descrição da alternativa repete que dificuldade não muda o número",
   src.includes("O nível de dificuldade não altera este número"));
+/* v74.29 — a ferramenta da questão é montada UMA vez por requisição (ferramentaQ) e usada
+   pela geração e pela reelaboração; o aquecimento do cache monta a sua do mesmo jeito. */
 t("C6 as chamadas de geração passam a disciplina (rascunho, retentativa e, desde a v74.23, a reelaboração)",
-  (src.match(/ferramentaQuestaoPara\(recurso, fontesReaisEstrito\(area\), disciplina\)/g) || []).length === 3);
+  (src.match(/const ferramentaQ = ferramentaQuestaoPara\(recurso, fontesReaisEstrito\(area\), disciplina\);/g) || []).length === 2
+  && src.includes('callClaudeForJSON(system, userMsg, webSearch, usos, ferramentaQ, buscasWeb, "geracao"')
+  && src.includes("usos, ferramentaQ, buscasWeb, `geracao/reelaboracao-${reelaboracoes}`")
+  && !/callClaudeForJSON\([^;]*ferramentaQuestaoPara\(/.test(src));
 
 /* ---------- D. o alvo no prompt do usuário ---------- */
 const alvoFn = recorta("buildAlvoExtensao");

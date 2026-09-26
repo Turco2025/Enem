@@ -1351,7 +1351,14 @@ function pontuaFonteDoBanco(o: { tema?: string; recorte?: string; eixoTematico?:
   const daFonte = tokensDeFonte(`${row.autor || ""} ${row.obra || ""} ${row.instituicao || ""}`);
   return daFonte.filter((w) => doTema.has(w)).length;
 }
-async function consultarBancoFontes(o: { area: string; disciplina: string; tema: string; eixoTematico?: string; recorte?: string }, evitar: string[]): Promise<any | null> {
+/* v74.29 — sem pesquisa na internet (Literatura, Língua Portuguesa e Artes), o banco
+   de fontes NÃO devolve fonte "restrita ao confirmado": é material acadêmico que o
+   validador só liberou em paráfrase dos fatos confirmados, e foi dele que vieram as
+   reprovações da leva de 26/09 (Mário de Andrade: autoria institucional fora da
+   referência; Clarice: duas reescritas e reprovada — US$ 0,37 em duas questões).
+   Nessas disciplinas o caminho é o texto da biblioteca (literal, com a referência
+   impressa na prova), que o professor mandou usar. As demais disciplinas não mudam. */
+async function consultarBancoFontes(o: { area: string; disciplina: string; tema: string; eixoTematico?: string; recorte?: string }, evitar: string[], semRestritos = false): Promise<any | null> {
   try {
     const { data, error } = await supabase.from("fontes_validadas")
       .select("id, tema_chave, autor, instituicao, obra, ano, referencia, url, trecho, trecho_literal, restrito, nivel, validacao, usos")
@@ -1360,6 +1367,7 @@ async function consultarBancoFontes(o: { area: string; disciplina: string; tema:
     let melhor: any = null, melhorPontos = 0;
     for (const row of data) {
       if (fonteEstaNaListaDeEvitar({ url: row.url, obra: row.obra }, evitar)) continue;
+      if (semRestritos && row.restrito === true) continue;   // v74.29
       const p = pontuaFonteDoBanco(o, row);
       if (p > melhorPontos) { melhor = row; melhorPontos = p; }
     }
@@ -1669,7 +1677,8 @@ function buildBlocoTextoEnem(d: any): string {
     ? `texto LITERÁRIO (${e.tipoTexto}) — use trecho LITERAL: pode recortar versos, estrofes ou parágrafos, marcando supressões com [...], mas nunca troque, acrescente ou atualize palavras. "tipoUso": "citacao", "conferidoNaFonte": true.`
     : `texto NÃO LITERÁRIO — use o trecho literal ("tipoUso": "citacao", "conferidoNaFonte": true) ou uma adaptação LEVE (enxugar, recortar, trocar a ordem de frases), sem mudar o sentido nem acrescentar informação ("tipoUso": "adaptacao"; a referência termina com "(adaptado)").`}
 · REFERÊNCIA: ${outra ? `copie a do dossiê EXATAMENTE como está — é a impressa na prova, e quando a prova não trouxe livro, editora ou ano a referência fica sem eles: NÃO os invente nem os complete de memória. Não escreva "ENEM" em lugar nenhum` : `copie a do dossiê, que é a do INEP. A fonte é a OBRA ORIGINAL — não escreva "ENEM" na referência, no texto-base nem no comando`}. Deixe "urlVerificacao" vazio, a não ser que a própria referência traga o endereço.
-· O recorte reservado a esta questão (se houver) vale como ÂNGULO de abordagem DENTRO deste texto; se não couber nele, prevalece o texto.${e.aproximado ? `
+· O recorte reservado a esta questão (se houver) vale como ÂNGULO de abordagem DENTRO deste texto; se não couber nele, prevalece o texto.
+· O TEXTO-BASE É ESTE: a questão se faz sobre este texto (ou um recorte dele). NÃO o substitua por outro poema, conto, crônica ou trecho — nem do mesmo autor, nem da mesma obra —, ainda que outro combine melhor com o tema pedido: só este foi conferido, e texto trocado reprova a questão na auditoria. Autor, obra e referência do campo "fonte" são os DESTE texto.${e.aproximado ? `
 · TEXTO MAIS PRÓXIMO DA BIBLIOTECA: não há, na biblioteca de textos, um texto para o tema pedido, e nesta disciplina não se pesquisa na internet. Este é o texto mais próximo. Escreva a questão sobre o que ESTE texto permite cobrar — do tema pedido, aproveite só o que o texto de fato sustenta. Não force o tema sobre o texto e não acrescente ao texto-base, ao comando ou às alternativas informação sobre a obra, o autor ou o período que o próprio texto não traga.` : ""}
 · A imagem, se o recurso pedir, é NOVA — nada de reproduzir a da prova.
 `;
@@ -1717,7 +1726,7 @@ async function pesquisarFonteReal(
   }
   /* v74.23 — banco de fontes validadas primeiro: custo zero. */
   if (o.usarBanco !== false) {
-    const doBanco = await consultarBancoFontes(o, evitar);
+    const doBanco = await consultarBancoFontes(o, evitar, semPesquisaWeb(o.disciplina));   // v74.29: sem web, sem fonte restrita
     if (doBanco) {
       /* A URL do banco foi resultado real de busca e página localizada pelo
          validador numa chamada anterior: entra nas buscas desta, senão a
@@ -2206,7 +2215,38 @@ type SistemaPrompt = string | Array<{ type: "text"; text: string; cache_control?
 
 type FerramentaServidor = false | { type: string; name: string; max_uses: number; allowed_domains?: string[]; blocked_domains?: string[]; max_content_tokens?: number };
 type FetchRegistro = { url: string; ok: boolean; erro: string };
-async function callClaude(system: SistemaPrompt, userMsg: string, maxTokens: number, enableWebSearch: FerramentaServidor = false, ferramenta: any = null, timeoutMs = 240_000): Promise<{ text: string; truncated: boolean; usage: any; ferramentaJSON: string; buscas: { url: string; title: string }[]; fetches: FetchRegistro[] }> {
+/* v74.29 — FERRAMENTAS DECLARADAS × FERRAMENTA OBRIGATÓRIA (26/09/2026).
+   O cache da Anthropic guarda o prefixo "ferramentas → sistema": ferramenta
+   diferente = cache diferente. A geração, a reescrita pedida pelo auditor e as
+   correções dirigidas (alternativas, gabarito, idioma) usam o MESMO sistema,
+   mas cada uma declarava só a própria ferramenta — e a conferência das
+   alternativas gravava um cache só dela (≈ 20 mil tokens, ≈ US$ 0,05) toda
+   vez que rodava fora da janela de 5 minutos (leva de 26/09: US$ 0,10 de
+   gravação em 9 questões). Agora essas chamadas declaram a MESMA lista de
+   ferramentas (ferramentasDaQuestao) e só o tool_choice muda — o que, pela
+   regra da Anthropic, não invalida o cache de ferramentas + sistema: a
+   correção lê o cache que a própria geração acabou de gravar. Com ferramenta
+   de servidor (busca na web) nada muda: a escolha é automática e ferramenta a
+   mais seria um convite a chamá-la. */
+function montaFerramentas(enableWebSearch: FerramentaServidor, ferramenta: any, declaradas: any[] | null = null): { tools?: any[]; tool_choice?: any } {
+  const usaDeclaradas = !enableWebSearch && !!ferramenta && Array.isArray(declaradas) && declaradas.some((f) => f && f.name === ferramenta.name);
+  const tools = [
+    ...(enableWebSearch ? [enableWebSearch] : []),
+    ...(usaDeclaradas ? declaradas! : ferramenta ? [ferramenta] : []),
+  ];
+  if (!tools.length) return {};
+  /* Sem busca na web, a entrega pela ferramenta é obrigatória — não há
+     por que deixar espaço para prosa. Com busca ligada, a escolha fica
+     automática: o modelo precisa poder pesquisar ANTES de entregar. */
+  const tool_choice = ferramenta && !enableWebSearch
+    ? { type: "tool", name: ferramenta.name }
+    : { type: "auto" };
+  return { tools, tool_choice };
+}
+function ferramentasDaQuestao(ferramentaQuestao: any): any[] {
+  return [ferramentaQuestao, FERRAMENTA_ALTERNATIVAS, FERRAMENTA_GABARITO, FERRAMENTA_IDIOMA];
+}
+async function callClaude(system: SistemaPrompt, userMsg: string, maxTokens: number, enableWebSearch: FerramentaServidor = false, ferramenta: any = null, timeoutMs = 240_000, declaradas: any[] | null = null): Promise<{ text: string; truncated: boolean; usage: any; ferramentaJSON: string; buscas: { url: string; title: string }[]; fetches: FetchRegistro[] }> {
   let lastErr: any;
   for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
     const controller = new AbortController();
@@ -2253,20 +2293,7 @@ async function callClaude(system: SistemaPrompt, userMsg: string, maxTokens: num
              fixar em "medium" sempre, sem hipótese de subir nem descer. */
           output_config: { effort: "medium" },
           stream: true,
-          ...(() => {
-            const tools = [
-              ...(enableWebSearch ? [enableWebSearch] : []),
-              ...(ferramenta ? [ferramenta] : []),
-            ];
-            if (!tools.length) return {};
-            /* Sem busca na web, a entrega pela ferramenta é obrigatória — não há
-               por que deixar espaço para prosa. Com busca ligada, a escolha fica
-               automática: o modelo precisa poder pesquisar ANTES de entregar. */
-            const tool_choice = ferramenta && !enableWebSearch
-              ? { type: "tool", name: ferramenta.name }
-              : { type: "auto" };
-            return { tools, tool_choice };
-          })(),
+          ...montaFerramentas(enableWebSearch, ferramenta, declaradas),   // v74.29
         }),
         signal: controller.signal,
       });
@@ -3011,13 +3038,13 @@ function registraUso(usos: any[] | undefined, usage: any, etapa: string, ms?: nu
   usos.push(usage);
 }
 
-async function callClaudeForJSON(system: SistemaPrompt, userMsg: string, enableWebSearch: FerramentaServidor = false, usos?: any[], ferramenta: any = FERRAMENTA_QUESTAO, buscas?: { url: string; title: string }[], etapa = "geracao", fetches?: FetchRegistro[], timeoutMs = 240_000) {
+async function callClaudeForJSON(system: SistemaPrompt, userMsg: string, enableWebSearch: FerramentaServidor = false, usos?: any[], ferramenta: any = FERRAMENTA_QUESTAO, buscas?: { url: string; title: string }[], etapa = "geracao", fetches?: FetchRegistro[], timeoutMs = 240_000, declaradas: any[] | null = null) {
   const juntaBuscas = (r: { buscas?: { url: string; title: string }[]; fetches?: FetchRegistro[] }) => {
     if (buscas && r && Array.isArray(r.buscas)) buscas.push(...r.buscas);
     if (fetches && r && Array.isArray(r.fetches)) fetches.push(...r.fetches);
   };
   let t0 = Date.now();
-  const primeira = await callClaude(system, userMsg, 8000, enableWebSearch, ferramenta, timeoutMs);
+  const primeira = await callClaude(system, userMsg, 8000, enableWebSearch, ferramenta, timeoutMs, declaradas);
   juntaBuscas(primeira);
   const { text, truncated, usage } = primeira;
   registraUso(usos, usage, etapa, Date.now() - t0);
@@ -3035,7 +3062,7 @@ async function callClaudeForJSON(system: SistemaPrompt, userMsg: string, enableW
        continua com uma chamada só. */
     if (truncated) {
       t0 = Date.now();
-      const retry = await callClaude(system, userMsg, 12000, enableWebSearch, ferramenta, timeoutMs);
+      const retry = await callClaude(system, userMsg, 12000, enableWebSearch, ferramenta, timeoutMs, declaradas);
       juntaBuscas(retry);
       registraUso(usos, retry.usage, etapa + "/retry", Date.now() - t0);
       return lerFerramenta(retry.ferramentaJSON) ?? parseJSONLoose(retry.text);
@@ -3046,7 +3073,7 @@ ATENÇÃO — sua resposta anterior não pôde ser lida como JSON. O erro do int
 
 Reenvie a MESMA questão, agora como JSON estritamente válido. Verifique, antes de responder: toda aspa dupla que faça parte de um texto está escapada como \\" ; não há barra invertida solta (nada de LaTeX como \\pi ou \\sqrt — escreva por extenso); não há quebra de linha literal dentro de uma string; não há vírgula sobrando antes de } ou ]. Entregue chamando a ferramenta indicada acima, sem crase e sem texto em volta.`;
     t0 = Date.now();
-    const retry = await callClaude(system, correcao, 8000, enableWebSearch, ferramenta, timeoutMs);
+    const retry = await callClaude(system, correcao, 8000, enableWebSearch, ferramenta, timeoutMs, declaradas);
     juntaBuscas(retry);
     registraUso(usos, retry.usage, etapa + "/retry-json", Date.now() - t0);
     return lerFerramenta(retry.ferramentaJSON) ?? parseJSONLoose(retry.text);
@@ -3769,7 +3796,7 @@ function aplicaPortuguesDoItem(data: any, bruto: any): { ok: boolean; motivo: st
   return { ok: true, motivo: "", nova };
 }
 
-async function passarItemParaPortugues(data: any, system: SistemaPrompt, usos: any[], prazo: number, detalhe: string) {
+async function passarItemParaPortugues(data: any, system: SistemaPrompt, usos: any[], prazo: number, detalhe: string, declaradas: any[] | null = null) {
   const di: any = { detalhe, chamadas: 0, corrigido: false };
   console.warn(`[idioma] ${detalhe}`);
   let recusa = "";
@@ -3777,7 +3804,7 @@ async function passarItemParaPortugues(data: any, system: SistemaPrompt, usos: a
     const restante = prazo - Date.now();
     if (restante < MS_MINIMO_PARA_CORRIGIR_ALTERNATIVAS) { di.pulado = `sem tempo para passar ao português (restavam ${Math.round(restante / 1000)} s)`; break; }
     try {
-      const bruto = await callClaudeForJSON(system, buildPortuguesDoItemPrompt(data, detalhe, tentativa, recusa), false, usos, FERRAMENTA_IDIOMA, undefined, `idioma-${tentativa}`);
+      const bruto = await callClaudeForJSON(system, buildPortuguesDoItemPrompt(data, detalhe, tentativa, recusa), false, usos, FERRAMENTA_IDIOMA, undefined, `idioma-${tentativa}`, undefined, undefined, declaradas);   // v74.29
       di.chamadas++;
       const p = aplicaPortuguesDoItem(data, bruto);
       if (!p.ok) { recusa = p.motivo; continue; }
@@ -3964,14 +3991,14 @@ function aplicaCorrecaoAlternativas(data: any, bruto: any, permitidas: string[] 
 
 /* Roda a conferência e, só quando ela falha, faz a reescrita dirigida.
    A questão é alterada no lugar SÓ quando a proposta passa em tudo. */
-async function garantirAlternativasConformes(data: any, system: SistemaPrompt, usos: any[], restanteMs: number) {
+async function garantirAlternativasConformes(data: any, system: SistemaPrompt, usos: any[], restanteMs: number, declaradas: any[] | null = null) {
   const prazo = Date.now() + restanteMs;
   const diag: any = { chamadas: 0, corrigido: false };
   let conf = conferenciaAlternativas(data);
   diag.estadoInicial = conf.estado;
   const pIdioma = conf.problemas.find((p) => p.tipo === "idioma");
   if (pIdioma) {   // v74.27 (b) — primeiro o português; depois, a conferência normal sobre ele
-    const di = await passarItemParaPortugues(data, system, usos, prazo, pIdioma.detalhe);
+    const di = await passarItemParaPortugues(data, system, usos, prazo, pIdioma.detalhe, declaradas);
     diag.idioma = di;
     diag.chamadas += di.chamadas;
     if (!di.corrigido) { diag.problemas = [`idioma: ${pIdioma.detalhe}`]; diag.estado = "pendente"; return diag; }
@@ -3987,7 +4014,7 @@ async function garantirAlternativasConformes(data: any, system: SistemaPrompt, u
     const restante = prazo - Date.now();
     if (restante < MS_MINIMO_PARA_CORRIGIR_ALTERNATIVAS) { diag.pulado = `sem tempo para a reescrita (restavam ${Math.round(restante / 1000)} s)`; break; }
     try {
-      const bruto = await callClaudeForJSON(system, buildCorrecaoAlternativasPrompt(data, conf, tentativa, recusa), false, usos, FERRAMENTA_ALTERNATIVAS, undefined, `alternativas-${tentativa}`);
+      const bruto = await callClaudeForJSON(system, buildCorrecaoAlternativasPrompt(data, conf, tentativa, recusa), false, usos, FERRAMENTA_ALTERNATIVAS, undefined, `alternativas-${tentativa}`, undefined, undefined, declaradas);   // v74.29
       diag.chamadas++;
       const p = aplicaCorrecaoAlternativas(data, bruto, permitidas);
       if (!p.ok) { recusa = p.motivo; continue; }
@@ -4138,7 +4165,7 @@ As três partes têm de apontar a MESMA alternativa. Se, ao resolver, você conc
 
 /* Roda a conferência e, só quando ela falha, faz UMA chamada de reparo.
    Devolve o diagnóstico; a questão é alterada no lugar. */
-async function garantirGabaritoCoerente(data: any, system: SistemaPrompt, usos: any[], restanteMs: number) {
+async function garantirGabaritoCoerente(data: any, system: SistemaPrompt, usos: any[], restanteMs: number, declaradas: any[] | null = null) {
   const diag: any = { chamadas: 0, reparado: false };
   let conf = conferenciaGabarito(data);
   const naResolucao = letraNaResolucao(data && data.resolucaoComentada);
@@ -4162,7 +4189,7 @@ async function garantirGabaritoCoerente(data: any, system: SistemaPrompt, usos: 
     return diag;
   }
   try {
-    const bruto = await callClaudeForJSON(system, buildConferenciaGabaritoPrompt(data, motivo), false, usos, FERRAMENTA_GABARITO, undefined, "gabarito");
+    const bruto = await callClaudeForJSON(system, buildConferenciaGabaritoPrompt(data, motivo), false, usos, FERRAMENTA_GABARITO, undefined, "gabarito", undefined, undefined, declaradas);   // v74.29
     diag.chamadas = 1;
     const letra = bruto && typeof bruto === "object" ? String((bruto as any).gabarito || "").trim().toUpperCase() : "";
     if (LETRAS_ALTERNATIVAS.includes(letra)) {
@@ -4286,6 +4313,66 @@ function conferenciaFontes(d: any, buscas?: { url: string; title: string }[]): {
     }
   }
   return { estado: "ok", motivo: "", tipoUso };
+}
+
+/* v74.29 — METADADO DA FONTE COMPLETADO PELO DOSSIÊ (26/09/2026).
+   Na leva de 26/09 a questão de Mário de Andrade foi reescrita inteira (≈ US$ 0,11)
+   porque o campo "fonte" trazia uma instituição que não estava na referência — o
+   texto da questão estava certo; o erro era só de preenchimento do campo. Quando
+   há dossiê validado, os campos autor / instituição / referência / comoVerificou
+   que faltarem ou não baterem são completados com os do DOSSIÊ (que é a fonte
+   conferida), sem chamar o modelo. Limites: só nas reprovações estruturais de
+   preenchimento ("incompleto", "instituicao_fora_da_referencia"); nunca em texto
+   próprio; e a instituição só é trocada se NÃO aparece no que o aluno lê
+   (texto-base, comando, alternativas, resolução e comentários) — atribuição
+   inventada DENTRO da questão continua indo para a reescrita. O caller só aceita
+   a correção se a conferência estrutural passar depois dela; o auditor confere
+   a questão inteira em seguida, como sempre. */
+function textoVisivelDaQuestao(d: any): string {
+  if (!d || typeof d !== "object") return "";
+  const alts = d.alternativas && typeof d.alternativas === "object" ? Object.values(d.alternativas).map((v) => String(v || "")) : [];
+  const an = d.analiseAlternativas && typeof d.analiseAlternativas === "object"
+    ? Object.values(d.analiseAlternativas).map((v: any) => String((v && typeof v === "object" ? v.comentario : v) || "")) : [];
+  return [d.textoBase, d.comando, ...alts, d.resolucaoComentada, ...an].map((x) => String(x || "")).join("\n");
+}
+function normalizaParaComparar(t: string): string {
+  return String(t || "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().replace(/\s+/g, " ").trim();
+}
+function corrigeFonteDoDossie(data: any, dossie: any, estado: string): string[] {
+  if (!dossie || dossie.encontrou !== true || !data || typeof data !== "object" || !data.fonte || typeof data.fonte !== "object") return [];
+  if (estado !== "incompleto" && estado !== "instituicao_fora_da_referencia") return [];
+  const f = data.fonte;
+  if (String(f.tipoUso || "").trim().toLowerCase() === "proprio") return [];
+  const dAutor = String(dossie.autor || "").trim(), dInst = String(dossie.instituicao || "").trim(), dRef = String(dossie.referencia || "").trim();
+  /* instituição fora da referência e ESCRITA na questão = atribuição dentro do texto: não é caso de metadado */
+  const instDeclarada = normalizaParaComparar(String(f.instituicao || "")).replace(/^(o |a |os |as )/, "");
+  if (instDeclarada) {
+    const refDeclarada = normalizaParaComparar(String(f.referencia || dRef));
+    const cab = instDeclarada.split(/[\s,.;()\/-]+/).filter((w) => w.length > 3)[0] || instDeclarada;
+    if (!refDeclarada.includes(instDeclarada) && !refDeclarada.includes(cab) && normalizaParaComparar(textoVisivelDaQuestao(data)).includes(instDeclarada)) return [];
+  }
+  const campos: string[] = [];
+  if (!String(f.referencia || "").trim() && dRef) { f.referencia = dRef; campos.push("referencia"); }
+  if (!String(f.autor || "").trim() && dAutor) { f.autor = dAutor; campos.push("autor"); }
+  if (!String(f.comoVerificou || "").trim()) {
+    f.comoVerificou = `Conforme o dossiê validado: ${String(dossie.comoVerificou || "fonte conferida na etapa de pesquisa e validação").slice(0, 200)}`;
+    campos.push("comoVerificou");
+  }
+  const inst = String(f.instituicao || "").trim();
+  if (inst) {
+    const ref = normalizaParaComparar(String(f.referencia || ""));
+    const i = normalizaParaComparar(inst).replace(/^(o |a |os |as )/, "");
+    const cabeca = i.split(/[\s,.;()\/-]+/).filter((w) => w.length > 3)[0] || i;
+    const naReferencia = ref.includes(i) || ref.includes(cabeca);
+    if (!naReferencia) {
+      const dI = normalizaParaComparar(dInst);
+      f.instituicao = dInst && ref.includes(dI) ? dInst : "";
+      campos.push("instituicao");
+    }
+  } else if (!String(f.autor || "").trim() && dInst) {
+    f.instituicao = dInst; campos.push("instituicao");
+  }
+  return campos;
 }
 
 /* v74.13 — A QUESTÃO TEM DE SER A DO DOSSIÊ.
@@ -4598,7 +4685,23 @@ async function garantirFontesReais(
   diag.validacao = dossiePrevio && dossiePrevio.validacao ? dossiePrevio.validacao : null;
   if (!diag.aplicavel) { diag.estado = "nao_se_aplica"; return diag; }
 
-  const det = conferenciaFontes(data, buscas);
+  let det = conferenciaFontes(data, buscas);
+  /* v74.29 — campo "fonte" mal preenchido, com dossiê validado: completa pelo
+     dossiê e confere de novo (ver corrigeFonteDoDossie). Sem passar, volta como estava. */
+  if (det.estado !== "ok" && dossiePrevio) {
+    const fonteAntes = data && data.fonte && typeof data.fonte === "object" ? { ...data.fonte } : null;
+    const campos = corrigeFonteDoDossie(data, dossiePrevio, det.estado);
+    if (campos.length) {
+      const det2 = conferenciaFontes(data, buscas);
+      if (det2.estado === "ok") {
+        diag.fonteCompletadaPeloDossie = campos;
+        console.warn(`[fontes] campo "fonte" completado pelo dossiê (${campos.join(", ")}) em vez de reescrever a questão — era: ${det.motivo}`);
+        det = det2;
+      } else if (fonteAntes) {
+        data.fonte = fonteAntes;
+      }
+    }
+  }
   diag.determinista = det.estado;
   diag.tipoUso = det.tipoUso;
   if (det.estado !== "ok") {
@@ -4773,9 +4876,9 @@ async function aquecerCacheResponse(url: URL) {
   _cacheControlAtual = CACHE_1H;
   const usos: any[] = [];
   const etapas: string[] = [];
-  const tentar = async (nome: string, sistema: SistemaPrompt, ferramenta: any) => {
+  const tentar = async (nome: string, sistema: SistemaPrompt, ferramenta: any, declaradas: any[] | null = null) => {
     try {
-      const r = await callClaude(sistema, "ok", 16, false, ferramenta);
+      const r = await callClaude(sistema, "ok", 16, false, ferramenta, 240_000, declaradas);
       registraUso(usos, r.usage, `aquecimento/${nome}`);
       etapas.push(nome);
     } catch (e) { console.error(`[aquecimento] ${nome} falhou: ${String((e as any)?.message || e).slice(0, 160)}`); }
@@ -4784,7 +4887,9 @@ async function aquecerCacheResponse(url: URL) {
     { type: "text", text: buildSystemPrompt(area), cache_control: CACHE_1H },
     { type: "text", text: buildBlocoFixo({ area, disciplina }), cache_control: CACHE_1H },
   ];
-  await tentar("geracao", sistemaGeracao, ferramentaQuestaoPara(recurso, fontesReaisEstrito(area), disciplina));
+  /* v74.29 — o mesmo prefixo da geração: a família de ferramentas (ver montaFerramentas) */
+  const ferramentaQ = ferramentaQuestaoPara(recurso, fontesReaisEstrito(area), disciplina);
+  await tentar("geracao", sistemaGeracao, ferramentaQ, ferramentasDaQuestao(ferramentaQ));
   if (fontesReaisEstrito(area)) {
     await tentar("pesquisa", [{ type: "text", text: SISTEMA_PESQUISA_FONTE, cache_control: CACHE_1H }], FERRAMENTA_DOSSIE_FONTE);
     await tentar("validacao", [{ type: "text", text: SISTEMA_VALIDACAO_FONTE, cache_control: CACHE_1H }], FERRAMENTA_VALIDACAO_FONTE);   // v74.21c
@@ -4857,6 +4962,7 @@ function selfTestResponse() {
     passarItemParaPortugues.toString(), ehLinguaEstrangeira.toString(), buildRegraIdiomaLinguaEstrangeira.toString(), JSON.stringify(FERRAMENTA_IDIOMA),
     semPesquisaWeb.toString(), provaDoTexto.toString(), escolheTextoMaisProximo.toString(), consultarTextoMaisProximo.toString(),   // v74.28
     linhasDaBiblioteca.toString(), JSON.stringify([DISCIPLINAS_SEM_PESQUISA_WEB, BIBLIOTECA_LIMITE_LINHAS, BIBLIOTECA_PAGINA]),
+    montaFerramentas.toString(), ferramentasDaQuestao.toString(), corrigeFonteDoDossie.toString(), textoVisivelDaQuestao.toString(), normalizaParaComparar.toString(),   // v74.29
     JSON.stringify([Object.fromEntries(Object.entries(MARCAS_IDIOMA).map(([k, v]) => [k, [...v]])), IDIOMA_MIN_MARCAS, ENEM_REAL_IDIOMA]),
     JSON.stringify([ABSOLUTOS_ALTERNATIVAS, ABSOLUTOS_EXIBICAO, [...PALAVRAS_VAZIAS_ECO], ECO_MIN_LETRAS, CORRETA_DOMINANTE_MINIMO, CORRETA_DOMINANTE_RAZAO, CORRETA_DOMINANTE_CARACTERES, CORRECOES_ALTERNATIVAS_MAX, MS_MINIMO_PARA_CORRIGIR_ALTERNATIVAS, ENEM_REAL_ALTERNATIVAS]),
     JSON.stringify([TEXTOS_ENEM_MINIMO_PONTOS, TEXTOS_ENEM_COBERTURA_MINIMA, TEXTOS_ENEM_FAIXA_EMPATE, DISCIPLINAS_TEXTOS_ENEM, TEXTOS_ENEM_LITERARIOS, [...TEXTOS_ENEM_TEMAS_GENERICOS], INEDITISMO_LIMITE, INEDITISMO_MIN_TOKENS_COMANDO, INEDITISMO_MIN_TOKENS_ALTERNATIVA]),
@@ -5454,11 +5560,41 @@ function selfTestResponse() {
             && escolheTextoMaisProximo("Literatura", rows, zero)!.row.id === 2 && escolheTextoMaisProximo("Literatura", rows, zero)!.pontos === 0
             && escolheTextoMaisProximo("x", [], zero) === null
             && buscaDaGeracao(null, "linguagens", "Literatura") === false && buscaDaGeracao(null, "linguagens", "Artes") === false && buscaDaGeracao(null, "humanas", "História") !== false
-            && pesquisarFonteReal.toString().indexOf("semPesquisaWeb(o.disciplina)") > pesquisarFonteReal.toString().indexOf("await consultarBancoFontes(o, evitar)")
-            && pesquisarFonteReal.toString().indexOf("semPesquisaWeb(o.disciplina)") < pesquisarFonteReal.toString().indexOf("SISTEMA_PESQUISA_FONTE")
+            && pesquisarFonteReal.toString().indexOf("if (semPesquisaWeb(o.disciplina))") > pesquisarFonteReal.toString().indexOf("await consultarBancoFontes(o, evitar")
+            && pesquisarFonteReal.toString().indexOf("await consultarBancoFontes(o, evitar") > 0
+            && pesquisarFonteReal.toString().indexOf("if (semPesquisaWeb(o.disciplina))") < pesquisarFonteReal.toString().indexOf("SISTEMA_PESQUISA_FONTE")
             && garantirFontesReais.toString().includes("auditoriaSemWeb ? false : buscaDaAuditoria")
             && DISCIPLINAS_SEM_PESQUISA_WEB.join() === "Literatura,Língua Portuguesa,Artes" && DISCIPLINAS_TEXTOS_ENEM["Literatura"][0] === "Literatura"
             && linhasDaBiblioteca.toString().includes(".range(de, de + BIBLIOTECA_PAGINA - 1)") && BIBLIOTECA_PAGINA === 1000;
+        })(),
+        v7429_custo: (() => {
+          const q = ferramentaQuestaoPara("nenhum", true, "Literatura");
+          const fam = ferramentasDaQuestao(q);
+          const g = montaFerramentas(false, q, fam), a = montaFerramentas(false, FERRAMENTA_ALTERNATIVAS, fam);
+          const gb = montaFerramentas(false, FERRAMENTA_GABARITO, fam), id = montaFerramentas(false, FERRAMENTA_IDIOMA, fam);
+          const web = montaFerramentas(WEB_SEARCH_TOOL as any, q, fam), semFam = montaFerramentas(false, FERRAMENTA_ALTERNATIVAS, null);
+          const fora = montaFerramentas(false, FERRAMENTA_RECORTES, fam);
+          const dossie: any = { encontrou: true, autor: "Maria Silva", instituicao: "", referencia: "SILVA, M. Mário de Andrade e a poesia. São Paulo: Edusp, 2010.", comoVerificou: "fonte reaproveitada do banco de fontes validadas" };
+          const questao = (fonte: any, texto = "Leia o texto de Maria Silva.") => ({ textoBase: texto, comando: "c", alternativas: { A: "a", B: "b", C: "c", D: "d", E: "e" }, resolucaoComentada: "r", analiseAlternativas: {}, fonte });
+          const q1: any = questao({ tipoUso: "parafrase", autor: "", instituicao: "Faculdade de Filosofia, Letras e Ciências Humanas (FFLCH) da USP", obra: "", referencia: dossie.referencia, comoVerificou: "dossiê" });
+          const c1 = corrigeFonteDoDossie(q1, dossie, "instituicao_fora_da_referencia");
+          const q2: any = questao({ tipoUso: "parafrase", autor: "", instituicao: "FFLCH", obra: "", referencia: dossie.referencia, comoVerificou: "dossiê" }, "Segundo a FFLCH, o poema ...");
+          const c2 = corrigeFonteDoDossie(q2, dossie, "instituicao_fora_da_referencia");
+          const q3: any = questao({ tipoUso: "proprio", autor: "", instituicao: "", obra: "", referencia: "", comoVerificou: "" });
+          const bloco = buildBlocoTextoEnem(dossieDoTextoEnem({ id: 1, chave: "fuvest-1980-1f-q06", ano: 1980, numero: 6, prova: "Fuvest 1980", tipo_texto: "poema", autor: "Olavo Bilac", instituicao: "", obra: "Poesias", ano_obra: "", referencia: "Olavo Bilac, Poesias.", texto: "Invejo o ourives quando escrevo", comando_original: "", alternativas_originais: null, gabarito_original: "", habilidade_original: "", usos: 0 }, 5));
+          return fam.map((f: any) => f.name).join() === "entregar_questao,entregar_alternativas,entregar_gabarito,entregar_item_em_portugues"
+            && JSON.stringify(g.tools) === JSON.stringify(a.tools) && JSON.stringify(g.tools) === JSON.stringify(gb.tools) && JSON.stringify(g.tools) === JSON.stringify(id.tools)
+            && g.tool_choice.name === "entregar_questao" && a.tool_choice.name === "entregar_alternativas" && gb.tool_choice.name === "entregar_gabarito" && id.tool_choice.name === "entregar_item_em_portugues"
+            && web.tools!.length === 2 && web.tool_choice.type === "auto" && semFam.tools!.length === 1 && fora.tools!.length === 1 && fora.tool_choice.name === FERRAMENTA_RECORTES.name
+            && JSON.stringify(montaFerramentas(false, null, null)) === "{}"
+            && c1.includes("autor") && c1.includes("instituicao") && q1.fonte.autor === "Maria Silva" && q1.fonte.instituicao === "" && conferenciaFontes(q1, []).estado === "ok"
+            && c2.length === 0 && q2.fonte.instituicao === "FFLCH" && q2.fonte.autor === ""
+            && corrigeFonteDoDossie(q3, dossie, "incompleto").length === 0 && corrigeFonteDoDossie(q1, dossie, "url_nao_confirmada").length === 0
+            && corrigeFonteDoDossie(q1, null, "incompleto").length === 0
+            && garantirFontesReais.toString().includes("corrigeFonteDoDossie(data, dossiePrevio, det.estado)") && garantirFontesReais.toString().includes("data.fonte = fonteAntes")
+            && consultarBancoFontes.toString().includes("if (semRestritos && row.restrito === true) continue;")
+            && pesquisarFonteReal.toString().includes("await consultarBancoFontes(o, evitar, semPesquisaWeb(o.disciplina))")
+            && bloco.includes("O TEXTO-BASE É ESTE") && bloco.includes("nem do mesmo autor, nem da mesma obra");
         })(),
         v7425_textosEnem: (() => {
           const row = (temas: string[], autor = "", obra = "") => ({ temas, autor, obra });
@@ -5490,7 +5626,7 @@ function selfTestResponse() {
             && buildCorrecaoAuditoria({ estado: "reprovado", motivo: "m", itensReprovados: ["questaoInedita"] }, 1).includes("REPETIU a questão original do ENEM")
             && !buildCorrecaoAuditoria({ estado: "reprovado", motivo: "m", itensReprovados: ["comprovavelPelaFonte"] }, 1).includes("REPETIU")
             && pesquisarFonteReal.toString().includes("consultarTextosEnem(o, evitar)")
-            && pesquisarFonteReal.toString().indexOf("consultarTextosEnem(o, evitar)") < pesquisarFonteReal.toString().indexOf("consultarBancoFontes(o, evitar)")
+            && pesquisarFonteReal.toString().indexOf("consultarTextosEnem(o, evitar)") < pesquisarFonteReal.toString().indexOf("consultarBancoFontes(o, evitar")
             && garantirFontesReais.toString().includes("conferenciaIneditismo(data, dossiePrevio)")
             && garantirFontesReais.toString().includes('POSITIVOS.push("questaoInedita")');
         })(),
@@ -5525,7 +5661,7 @@ function selfTestResponse() {
             && pontuaFonteDoBanco({ tema: "Machado de Assis - Memórias Póstumas de Brás Cubas" }, { autor: "Machado de Assis", obra: "Memórias Póstumas de Brás Cubas" }) >= 3
             && pontuaFonteDoBanco({ tema: "Modernismo brasileiro da segunda fase" }, { autor: "Graciliano Ramos", obra: "Vidas Secas" }) === 0
             && pontuaFonteDoBanco({ tema: "Vidas Secas" }, { tema_chave: "vidas secas", autor: "Graciliano Ramos", obra: "Vidas Secas" }) === 10
-            && pesquisarFonteReal.toString().includes("consultarBancoFontes(o, evitar)")
+            && pesquisarFonteReal.toString().includes("consultarBancoFontes(o, evitar")   // v74.29: ganhou o 3º argumento (semRestritos)
             && pesquisarFonteReal.toString().includes("guardarNoBancoFontes(o, d)")
             && buildUserPrompt.toString().includes("buildBlocoTextoProprio(opts.textoProprio)");
         })(),
@@ -6028,7 +6164,11 @@ ATENÇÃO — sua resposta anterior não pôde ser usada: o argumento da ferrame
     const webSearch = textoProprio ? false : buscaDaGeracao(dossie, area, disciplina);
     // v62: a ferramenta de entrega é específica do recurso pedido (com
     // imagem/gráfico/tabela, o campo "visual" é obrigatório e tipado).
-    let data = await callClaudeForJSON(system, userMsg, webSearch, usos, ferramentaQuestaoPara(recurso, fontesReaisEstrito(area), disciplina), buscasWeb, "geracao");
+    /* v74.29 — a geração declara a família de ferramentas (ver montaFerramentas): as
+       correções dirigidas e a reescrita pedida pelo auditor leem o cache que ela grava. */
+    const ferramentaQ = ferramentaQuestaoPara(recurso, fontesReaisEstrito(area), disciplina);
+    const familiaQ = ferramentasDaQuestao(ferramentaQ);
+    let data = await callClaudeForJSON(system, userMsg, webSearch, usos, ferramentaQ, buscasWeb, "geracao", undefined, undefined, webSearch ? null : familiaQ);
     // v67: alternativas/análise/competência/habilidade sempre como objeto.
     data = normalizarCamposEstruturados(data);
     // "promptImagem"/"descricao" sempre como string — ver normalizarVisual().
@@ -6112,14 +6252,14 @@ ATENÇÃO — sua resposta anterior não pôde ser usada: o argumento da ferrame
        matemática (qualquer um deles pode ter reescrito a questão). Custa zero
        quando está tudo certo. */
     const gabaritoDiag = await garantirGabaritoCoerente(
-      data, system, usos, LIMITE_FUNCAO_MS - (Date.now() - inicioReq),
+      data, system, usos, LIMITE_FUNCAO_MS - (Date.now() - inicioReq), familiaQ,
     );
     /* v74.27 — CONFERÊNCIA DAS ALTERNATIVAS: linguagem absolutista, correta
        maior que as demais e correta como única a repetir palavra do comando.
        Custo zero na questão sã; na que falha, reescrita dirigida só das
        alternativas apontadas. Antes do auditor, que confere a versão final. */
     const alternativasDiag: any = await garantirAlternativasConformes(
-      data, system, usos, LIMITE_FUNCAO_MS - (Date.now() - inicioReq),
+      data, system, usos, LIMITE_FUNCAO_MS - (Date.now() - inicioReq), familiaQ,
     );
 
     /* v74.8 — VALIDAÇÃO OBRIGATÓRIA DE FONTES. Por último, depois de toda
@@ -6154,15 +6294,15 @@ ATENÇÃO — sua resposta anterior não pôde ser usada: o argumento da ferrame
       motivoReelabAnterior = motivoAtual;
       reelaboracoes++;
       console.warn(`[fontes] reelaboração ${reelaboracoes}/${REELABORACOES_MAX} — ${String(fontesDiag.motivo || "").slice(0, 160)}`);
-      let nova = await callClaudeForJSON(system, userMsg + buildCorrecaoAuditoria(fontesDiag, reelaboracoes), false, usos, ferramentaQuestaoPara(recurso, fontesReaisEstrito(area), disciplina), buscasWeb, `geracao/reelaboracao-${reelaboracoes}`);
+      let nova = await callClaudeForJSON(system, userMsg + buildCorrecaoAuditoria(fontesDiag, reelaboracoes), false, usos, ferramentaQ, buscasWeb, `geracao/reelaboracao-${reelaboracoes}`, undefined, undefined, familiaQ);
       nova = normalizarCamposEstruturados(nova);
       if (!nova || typeof nova !== "object") break;
       nova.visual = normalizarVisual(nova.visual, recurso);
       const vd2 = await garantirVisual(nova, { area, disciplina, recurso, tema, instrucoesVisual }, usos);
       visualDiag.refeito += vd2.refeito; visualDiag.conforme = vd2.conforme; visualDiag.motivo = vd2.motivo; visualDiag.entregueTipo = vd2.entregueTipo; visualDiag.promptChars = vd2.promptChars;
       nova = normalizarNotacaoMatematica(normalizarNotacaoQuimica(nova, area, disciplina), disciplina);
-      const gd2 = await garantirGabaritoCoerente(nova, system, usos, LIMITE_FUNCAO_MS - (Date.now() - inicioReq));
-      const ad2 = await garantirAlternativasConformes(nova, system, usos, LIMITE_FUNCAO_MS - (Date.now() - inicioReq));   // v74.27
+      const gd2 = await garantirGabaritoCoerente(nova, system, usos, LIMITE_FUNCAO_MS - (Date.now() - inicioReq), familiaQ);
+      const ad2 = await garantirAlternativasConformes(nova, system, usos, LIMITE_FUNCAO_MS - (Date.now() - inicioReq), familiaQ);   // v74.27 / v74.29
       const od2 = garantirObjetoDaDisciplina(nova, area, disciplina);
       const fd2 = await garantirFontesReais(nova, system, usos, LIMITE_FUNCAO_MS - (Date.now() - inicioReq), area, buscasWeb, dossie, disciplina);
       data = nova;

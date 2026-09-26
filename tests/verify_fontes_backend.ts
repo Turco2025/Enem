@@ -945,8 +945,53 @@ t("Q11 handler: flag textosEnem, marca doEnem na resposta (sem a questão origin
   && handlerP.includes("{ chave: String(dossie.doEnem.chave), ano: dossie.doEnem.ano, numero: dossie.doEnem.numero }")
   && handlerP.includes("fonteEnem: !!textoEnem, textoEnemChave:")
   && fonte.includes("novas.fonte_enem = extra.fonteEnem") && fonte.includes("novas.texto_enem_chave")
-  && fonte.indexOf("await consultarTextosEnem(o, evitar)") < fonte.indexOf("await consultarBancoFontes(o, evitar)")
+  && fonte.indexOf("await consultarTextosEnem(o, evitar)") < fonte.indexOf("await consultarBancoFontes(o, evitar")   // v74.29: 3º argumento
   && fonte.includes("|| d.doBanco || d.doEnem) return;"));
+
+/* ---------- R. v74.29 — campo "fonte" completado pelo dossiê, sem reescrever a questão ---------- */
+const dossR: any = {
+  encontrou: true, autor: "Maria Silva", instituicao: "", obra: "Mário de Andrade e a poesia",
+  ano: "2010", referencia: "SILVA, M. Mário de Andrade e a poesia. São Paulo: Edusp, 2010.",
+  url: "https://www.teses.usp.br/exemplo", trecho: "Mário de Andrade defendeu o verso livre.",
+  trechoEhLiteral: false, abriuAFonte: true, comoVerificou: "fonte reaproveitada do banco de fontes validadas",
+};
+const fonteInst = (extra: any = {}) => ({ tipoUso: "parafrase", autor: "", instituicao: "Faculdade de Filosofia, Letras e Ciências Humanas (FFLCH) da USP",
+  obra: "Mário de Andrade e a poesia", ano: "2010", referencia: dossR.referencia, comoVerificou: "dossiê", conferidoNaFonte: true, ...extra });
+__stub.resposta = fichaBoa(); __stub.erro = null; __stub.chamadas = 0;
+const qR1: any = questao(fonteInst());
+const dR1 = await roda(qR1, "linguagens", 120_000, [], dossR);
+t("R1 instituição fora da referência, com dossiê: o campo é completado pelo dossiê e a questão segue para o auditor (sem reescrita)",
+  dR1.estado === "aprovado" && __stub.chamadas === 1 && qR1.fonte.autor === "Maria Silva" && qR1.fonte.instituicao === ""
+  && JSON.stringify(dR1.fonteCompletadaPeloDossie) === JSON.stringify(["autor", "instituicao"]) && dR1.determinista === "ok",
+  JSON.stringify({ dR1, fonte: qR1.fonte }));
+__stub.chamadas = 0;
+const qR2: any = { ...questao(fonteInst({ instituicao: "FFLCH" })), textoBase: "Segundo a FFLCH, Mário de Andrade defendeu o verso livre." };
+const dR2 = await roda(qR2, "linguagens", 120_000, [], dossR);
+t("R2 a instituição inventada aparece no texto da questão: NÃO é metadado — reprovada na conferência estrutural, sem mexer na fonte",
+  dR2.estado === "reprovado" && dR2.determinista === "instituicao_fora_da_referencia" && __stub.chamadas === 0
+  && qR2.fonte.autor === "" && qR2.fonte.instituicao === "FFLCH" && !dR2.fonteCompletadaPeloDossie, JSON.stringify(dR2));
+__stub.chamadas = 0;
+const qR3: any = questao(fonteInst());
+const dR3 = await roda(qR3, "linguagens", 120_000, [], null);
+t("R3 sem dossiê nada muda: reprovada na conferência estrutural, como antes",
+  dR3.estado === "reprovado" && dR3.determinista === "instituicao_fora_da_referencia" && __stub.chamadas === 0 && qR3.fonte.autor === "");
+__stub.chamadas = 0;
+const qR4: any = questao({ tipoUso: "parafrase", autor: "", instituicao: "", obra: "", referencia: "", comoVerificou: "", conferidoNaFonte: true });
+const dR4 = await roda(qR4, "linguagens", 120_000, [], { ...dossR, autor: "", instituicao: "", referencia: "" });
+t("R4 o dossiê não tem com o que completar: a correção é desfeita e a questão segue reprovada (fonte como veio)",
+  dR4.estado === "reprovado" && dR4.determinista === "incompleto" && __stub.chamadas === 0 && qR4.fonte.comoVerificou === "" && !dR4.fonteCompletadaPeloDossie,
+  JSON.stringify({ dR4, fonte: qR4.fonte }));
+__stub.chamadas = 0;
+const qR5: any = questao({ tipoUso: "proprio", autor: "", instituicao: "", obra: "", referencia: "", comoVerificou: "" });
+const antesR5 = JSON.stringify(qR5.fonte);
+await roda(qR5, "linguagens", 120_000, [], dossR);
+t("R5 texto de autoria própria nunca recebe autor do dossiê", JSON.stringify(qR5.fonte) === antesR5);
+__stub.chamadas = 0;
+const qR6: any = questao(fonteInst({ autor: "", instituicao: "", referencia: "", comoVerificou: "" }));
+const dR6 = await roda(qR6, "linguagens", 120_000, [], dossR);
+t("R6 campos vazios (incompleto) com dossiê: autor, referência e comoVerificou vêm do dossiê",
+  dR6.estado === "aprovado" && qR6.fonte.autor === "Maria Silva" && qR6.fonte.referencia === dossR.referencia && qR6.fonte.comoVerificou.startsWith("Conforme o dossiê validado:")
+  && JSON.stringify(dR6.fonteCompletadaPeloDossie) === JSON.stringify(["referencia", "autor", "comoVerificou"]), JSON.stringify({ dR6, fonte: qR6.fonte }));
 
 console.log(`\n${ok} verificações passaram, ${bad} falharam.`);
 if (bad) Deno.exit(1);
