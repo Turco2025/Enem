@@ -125,6 +125,48 @@ Teste: `verify_fontes_app.js` — 19 verificações; as seções B e C bis prova
 quatro marcas ligadas ao mesmo tempo nenhuma conferência bloqueia, e que nenhuma delas tem sequer um
 `return true` no corpo. `verify_gabarito_coerente.js` H1 passou a exigir o contrário do que exigia.
 
+## Carga da biblioteca: Fuvest, Unesp e Unicamp (26/09/2026)
+
+Com a v74.28 no ar (generate-question v100), a tabela `textos_enem` recebeu os textos-base das provas
+que o professor enviou, com a referência impressa em cada prova (validadas por ele). Nenhuma linha de
+código do backend ou do app mudou nesta etapa: a biblioteca já lê a coluna `prova` e apresenta o texto
+como "da prova X (biblioteca de textos do professor)".
+
+| Origem | Provas | Textos | Aproveitáveis |
+|---|---|---|---|
+| ENEM (INEP) | 2009–2025 | 1.238 | 1.106 |
+| Fuvest | 1977–2026 (1ª e 2ª fases, Habilidades Específicas) | 1.385 | 1.247 |
+| Unesp | 2019–2026 (e meio de ano 2024–2026) | 211 | 190 |
+| Unicamp | 2000–2026 (1ª e 2ª fases, Habilidades Específicas) | 873 | 816 |
+
+Nas três disciplinas que não pesquisam na internet, os textos aproveitáveis passaram a ser:
+**Literatura 970** (eram 150 só do ENEM), **Língua Portuguesa 801** (+24 de Tecnologias da
+Informação) e **Artes 270** (eram 21). A Fuvest também trouxe textos de História, Geografia,
+Sociologia e Filosofia (usados na camada zero dessas disciplinas quando o tema casa) e de Língua
+Estrangeira (guardados; Língua Estrangeira ainda não consulta a biblioteca). Unesp e Unicamp
+entraram só com Literatura, Língua Portuguesa e Artes, a pedido do professor.
+
+Regras da carga:
+
+- **Só texto com fonte impressa na prova**, copiado como impresso (ortografia da época, "[...]",
+  grafias da própria prova). Provas escaneadas passaram por OCR e cada texto foi conferido na imagem
+  da página ("ocr_conferido"). Nada é completado, resumido ou traduzido.
+- **Letras de canção não entram** — nem trechos. Quando uma prova em prosa cita versos de canção,
+  eles viram "[citação de letra de canção omitida]" e o texto fica fora da geração.
+- **Referência**: a da prova; quando ela não traz os dados completos, recebe "Trecho reproduzido na
+  prova da <prova>." — nunca editora, ano ou obra inventados.
+- **Fora da geração** (`aproveitavel = false`, com o motivo): texto que depende de imagem da prova,
+  leitura duvidosa, texto didático (o Guia do Inep veda livro didático como fonte), texto com trecho
+  omitido e idioma que o app não usa. Texto idêntico a outro já guardado não entra de novo.
+- Comando, alternativas e gabarito originais ficam guardados só para a conferência anti-cópia.
+- **Os textos ficam só no banco; este repositório é público e não recebe nenhum deles.**
+
+Como foi feito (para as próximas cargas): `tests/biblioteca/converte_provas.py` (PDF → texto por
+página, com as duas colunas separadas e OCR quando a prova é escaneada; usa `extrai_texto.py` e
+`extrai_texto2.py`), `tests/biblioteca/INSTRUCOES_EXTRACAO.md` (regras entregues aos agentes que
+leem as provas e gravam numa tabela provisória) e `tests/biblioteca/carga_textos_enem.sql` (conferência
+e carga da tabela provisória em `textos_enem`; a tabela provisória é apagada no fim).
+
 ## Biblioteca de textos do professor; Literatura, Língua Portuguesa e Artes sem pesquisa na internet (generate-question v74.28, 26/09/2026)
 
 Decisões do professor (26/09): **Literatura, Língua Portuguesa e Artes não pesquisam mais na
