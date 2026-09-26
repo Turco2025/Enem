@@ -58,7 +58,7 @@ ${recorta("normalizaTemaEnem")}${recorta("radicalEnem")}${recorta("chaveEvitarEn
 ${entre("function tokensDeFonte(", "\n/* Palavras que aparecem")}
 ${entre("const PALAVRAS_VAZIAS_FONTE", "\n]);\n")}
 ]);
-${recorta("normalizaUrl")}${recorta("fonteEstaNaListaDeEvitar")}
+${recorta("normalizaUrl")}${recorta("fonteEstaNaListaDeEvitar")}${recorta("normalizaParaComparar")}
 ${entre("/* ═══════════ v74.28 — BIBLIOTECA", "/* ═══════════ FIM DA BIBLIOTECA (v74.28)")}
 ${recorta("dossieDoTextoEnem")}${recorta("buildBlocoTextoEnem")}${recorta("buscaDaGeracao")}
 ${recorta("pesquisarFonteReal", "async function ")}

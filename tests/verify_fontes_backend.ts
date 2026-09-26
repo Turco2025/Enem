@@ -887,15 +887,15 @@ t("Q1 o dossiê do ENEM sai aprovado, sem URL, com a referência do INEP, materi
   && dEnem.validacao.afirmacoesComSuporte.length === 2 && dEnem.validacao.afirmacoesComSuporte[1].includes(linhaEnem.referencia)
   && dEnem.doEnem.chave === "2016-regular-12" && dEnem.doEnem.gabaritoOriginal === "B" && dEnem.doEnem.literario === false);
 const blocoQ = buildDossieFonte(dEnem);
-t("Q2 o elaborador recebe o texto, a questão original SÓ PARA EVITAR, a regra de uso (não literário: literal ou adaptação leve) e a proibição de citar 'ENEM' na referência",
+t("Q2 o elaborador recebe o texto, a questão original SÓ PARA EVITAR, a regra de uso (v74.30: sempre o texto original e integral) e a proibição de citar 'ENEM' na referência",
   blocoQ.includes(linhaEnem.texto) && blocoQ.includes("PROVA OFICIAL DO ENEM 2016 (questão 12)") && blocoQ.includes("só para você EVITAR")
   && blocoQ.includes(linhaEnem.comando_original) && blocoQ.includes("a difusão de uma nova concepção do homem")
-  && blocoQ.includes('"tipoUso": "adaptacao"') && blocoQ.includes('não escreva "ENEM" na referência')
+  && blocoQ.includes("TEXTO ORIGINAL E INTEGRAL") && !blocoQ.includes('"tipoUso": "adaptacao"') && blocoQ.includes('não escreva "ENEM" na referência')   // v74.30: texto da biblioteca sempre integral
   && blocoQ.includes("A imagem, se o recurso pedir, é NOVA")
-  && buildBlocoTextoEnem({ ...dEnem, doEnem: { ...dEnem.doEnem, literario: true, tipoTexto: "poema" } }).includes("use trecho LITERAL")
+  && buildBlocoTextoEnem({ ...dEnem, doEnem: { ...dEnem.doEnem, literario: true, tipoTexto: "poema" } }).includes("TEXTO ORIGINAL E INTEGRAL")
   && !buildDossieFonte({ ...dEnem, doEnem: undefined }).includes("PROVA OFICIAL DO ENEM"));
-t("Q3 o material do texto do ENEM vai até 3.000 caracteres ao elaborador (fonte da web continua em 1.200)",
-  buildDossieFonte({ ...dEnem, trecho: "x".repeat(4000) }).includes("x".repeat(3000)) && !buildDossieFonte({ ...dEnem, trecho: "x".repeat(4000) }).includes("x".repeat(3001))
+t("Q3 o texto da biblioteca vai INTEIRO ao elaborador, até 8.000 caracteres (v74.30: o maior tem 4.545); fonte da web continua em 1.200",
+  buildDossieFonte({ ...dEnem, trecho: "x".repeat(9000) }).includes("x".repeat(8000)) && !buildDossieFonte({ ...dEnem, trecho: "x".repeat(9000) }).includes("x".repeat(8001))
   && !buildDossieFonte({ ...dEnem, doEnem: undefined, trecho: "x".repeat(4000) }).includes("x".repeat(1201)));
 t("Q4 pontuação: autor e tema catalogado casam; obra diferente do mesmo autor, tema genérico e 'ruptura com o romantismo' não",
   pontuaTextoEnem("Renascimento", { temas: ["renascimento", "humanismo"], autor: "Nicolau Sevcenko", obra: "O Renascimento" }) >= 10

@@ -125,6 +125,56 @@ Teste: `verify_fontes_app.js` — 19 verificações; as seções B e C bis prova
 quatro marcas ligadas ao mesmo tempo nenhuma conferência bloqueia, e que nenhuma delas tem sequer um
 `return true` no corpo. `verify_gabarito_coerente.js` H1 passou a exigir o contrário do que exigia.
 
+## Menos reescritas com texto da biblioteca (generate-question v74.30, 26/09/2026)
+
+Leva de Artes de 26/09 (já com a v74.29): 11 questões, **US$ 1,50** (US$ 0,137 por questão).
+A conferência das alternativas passou a ler o cache (15 vezes, 0 token gravado), mas 9 das 11
+questões foram reescritas pelo auditor e uma se perdeu: cerca de US$ 0,62 (≈ 40%) em reescritas. O
+auditor acertou em todas; as causas estavam no pedido ao elaborador e numa conferência:
+
+1. **Instruções em conflito.** O recorte da leva mandava "construa o texto-base e a situação-problema
+   sobre esse contexto"; o bloco da biblioteca dizia "o texto é este; se o recorte não couber,
+   prevalece o texto". Venceu o recorte: o elaborador inventou cenário em volta do texto conferido
+   (mural de Kobra num viaduto, painel de Portinari, azulejos de Varejão, Aleijadinho num texto
+   sobre escultura geométrica).
+2. **Tema sem texto na biblioteca** (Aleijadinho e Mestre Ataíde, Bispo do Rosário, Kobra, Antônio
+   Poteiro): o texto mais próximo recebia o artista pedido à força — e a escolha do "mais próximo"
+   se deixava levar pela palavra "Mestre" (Mestre Didi; "Mestre das linhas retas").
+3. **Conferência estrutural impossível de passar**: a instituição tinha de estar escrita na
+   referência, comparando com acento ("Prêmio PIPA" × `www.premiopipa.com`). 82 textos aproveitáveis
+   da biblioteca (42 de Literatura, Língua Portuguesa e Artes) nunca passavam — a reescrita não tinha
+   como consertar.
+
+O que mudou (nada no auditor, na Matriz, no método do Inep nem nas regras de qualidade; o prompt do
+sistema e o cache não mudam — tudo é na mensagem do usuário, só quando há texto da biblioteca):
+
+- `buildDiversidadeTematica` (bandeira `textoDaBiblioteca`): com texto da biblioteca, o recorte é só
+  o **ângulo de leitura** do texto, com a proibição de criar cenário, obra, lugar, data ou episódio;
+  o domínio de contexto não é imposto. Sem texto da biblioteca, o bloco é o de antes.
+- `buildBlocoTextoEnem`: **nada além do texto** em todo texto da biblioteca (é a regra do Guia do
+  Inep: o enunciado não traz informação que falte no texto-base; o conhecimento prévio fica no
+  raciocínio do aluno), sempre como citação; no texto mais próximo, proibido trocar o assunto do
+  texto pelo do tema. A linha do tema avisa quando a biblioteca não tem texto sobre ele.
+- `conferenciaFontes`: comparação sem acento e, em texto da biblioteca, vale a instituição cadastrada
+  para aquele texto com a referência dele. Fonte de pesquisa na web: mesma regra de antes.
+- `escolheTextoMaisProximo`: nome próprio do pedido ("Mestre Ataíde", "Arthur Bispo do Rosário") só
+  pontua quando aparece inteiro no texto.
+- **Texto da biblioteca é intocável** (decisão do professor, 26/09: "nunca seja parafraseado. Tem que
+  ser o texto original. E a referência original. [...] Não pode modificá-los em hipótese nenhuma"):
+  o elaborador recebe o texto inteiro (até 8.000 caracteres; o maior tem 4.545) com a ordem de usá-lo
+  integral, sem paráfrase, adaptação, recorte ou atualização de ortografia, sempre como citação — a
+  criação é o item (comando, alternativas, gabarito e resolução inéditos, pela Matriz e pelo Guia do
+  Inep). E o **código garante** (`fixaTextoDaBiblioteca`): depois da geração, antes da auditoria, em
+  cada reescrita e na entrega, o texto-base passa a ser o texto original seguido da referência
+  original, e o campo "fonte" recebe os dados do texto. A meta de extensão do texto-base não se
+  aplica a ele. `fontesDiag.textoDaBibliotecaReposto` conta quantas vezes o elaborador tinha mexido.
+
+Publicada sem ensaio pago, a pedido do professor. Testes: `tests/verify_reescritas_v7430.ts`
+(41 verificações) e o selftest `v7430_reescritas`; `verify_biblioteca_v7428.ts` passou a carregar
+`normalizaParaComparar` (dependência nova do "mais próximo"); `verify_fontes_backend.ts` (Q2, Q3),
+`verify_custo_v7429.ts` (C1) e o selftest `v7425_textosEnem` passaram a exigir o texto integral no lugar
+de "literal ou adaptação leve". As demais suítes seguem passando.
+
 ## "[object Object]" abaixo da referência (app v18.31, 26/09/2026)
 
 Relato do professor (26/09): nas questões aparecia "[object Object]" logo abaixo da referência.

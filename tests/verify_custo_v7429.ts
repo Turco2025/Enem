@@ -117,7 +117,7 @@ t("B4 o fluxo liga o filtro pela disciplina e mantém a ordem: biblioteca → ba
 /* ---------- C. o texto da biblioteca não se troca ---------- */
 const bloco = recorta("buildBlocoTextoEnem");
 t("C1 o bloco do texto da biblioteca proíbe trocar o texto por outro, mesmo do mesmo autor ou da mesma obra",
-  bloco.includes("· O TEXTO-BASE É ESTE: a questão se faz sobre este texto (ou um recorte dele).")
+  bloco.includes("· O TEXTO-BASE É ESTE: a questão se faz sobre este texto, inteiro.")   // v74.30: sem recorte (texto original e integral)
   && bloco.includes("nem do mesmo autor, nem da mesma obra") && bloco.includes("texto trocado reprova a questão na auditoria"));
 t("C2 a regra vale para ENEM e para as demais provas (fica fora dos trechos condicionais)",
   bloco.indexOf("· O TEXTO-BASE É ESTE") > bloco.indexOf("prevalece o texto.") && bloco.indexOf("· O TEXTO-BASE É ESTE") < bloco.indexOf("${e.aproximado ?"));

@@ -500,6 +500,9 @@ function buildAncoragemVisual(area: string, disciplina: string, tema: string, re
 type DiversidadeExtras = {
   subtopico?: string; dominioContexto?: string; dominioAlternativo?: string;
   dominiosEvitar?: string[]; contextosEvitar?: string[];
+  /* v74.30 — a questão usa um texto FIXO da biblioteca do professor (camada zero ou
+     texto mais próximo): recorte e domínio não podem mais pedir cenário novo. */
+  textoDaBiblioteca?: boolean;
 };
 function buildDiversidadeTematica(eixoTematico: string, temasEvitar: string[], temaDoProfessor: string, recorte = "", extras: DiversidadeExtras = {}): string {
   const partes: string[] = [];
@@ -511,7 +514,17 @@ function buildDiversidadeTematica(eixoTematico: string, temasEvitar: string[], t
   /* v64: com tema digitado pelo professor, a diversidade vem de um RECORTE
      planejado antes da leva (ver planejarRecortes): conteúdo + contexto +
      habilidade próprios desta questão, sempre dentro do tema pedido. */
-  if (recorte) {
+  /* v74.30 — CONFLITO COM O TEXTO DA BIBLIOTECA (leva de Artes de 26/09, 11 questões,
+     9 reescritas pelo auditor): este bloco mandava "construa o texto-base e a
+     situação-problema sobre esse contexto" e o bloco da biblioteca dizia "o texto é
+     este; se o recorte não couber, prevalece o texto". Venceu o recorte, e o
+     elaborador inventou cenário em volta do texto conferido (o mural de Kobra num
+     viaduto, o painel de Portinari, Aleijadinho dentro de um texto sobre escultura
+     geométrica) — o auditor reprovou todos. Com texto da biblioteca, o recorte passa
+     a ser só o ÂNGULO DE LEITURA do texto, e o domínio de contexto não é imposto. */
+  if (recorte && extras.textoDaBiblioteca) {
+    partes.push(`🎯 RECORTE RESERVADO PARA ESTA QUESTÃO (diversidade da leva): ${recorte}. ESTA QUESTÃO USA UM TEXTO DA BIBLIOTECA DO PROFESSOR (bloco no início desta mensagem): o recorte vale só como ÂNGULO DE LEITURA desse texto — escolha, dentro dele, o aspecto que mais se aproxima do recorte e, quando o recorte indicar uma habilidade, mobilize essa habilidade da Matriz se o texto a sustentar. NÃO crie cenário, contexto, obra, lugar, data ou episódio para encaixar o recorte no texto: se o recorte não couber no texto, prevalece o texto. O campo "tema" da sua resposta nomeia o que a questão de fato cobra do texto.`);
+  } else if (recorte) {
     partes.push(`🎯 RECORTE RESERVADO PARA ESTA QUESTÃO (diversidade da leva): este simulado tem várias questões sobre o mesmo tema pedido pelo professor, e cada uma recebeu de antemão um recorte próprio, para que a leva cubra o tema em vez de repetir o exemplo mais comum. Esta questão DEVE seguir este recorte — ${recorte} — mantendo-se DENTRO do tema pedido: trate exatamente esse conteúdo, construa o texto-base e a situação-problema sobre esse contexto (não o troque por outro mais frequente) e, quando o recorte indicar uma habilidade, mobilize essa habilidade da Matriz e cite-a nos campos "competencia" e "habilidade". O campo "tema" da sua resposta deve nomear o recorte, não apenas o tema geral.`);
   }
   if (eixoTematico) {
@@ -527,7 +540,7 @@ function buildDiversidadeTematica(eixoTematico: string, temasEvitar: string[], t
   // SEM contexto (o app descarta contextos fora do domínio, repetidos ou do
   // botão "Outro contexto") e depois de uma colisão.
   const recorteTemContexto = /(^|·)\s*contexto:/i.test(recorte);
-  if (dominio && (!recorte || !recorteTemContexto || contextosEvitar.length)) {
+  if (dominio && !extras.textoDaBiblioteca && (!recorte || !recorteTemContexto || contextosEvitar.length)) {   // v74.30: texto da biblioteca não recebe cenário
     partes.push(`🎯 DOMÍNIO DE CONTEXTO RESERVADO (cada questão da leva tem o seu, para a prova não repetir exemplos): ambiente o texto-base e a situação-problema em "${dominio}" — cenário concreto, verossímil e brasileiro desse domínio.${dominioAlt ? ` Se o conteúdo não couber nele com naturalidade, use só o alternativo "${dominioAlt}".` : ""} Os demais domínios pertencem a outras questões.${dominiosEvitar.length ? ` ⛔ NÃO use: ${dominiosEvitar.join("; ")}.` : ""}`);
   }
   if (contextosEvitar.length) {
@@ -959,12 +972,12 @@ Uma etapa anterior pesquisou o assunto e trouxe esta fonte real. Use ESTA fonte 
 · a fonte foi aberta e lida: ${d.abriuAFonte === true ? "sim" : "não — só o resumo da busca"}
 · MATERIAL (${d.trechoEhLiteral === true ? "trecho literal" : d.restritoAoConfirmado === true ? "fatos confirmados pelo VALIDADOR — só estes" : "fatos confirmados"}):
 """
-${String(d.trecho || "").slice(0, d.doEnem ? 3000 : 1200)}
+${String(d.trecho || "").slice(0, d.doEnem ? 8000 : 1200)}
 """
 ${buildBlocoValidacaoDossie(d.validacao, d.restritoAoConfirmado === true)}${buildBlocoTextoEnem(d)}
 A BUSCA NA WEB ESTÁ DESLIGADA NESTA ETAPA, de propósito: a pesquisa já foi feita e validada na etapa anterior (itens 1 a 3 da regra), e o item 3 manda que a fonte ORIGINE a questão. Não procure outra fonte, não complete de memória: escreva a questão em cima do material acima. Se ele não bastar, use "tipoUso":"proprio".
 
-Como usar: o texto-base nasce DESTE material. Você pode resumir, parafrasear e contextualizar, mas NÃO pode afirmar sobre esta obra, autor ou instituição nada que não esteja acima — foi exatamente assim que a leva anterior atribuiu a obras reais coisas que elas não têm. Ao preencher o campo "fonte" da entrega, copie autor/instituicao/obra/ano/referencia/url deste dossiê, sem alterar, e marque "conferidoNaFonte" conforme a linha "a fonte foi aberta e lida" acima. Se o material NÃO der uma boa questão, escreva uma situação-problema de sua autoria e declare "tipoUso":"proprio" — sem citar esta fonte no texto-base.
+Como usar: o texto-base nasce DESTE material. ${d.doEnem ? "O texto-base é o texto INTEGRAL acima, sem nenhuma alteração, com a referência do dossiê (v74.30: texto da biblioteca não se parafraseia, não se recorta e não se contextualiza com informação de fora)" : "Você pode resumir, parafrasear e contextualizar"}, mas NÃO pode afirmar sobre esta obra, autor ou instituição nada que não esteja acima — foi exatamente assim que a leva anterior atribuiu a obras reais coisas que elas não têm. Ao preencher o campo "fonte" da entrega, copie autor/instituicao/obra/ano/referencia/url deste dossiê, sem alterar, e marque "conferidoNaFonte" conforme a linha "a fonte foi aberta e lida" acima. Se o material NÃO der uma boa questão, escreva uma situação-problema de sua autoria e declare "tipoUso":"proprio" — sem citar esta fonte no texto-base.
 
 `;
 }
@@ -1551,14 +1564,35 @@ function provaDoTexto(t: any): string {
    temas, no autor ou na obra do texto vale mais quanto MAIS RARA ela é na
    biblioteca ("condoreirismo" pesa mais que "poesia"). Empate: o menos usado,
    sorteado. Nada em comum: o menos usado de todos, sorteado (rodízio). */
+/* v74.30 — NOME PRÓPRIO CONTA INTEIRO. Na leva de Artes de 26/09, "Barroco brasileiro
+   (Aleijadinho e Mestre Ataíde)" trouxe como "mais próximos" o texto sobre Mestre
+   Didi e a crítica "Mestre das linhas retas" (escultura geométrica) — só pela palavra
+   "mestre". Agora as palavras de um nome próprio do pedido (duas ou mais palavras com
+   inicial maiúscula, como "Mestre Ataíde" ou "Arthur Bispo do Rosário") só pontuam no
+   texto que traz o nome INTEIRO; palavra que aparece no pedido também fora do nome
+   continua valendo sozinha. */
+function nomesDoPedido(pedido: string): string[] {
+  const re = /[A-ZÁÉÍÓÚÂÊÔÃÕÇ][\p{L}'’-]+(?:\s+(?:d[aeo]s?\s+)?[A-ZÁÉÍÓÚÂÊÔÃÕÇ][\p{L}'’-]+)+/gu;
+  return [...String(pedido || "").matchAll(re)].map((m) => m[0]);
+}
 function escolheTextoMaisProximo(pedido: string, rows: any[], sorteio: () => number = Math.random): { row: any; pontos: number } | null {
   if (!Array.isArray(rows) || !rows.length) return null;
   const radicais = (x: string) => new Set(tokensDeFonte(x).filter((w) => !TEXTOS_ENEM_TEMAS_GENERICOS.has(w)).map(radicalEnem));
   const doPedido = [...radicais(pedido)];
-  const docs = rows.map((row) => radicais(`${(Array.isArray(row.temas) ? row.temas : []).join(" ")} ${row.autor || ""} ${row.obra || ""}`));
+  const textoDoc = (row: any) => `${(Array.isArray(row.temas) ? row.temas : []).join(" ")} ${row.autor || ""} ${row.obra || ""}`;
+  const docs = rows.map((row) => radicais(textoDoc(row)));
   const n = rows.length;
   const pesos = new Map(doPedido.map((w) => [w, Math.log((n + 1) / (1 + docs.filter((d) => d.has(w)).length))]));
-  const pontos = docs.map((d) => doPedido.reduce((soma, w) => soma + (d.has(w) ? (pesos.get(w) || 0) : 0), 0));
+  const nomesOrig = nomesDoPedido(pedido);
+  let resto = String(pedido || "");
+  for (const nome of nomesOrig) resto = resto.split(nome).join(" ");
+  const livres = radicais(resto);
+  const nomes = nomesOrig.map((nome) => ({ frase: normalizaParaComparar(nome), rad: [...radicais(nome)].filter((w) => !livres.has(w)) })).filter((x) => x.rad.length);
+  const bloqueados = rows.map((row) => {
+    const t = normalizaParaComparar(textoDoc(row));
+    return new Set(nomes.filter((x) => !t.includes(x.frase)).flatMap((x) => x.rad));
+  });
+  const pontos = docs.map((d, i) => doPedido.reduce((soma, w) => soma + (d.has(w) && !bloqueados[i].has(w) ? (pesos.get(w) || 0) : 0), 0));
   const melhor = Math.max(0, ...pontos);
   let faixa = rows.map((row, i) => ({ row, p: pontos[i] })).filter((c) => c.p >= melhor - 1e-9);
   const menosUsos = Math.min(...faixa.map((c) => Number(c.row.usos) || 0));
@@ -1673,13 +1707,13 @@ function buildBlocoTextoEnem(d: any): string {
   comando original: «${String(e.comandoOriginal || "(não extraído)").slice(0, 400)}»${correta ? `
   resposta correta original (${e.gabaritoOriginal}): «${correta.slice(0, 260)}»` : ""}
 · NÃO reproduza, NÃO parafraseie e NÃO inverta o comando, as alternativas nem a resposta da original. Cobre OUTRO aspecto do texto — outra inferência, outro recurso expressivo, outra relação com o contexto, outro efeito de sentido — com comando, alternativas, gabarito e resolução inteiramente seus. O auditor compara as duas e reprova a repetição.
-· USO DO TEXTO: ${e.literario
-    ? `texto LITERÁRIO (${e.tipoTexto}) — use trecho LITERAL: pode recortar versos, estrofes ou parágrafos, marcando supressões com [...], mas nunca troque, acrescente ou atualize palavras. "tipoUso": "citacao", "conferidoNaFonte": true.`
-    : `texto NÃO LITERÁRIO — use o trecho literal ("tipoUso": "citacao", "conferidoNaFonte": true) ou uma adaptação LEVE (enxugar, recortar, trocar a ordem de frases), sem mudar o sentido nem acrescentar informação ("tipoUso": "adaptacao"; a referência termina com "(adaptado)").`}
+· USO DO TEXTO — TEXTO ORIGINAL E INTEGRAL (decisão do professor, v74.30): o texto-base da questão é ESTE texto${e.literario ? ` (${e.tipoTexto})` : ""}, inteiro e exatamente como está no MATERIAL — mesmas palavras, pontuação, grafia e quebras de linha, do começo ao fim —, seguido, na linha de baixo, da referência exatamente como no dossiê. É PROIBIDO parafrasear, adaptar, resumir, recortar, reordenar, atualizar a ortografia, acrescentar ou suprimir qualquer coisa, no texto e na referência. "tipoUso": "citacao", "conferidoNaFonte": true. O sistema repõe o texto e a referência originais na questão entregue: comando, alternativas, gabarito e resolução têm de funcionar com eles exatamente como são. O trabalho de criação é o ITEM — comando, alternativas, gabarito e resolução inéditos, conforme a Matriz de Referência e o Guia de Elaboração e Revisão de Itens do Inep.
 · REFERÊNCIA: ${outra ? `copie a do dossiê EXATAMENTE como está — é a impressa na prova, e quando a prova não trouxe livro, editora ou ano a referência fica sem eles: NÃO os invente nem os complete de memória. Não escreva "ENEM" em lugar nenhum` : `copie a do dossiê, que é a do INEP. A fonte é a OBRA ORIGINAL — não escreva "ENEM" na referência, no texto-base nem no comando`}. Deixe "urlVerificacao" vazio, a não ser que a própria referência traga o endereço.
 · O recorte reservado a esta questão (se houver) vale como ÂNGULO de abordagem DENTRO deste texto; se não couber nele, prevalece o texto.
-· O TEXTO-BASE É ESTE: a questão se faz sobre este texto (ou um recorte dele). NÃO o substitua por outro poema, conto, crônica ou trecho — nem do mesmo autor, nem da mesma obra —, ainda que outro combine melhor com o tema pedido: só este foi conferido, e texto trocado reprova a questão na auditoria. Autor, obra e referência do campo "fonte" são os DESTE texto.${e.aproximado ? `
-· TEXTO MAIS PRÓXIMO DA BIBLIOTECA: não há, na biblioteca de textos, um texto para o tema pedido, e nesta disciplina não se pesquisa na internet. Este é o texto mais próximo. Escreva a questão sobre o que ESTE texto permite cobrar — do tema pedido, aproveite só o que o texto de fato sustenta. Não force o tema sobre o texto e não acrescente ao texto-base, ao comando ou às alternativas informação sobre a obra, o autor ou o período que o próprio texto não traga.` : ""}
+· O TEXTO-BASE É ESTE: a questão se faz sobre este texto, inteiro. NÃO o substitua por outro poema, conto, crônica ou trecho — nem do mesmo autor, nem da mesma obra —, ainda que outro combine melhor com o tema pedido: só este foi conferido, e texto trocado reprova a questão na auditoria. Autor, obra e referência do campo "fonte" são os DESTE texto.
+· NADA ALÉM DO TEXTO: não acrescente ao texto-base parágrafo, cenário, obra, lugar, data, número ou episódio que este texto não traga — nem para contextualizar. Comando, alternativas, gabarito e resolução não atribuem ao texto nem ao autor nada que o texto não diga. O conhecimento prévio que o item mobiliza (conceito, movimento, período) fica no raciocínio do aluno, nunca apresentado como informação do texto — é a regra do Guia do Inep: o enunciado não traz informação que falte no texto-base. O auditor reprova qualquer acréscimo.
+${e.aproximado ? `
+· TEXTO MAIS PRÓXIMO DA BIBLIOTECA: não há, na biblioteca de textos, um texto para o tema pedido, e nesta disciplina não se pesquisa na internet. Este é o texto mais próximo. Escreva a questão sobre o que ESTE texto permite cobrar — do tema pedido, aproveite só o que o texto de fato sustenta. Não force o tema sobre o texto e não acrescente ao texto-base, ao comando ou às alternativas informação sobre a obra, o autor ou o período que o próprio texto não traga. Não troque o assunto do texto pelo do tema pedido nem ponha dentro dele o artista, o autor, a obra, o lugar ou o período pedidos.` : ""}
 · A imagem, se o recurso pedir, é NOVA — nada de reproduzir a da prova.
 `;
 }
@@ -1926,18 +1960,24 @@ function buildUserPrompt(opts: {
      ela buscava sem a lista dos acervos do professor. Com dossiê não entra:
      seriam ~180 tokens por questão para uma etapa que nem vai buscar. */
   const acervosDaGeracao = (buildDossieFonte(opts.dossie) || opts.textoProprio) ? "" : buildAcervosPrioritarios(opts.disciplina);
+  /* v74.30 — texto da biblioteca: recorte e domínio não pedem cenário novo (ver
+     buildDiversidadeTematica); texto mais próximo: aviso na própria linha do tema. */
+  const textoDaBiblioteca = !opts.textoProprio && !!(opts.dossie && opts.dossie.encontrou === true && opts.dossie.doEnem);
+  const textoAproximado = textoDaBiblioteca && opts.dossie.doEnem.aproximado === true;
   return `${opts.textoProprio ? buildBlocoTextoProprio(opts.textoProprio) : buildDossieFonte(opts.dossie)}Elabore UMA questão inédita, original, no padrão ENEM, com os seguintes parâmetros definidos pelo professor:
 
 Área do conhecimento: ${AREA_LABELS[opts.area]}
 Disciplina: ${opts.disciplina}
-Tema/conteúdo solicitado: ${opts.tema || (opts.eixoTematico ? (opts.diversidade && opts.diversidade.subtopico ? "(o professor não detalhou; siga o eixo e o subtópico reservados para esta questão, indicados abaixo)" : "(o professor não detalhou; siga o eixo reservado para esta questão, indicado abaixo)") : "(o professor não detalhou; escolha um tema representativo da disciplina e do nível de dificuldade pedidos)")}
+Tema/conteúdo solicitado: ${opts.tema || (opts.eixoTematico ? (opts.diversidade && opts.diversidade.subtopico ? "(o professor não detalhou; siga o eixo e o subtópico reservados para esta questão, indicados abaixo)" : "(o professor não detalhou; siga o eixo reservado para esta questão, indicado abaixo)") : "(o professor não detalhou; escolha um tema representativo da disciplina e do nível de dificuldade pedidos)")}${textoAproximado ? `
+⚠️ A BIBLIOTECA NÃO TEM TEXTO SOBRE ESTE TEMA (v74.30): a questão é sobre o texto mais próximo, que está no início desta mensagem, e do tema pedido só aproveita o que esse texto sustenta. Não troque o assunto do texto pelo do tema nem ponha dentro dele o artista, o autor, a obra, o lugar ou o período pedidos.` : ""}
 Nível de dificuldade: ${opts.dificuldade}
 Recurso visual pedido: ${opts.recurso}
 
 Siga integralmente as INSTRUÇÕES FIXAS DESTA CONFIGURAÇÃO que estão no prompt do sistema (recorte da disciplina, regra de fontes, calibração de extensão, regra das cinco alternativas e formato de entrega) E as instruções do recurso visual e da Matriz de Referência que vêm mais abaixo nesta mesma mensagem — todas fazem parte deste pedido, com o mesmo peso.
-${buildDiversidadeTematica(opts.eixoTematico || "", opts.temasEvitar || [], opts.tema, opts.recorte || "", opts.diversidade || {})}${opts.instrucoesVisual ? `\nInstrução adicional do professor especificamente para o recurso visual (siga-a com prioridade, desde que compatível com as instruções do recurso visual no prompt do sistema e com a ANCORAGEM DE ASSUNTO logo abaixo): ${opts.instrucoesVisual}\n` : ""}
+${buildDiversidadeTematica(opts.eixoTematico || "", opts.temasEvitar || [], opts.tema, opts.recorte || "", { ...(opts.diversidade || {}), textoDaBiblioteca })}${opts.instrucoesVisual ? `\nInstrução adicional do professor especificamente para o recurso visual (siga-a com prioridade, desde que compatível com as instruções do recurso visual no prompt do sistema e com a ANCORAGEM DE ASSUNTO logo abaixo): ${opts.instrucoesVisual}\n` : ""}
 ${buildAncoragemVisual(opts.area, opts.disciplina, opts.tema, opts.recurso)}${acervosDaGeracao}${instrucoesDoRecurso}${matriz}
-${buildGabaritoAlvo(opts.gabaritoAlvo || null)}${buildOrientacoesProfessor(opts.orientacoes || "")}${buildAlvoExtensao(opts.disciplina, opts.dificuldade)}
+${buildGabaritoAlvo(opts.gabaritoAlvo || null)}${buildOrientacoesProfessor(opts.orientacoes || "")}${buildAlvoExtensao(opts.disciplina, opts.dificuldade)}${textoDaBiblioteca ? `📏 Nesta questão o texto-base é o da biblioteca, INTEGRAL e sem alteração: a meta de extensão do texto-base não se aplica a ele — vale para o comando e as alternativas.
+` : ""}
 Entregue a questão chamando a ferramenta "entregar_questao", no formato descrito no prompt do sistema.`;
 }
 
@@ -4250,7 +4290,7 @@ function normalizaUrl(u: string): string {
 /* Conferência determinística — não custa chamada nenhuma. Cobre o que dá para
    checar por estrutura: campos preenchidos, tipo de uso declarado, citação
    conferida na origem e URL realmente vinda de uma busca (regras 4 e 7). */
-function conferenciaFontes(d: any, buscas?: { url: string; title: string }[]): { estado: string; motivo: string; tipoUso: string } {
+function conferenciaFontes(d: any, buscas?: { url: string; title: string }[], dossie: any = null): { estado: string; motivo: string; tipoUso: string } {
   const f = d && typeof d === "object" ? d.fonte : null;
   if (!f || typeof f !== "object") {
     return { estado: "ausente", motivo: 'a questão veio sem o campo "fonte", que é obrigatório nesta área', tipoUso: "" };
@@ -4292,10 +4332,21 @@ function conferenciaFontes(d: any, buscas?: { url: string; title: string }[]): {
     /* Autoria institucional declarada tem de aparecer na referência — senão a
        instituição é só uma palavra digitada no campo. */
     if (!autor && instituicao) {
-      const ref = referencia.toLowerCase();
-      const inst = instituicao.toLowerCase().replace(/^(o |a |os |as )/, "");
+      /* v74.30 — (1) comparação SEM ACENTO: "Prêmio PIPA" × "www.premiopipa.com"
+         reprovava por causa do "ê". (2) Texto da BIBLIOTECA do professor: vale a
+         instituição cadastrada para aquele texto, com a referência dele, mesmo que a
+         prova tenha impresso só o endereço ("Disponível em: www.inhotim.org.br").
+         82 textos aproveitáveis nunca passavam nesta conferência — a reescrita não
+         tinha como consertar, e a leva de Artes de 26/09 perdeu uma questão inteira
+         (duas reescritas) no texto do Prêmio PIPA. Fonte de pesquisa na web: a
+         regra continua a mesma (só o acento deixou de contar). */
+      const ref = normalizaParaComparar(referencia);
+      const inst = normalizaParaComparar(instituicao).replace(/^(o |a |os |as )/, "");
       const cabeca = inst.split(/[\s,.;()\/-]+/).filter((w) => w.length > 3)[0] || inst;
-      if (!ref.includes(inst) && !ref.includes(cabeca)) {
+      const refDoss = dossie && dossie.doEnem ? normalizaParaComparar(String(dossie.referencia || "")) : "";
+      const daBiblioteca = !!refDoss && normalizaParaComparar(String(dossie.instituicao || "")) === normalizaParaComparar(instituicao)
+        && (ref === refDoss || ref.includes(refDoss) || refDoss.includes(ref));
+      if (!daBiblioteca && !ref.includes(inst) && !ref.includes(cabeca)) {
         return { estado: "instituicao_fora_da_referencia", motivo: `a autoria institucional declarada ("${instituicao}") não aparece na referência`, tipoUso };
       }
     }
@@ -4313,6 +4364,44 @@ function conferenciaFontes(d: any, buscas?: { url: string; title: string }[]): {
     }
   }
   return { estado: "ok", motivo: "", tipoUso };
+}
+
+/* v74.30 — TEXTO DA BIBLIOTECA É INTOCÁVEL (decisão do professor, 26/09/2026):
+   "texto extraído da minha biblioteca nunca seja parafraseado. Tem que ser o texto
+   original. E a referência original. [...] Não pode modificá-los em hipótese
+   nenhuma." O prompt já manda copiar o texto inteiro; aqui o CÓDIGO garante: com
+   dossiê da biblioteca (doEnem), o texto-base da questão passa a ser o texto
+   ORIGINAL, inteiro, seguido da referência ORIGINAL, e o campo "fonte" recebe
+   autor/instituição/obra/ano/referência do texto, com "citacao". Roda depois de
+   cada geração (e reescrita), antes das conferências e do auditor — que julgam a
+   questão já com o texto original — e de novo antes da entrega. Idempotente.
+   Devolve true quando o elaborador tinha mexido no texto ou na referência. */
+function textoCanonicoDaBiblioteca(dossie: any): string {
+  if (!dossie || dossie.encontrou !== true || !dossie.doEnem) return "";
+  const texto = String(dossie.trecho || "").replace(/\r\n?/g, "\n").trim();
+  const ref = String(dossie.referencia || "").trim();
+  return texto && ref ? `${texto}\n\n${ref}` : "";
+}
+function fixaTextoDaBiblioteca(data: any, dossie: any): boolean {
+  const canonico = textoCanonicoDaBiblioteca(dossie);
+  if (!canonico || !data || typeof data !== "object") return false;
+  const compacta = (t: string) => String(t || "").replace(/\s+/g, " ").trim();
+  const f0 = data.fonte && typeof data.fonte === "object" ? data.fonte : {};
+  const mexeu = compacta(data.textoBase) !== compacta(canonico) || compacta(f0.referencia) !== compacta(dossie.referencia);
+  data.textoBase = canonico;
+  data.fonte = {
+    ...f0,
+    tipoUso: "citacao",
+    autor: String(dossie.autor || "").trim(),
+    instituicao: String(dossie.instituicao || "").trim(),
+    obra: String(dossie.obra || "").trim(),
+    ano: String(dossie.ano || "").trim(),
+    referencia: String(dossie.referencia || "").trim(),
+    comoVerificou: String(f0.comoVerificou || "").trim() || String(dossie.comoVerificou || "texto e referência da biblioteca do professor"),
+    urlVerificacao: "",
+    conferidoNaFonte: true,
+  };
+  return mexeu;
 }
 
 /* v74.29 — METADADO DA FONTE COMPLETADO PELO DOSSIÊ (26/09/2026).
@@ -4366,7 +4455,7 @@ function corrigeFonteDoDossie(data: any, dossie: any, estado: string): string[] 
     const naReferencia = ref.includes(i) || ref.includes(cabeca);
     if (!naReferencia) {
       const dI = normalizaParaComparar(dInst);
-      f.instituicao = dInst && ref.includes(dI) ? dInst : "";
+      f.instituicao = dInst && (ref.includes(dI) || !!dossie.doEnem) ? dInst : "";   // v74.30: na biblioteca vale a instituição cadastrada
       campos.push("instituicao");
     }
   } else if (!String(f.autor || "").trim() && dInst) {
@@ -4685,14 +4774,14 @@ async function garantirFontesReais(
   diag.validacao = dossiePrevio && dossiePrevio.validacao ? dossiePrevio.validacao : null;
   if (!diag.aplicavel) { diag.estado = "nao_se_aplica"; return diag; }
 
-  let det = conferenciaFontes(data, buscas);
+  let det = conferenciaFontes(data, buscas, dossiePrevio);   // v74.30: com o dossiê (texto da biblioteca)
   /* v74.29 — campo "fonte" mal preenchido, com dossiê validado: completa pelo
      dossiê e confere de novo (ver corrigeFonteDoDossie). Sem passar, volta como estava. */
   if (det.estado !== "ok" && dossiePrevio) {
     const fonteAntes = data && data.fonte && typeof data.fonte === "object" ? { ...data.fonte } : null;
     const campos = corrigeFonteDoDossie(data, dossiePrevio, det.estado);
     if (campos.length) {
-      const det2 = conferenciaFontes(data, buscas);
+      const det2 = conferenciaFontes(data, buscas, dossiePrevio);
       if (det2.estado === "ok") {
         diag.fonteCompletadaPeloDossie = campos;
         console.warn(`[fontes] campo "fonte" completado pelo dossiê (${campos.join(", ")}) em vez de reescrever a questão — era: ${det.motivo}`);
@@ -4963,6 +5052,8 @@ function selfTestResponse() {
     semPesquisaWeb.toString(), provaDoTexto.toString(), escolheTextoMaisProximo.toString(), consultarTextoMaisProximo.toString(),   // v74.28
     linhasDaBiblioteca.toString(), JSON.stringify([DISCIPLINAS_SEM_PESQUISA_WEB, BIBLIOTECA_LIMITE_LINHAS, BIBLIOTECA_PAGINA]),
     montaFerramentas.toString(), ferramentasDaQuestao.toString(), corrigeFonteDoDossie.toString(), textoVisivelDaQuestao.toString(), normalizaParaComparar.toString(),   // v74.29
+    nomesDoPedido.toString(), escolheTextoMaisProximo.toString(), buildDiversidadeTematica.toString(), conferenciaFontes.toString(),   // v74.30
+    textoCanonicoDaBiblioteca.toString(), fixaTextoDaBiblioteca.toString(),   // v74.30 — texto da biblioteca intocável
     JSON.stringify([Object.fromEntries(Object.entries(MARCAS_IDIOMA).map(([k, v]) => [k, [...v]])), IDIOMA_MIN_MARCAS, ENEM_REAL_IDIOMA]),
     JSON.stringify([ABSOLUTOS_ALTERNATIVAS, ABSOLUTOS_EXIBICAO, [...PALAVRAS_VAZIAS_ECO], ECO_MIN_LETRAS, CORRETA_DOMINANTE_MINIMO, CORRETA_DOMINANTE_RAZAO, CORRETA_DOMINANTE_CARACTERES, CORRECOES_ALTERNATIVAS_MAX, MS_MINIMO_PARA_CORRIGIR_ALTERNATIVAS, ENEM_REAL_ALTERNATIVAS]),
     JSON.stringify([TEXTOS_ENEM_MINIMO_PONTOS, TEXTOS_ENEM_COBERTURA_MINIMA, TEXTOS_ENEM_FAIXA_EMPATE, DISCIPLINAS_TEXTOS_ENEM, TEXTOS_ENEM_LITERARIOS, [...TEXTOS_ENEM_TEMAS_GENERICOS], INEDITISMO_LIMITE, INEDITISMO_MIN_TOKENS_COMANDO, INEDITISMO_MIN_TOKENS_ALTERNATIVA]),
@@ -5596,6 +5687,52 @@ function selfTestResponse() {
             && pesquisarFonteReal.toString().includes("await consultarBancoFontes(o, evitar, semPesquisaWeb(o.disciplina))")
             && bloco.includes("O TEXTO-BASE É ESTE") && bloco.includes("nem do mesmo autor, nem da mesma obra");
         })(),
+        /* v74.30 — reescritas da leva de Artes de 26/09 (9 de 11): o recorte não pede
+           cenário ao texto da biblioteca, nada além do texto, aspas = citação, aviso do
+           texto mais próximo na linha do tema, conferência sem acento e com a
+           instituição cadastrada, nome próprio contando inteiro no "mais próximo". */
+        v7430_reescritas: (() => {
+          const rec = "conteúdo: grafite · contexto: viaduto no centro";
+          const comBib = buildDiversidadeTematica("", [], "grafite", rec, { dominioContexto: "transporte urbano", textoDaBiblioteca: true });
+          const semBib = buildDiversidadeTematica("", [], "grafite", rec, { dominioContexto: "transporte urbano", contextosEvitar: ["feira"] });
+          const base = { id: 1, chave: "2016-regular-114", ano: 2016, numero: 114, prova: "ENEM", tipo_texto: "jornalistico", autor: "", instituicao: "Instituto Inhotim", obra: "", ano_obra: "",
+            referencia: "Disponível em: www.inhotim.org.br. Acesso em: 22 maio 2013 (adaptado).", texto: "O acervo reúne obras de arte contemporânea.", comando_original: "", alternativas_originais: null, gabarito_original: "", habilidade_original: "", usos: 0 };
+          const dBib = dossieDoTextoEnem(base, 3);
+          const dAprox = dossieDoTextoEnem(base, 1); dAprox.doEnem.aproximado = true;
+          const bloco = buildBlocoTextoEnem(dBib), blocoA = buildBlocoTextoEnem(dAprox);
+          const fonteInh = { tipoUso: "adaptacao", autor: "", instituicao: "Instituto Inhotim", obra: "", referencia: base.referencia, comoVerificou: "biblioteca", conferidoNaFonte: true };
+          const pipa = { tipoUso: "adaptacao", autor: "", instituicao: "Prêmio PIPA", obra: "", referencia: "Disponível em: www.premiopipa.com. Acesso em: 13 nov. 2021 (adaptado).", comoVerificou: "c", conferidoNaFonte: true };
+          const rows = [
+            { id: 1, temas: ["arte afro-brasileira", "mestre didi", "candomble"], autor: "", obra: "www.premiopipa.com", usos: 0 },
+            { id: 2, temas: ["escultura", "geometria"], autor: "Ademir Luiz", obra: "Mestre das linhas retas", usos: 0 },
+            { id: 3, temas: ["oscar niemeyer", "arquitetura moderna", "barroco"], autor: "Oscar Niemeyer", obra: "Entrevistas", usos: 5 },
+          ];
+          const esc = escolheTextoMaisProximo("Barroco brasileiro (Aleijadinho e Mestre Ataíde)", rows, () => 0);
+          const escNome = escolheTextoMaisProximo("Mestre Didi", rows, () => 0);
+          const uA = buildUserPrompt({ area: "linguagens", disciplina: "Artes", tema: "Arthur Bispo do Rosário", dificuldade: "Médio", recurso: "nenhum", competenciaNum: null, habilidadeCod: null, recorte: rec, dossie: dAprox });
+          const uW = buildUserPrompt({ area: "linguagens", disciplina: "Artes", tema: "grafite", dificuldade: "Médio", recurso: "nenhum", competenciaNum: null, habilidadeCod: null, recorte: rec });
+          return comBib.includes("ÂNGULO DE LEITURA") && !comBib.includes("construa o texto-base e a situação-problema sobre esse contexto") && !comBib.includes("DOMÍNIO DE CONTEXTO RESERVADO")
+            && semBib.includes("construa o texto-base e a situação-problema sobre esse contexto") && semBib.includes("DOMÍNIO DE CONTEXTO RESERVADO")
+            && bloco.includes("NADA ALÉM DO TEXTO") && bloco.includes("TEXTO ORIGINAL E INTEGRAL") && bloco.includes("É PROIBIDO parafrasear, adaptar, resumir, recortar") && !bloco.includes("Não troque o assunto do texto")
+            && (() => {
+              const q: any = { textoBase: "Texto parafraseado pelo elaborador.\n\nOutra referência.", comando: "c", fonte: { tipoUso: "adaptacao", autor: "", instituicao: "X", obra: "", referencia: "Outra referência.", comoVerificou: "c", conferidoNaFonte: false } };
+              const mexeu = fixaTextoDaBiblioteca(q, dBib), denovo = fixaTextoDaBiblioteca(q, dBib);
+              return mexeu === true && denovo === false && q.textoBase === `${base.texto}\n\n${base.referencia}` && q.fonte.referencia === base.referencia
+                && q.fonte.tipoUso === "citacao" && q.fonte.instituicao === "Instituto Inhotim" && q.fonte.conferidoNaFonte === true && q.comando === "c"
+                && fixaTextoDaBiblioteca(q, null) === false && fixaTextoDaBiblioteca({ textoBase: "t" }, { encontrou: true, trecho: "x", referencia: "r" }) === false;
+            })()
+            && blocoA.includes("Não troque o assunto do texto pelo do tema pedido")
+            && conferenciaFontes({ fonte: fonteInh }, [], dBib).estado === "ok"
+            && conferenciaFontes({ fonte: fonteInh }, []).estado === "instituicao_fora_da_referencia"
+            && conferenciaFontes({ fonte: { ...fonteInh, instituicao: "Museu Inventado" } }, [], dBib).estado === "instituicao_fora_da_referencia"
+            && conferenciaFontes({ fonte: pipa }, []).estado === "ok"
+            && esc !== null && esc.row.id === 3 && escNome !== null && escNome.row.id === 1
+            && uA.includes("A BIBLIOTECA NÃO TEM TEXTO SOBRE ESTE TEMA") && uA.includes("ÂNGULO DE LEITURA") && !uA.includes("construa o texto-base e a situação-problema sobre esse contexto")
+            && !uW.includes("A BIBLIOTECA NÃO TEM TEXTO") && uW.includes("construa o texto-base e a situação-problema sobre esse contexto")
+            && garantirFontesReais.toString().includes("conferenciaFontes(data, buscas, dossiePrevio)")
+            && buildDossieFonte(dBib).includes("O texto-base é o texto INTEGRAL acima, sem nenhuma alteração")
+            && buildDossieFonte({ ...dBib, trecho: "a".repeat(5000) }).includes("a".repeat(5000));
+        })(),
         v7425_textosEnem: (() => {
           const row = (temas: string[], autor = "", obra = "") => ({ temas, autor, obra });
           const t: any = { id: 1, chave: "2011-regular-3", ano: 2011, numero: 3, tipo_texto: "poema", autor: "Cláudio Manuel da Costa", instituicao: "", obra: "Poemas", ano_obra: "1996", referencia: "COSTA, C. M. Poemas. Disponível em: www.dominiopublico.gov.br. Acesso em: 7 jul. 2012.", texto: "Estes os olhos são da minha amada", comando_original: "No poema, o eu lírico associa a paisagem ao sentimento amoroso, o que revela a convenção árcade", alternativas_originais: { A: "a", B: "b", C: "a idealização da natureza como cenário bucólico do amor", D: "d", E: "e" }, gabarito_original: "C", habilidade_original: "H16", usos: 0 };
@@ -5612,8 +5749,9 @@ function selfTestResponse() {
             && d.encontrou === true && d.validacao.libera === true && d.validacao.estado === "aprovado_enem" && d.url === "" && d.doEnem.literario === true
             && d.doEnem.gabaritoOriginal === "C" && d.validacao.afirmacoesComSuporte.length === 2
             && urlsDaReferencia(t.referencia)[0] === "http://www.dominiopublico.gov.br"
-            && buildDossieFonte(d).includes("PROVA OFICIAL DO ENEM 2011 (questão 3)") && buildDossieFonte(d).includes("trecho LITERAL")
-            && buildBlocoTextoEnem({ ...d, doEnem: { ...d.doEnem, literario: false } }).includes('"tipoUso": "adaptacao"')
+            && buildDossieFonte(d).includes("PROVA OFICIAL DO ENEM 2011 (questão 3)") && buildDossieFonte(d).includes("TEXTO ORIGINAL E INTEGRAL")
+            && buildBlocoTextoEnem({ ...d, doEnem: { ...d.doEnem, literario: false } }).includes("TEXTO ORIGINAL E INTEGRAL")
+            && !buildBlocoTextoEnem({ ...d, doEnem: { ...d.doEnem, literario: false } }).includes('"tipoUso": "adaptacao"')   // v74.30: nunca adaptação
             && buildBlocoTextoEnem({ encontrou: true }) === ""
             && existenciaProvadaPeloValidador(d, { urlVerificacao: "" }, "ok") === true
             && existenciaProvadaPeloValidador(d, { urlVerificacao: "" }, "fonte_trocada") === false
@@ -6169,8 +6307,17 @@ ATENÇÃO — sua resposta anterior não pôde ser usada: o argumento da ferrame
     const ferramentaQ = ferramentaQuestaoPara(recurso, fontesReaisEstrito(area), disciplina);
     const familiaQ = ferramentasDaQuestao(ferramentaQ);
     let data = await callClaudeForJSON(system, userMsg, webSearch, usos, ferramentaQ, buscasWeb, "geracao", undefined, undefined, webSearch ? null : familiaQ);
+    /* v74.30 — texto da biblioteca: o original, inteiro, com a referência original (ver fixaTextoDaBiblioteca). */
+    let textoDaBibliotecaReposto = 0;
+    const repoeTextoDaBiblioteca = (q: any, etapa: string) => {
+      if (fixaTextoDaBiblioteca(q, dossie)) {
+        textoDaBibliotecaReposto++;
+        console.warn(`[biblioteca] texto/referência originais repostos (${etapa}) — o elaborador tinha alterado o texto da biblioteca`);
+      }
+    };
     // v67: alternativas/análise/competência/habilidade sempre como objeto.
     data = normalizarCamposEstruturados(data);
+    repoeTextoDaBiblioteca(data, "geração");
     // "promptImagem"/"descricao" sempre como string — ver normalizarVisual().
     if (data && typeof data === "object") data.visual = normalizarVisual(data.visual, recurso);
     // v62: recurso pedido = recurso entregue, ou o backend refaz só o visual.
@@ -6269,6 +6416,7 @@ ATENÇÃO — sua resposta anterior não pôde ser usada: o argumento da ferrame
     /* v74.11 — o objeto declarado tem de caber na disciplina pedida. */
     const objetoDiag = garantirObjetoDaDisciplina(data, area, disciplina);
 
+    repoeTextoDaBiblioteca(data, "antes da auditoria");   // v74.30: o auditor julga a questão com o texto original
     let fontesDiag = await garantirFontesReais(
       data, system, usos, LIMITE_FUNCAO_MS - (Date.now() - inicioReq), area, buscasWeb, dossie, disciplina,
     );
@@ -6304,6 +6452,7 @@ ATENÇÃO — sua resposta anterior não pôde ser usada: o argumento da ferrame
       const gd2 = await garantirGabaritoCoerente(nova, system, usos, LIMITE_FUNCAO_MS - (Date.now() - inicioReq), familiaQ);
       const ad2 = await garantirAlternativasConformes(nova, system, usos, LIMITE_FUNCAO_MS - (Date.now() - inicioReq), familiaQ);   // v74.27 / v74.29
       const od2 = garantirObjetoDaDisciplina(nova, area, disciplina);
+      repoeTextoDaBiblioteca(nova, `reescrita ${reelaboracoes}`);   // v74.30
       const fd2 = await garantirFontesReais(nova, system, usos, LIMITE_FUNCAO_MS - (Date.now() - inicioReq), area, buscasWeb, dossie, disciplina);
       data = nova;
       Object.assign(gabaritoDiag, gd2);
@@ -6354,6 +6503,8 @@ ATENÇÃO — sua resposta anterior não pôde ser usada: o argumento da ferrame
     // química converte H2O → H₂O antes que a matemática veja "letra + dígito".
     data = normalizarNotacaoQuimica(data, area, disciplina);
     data = normalizarNotacaoMatematica(data, disciplina);
+    repoeTextoDaBiblioteca(data, "entrega");   // v74.30: por último — nenhuma normalização altera o texto da biblioteca
+    if (fontesDiag && typeof fontesDiag === "object") (fontesDiag as any).textoDaBibliotecaReposto = textoDaBibliotecaReposto;
     notacaoDiag.residuoFinal = temResiduoNotacao(data, area);
     if (notacaoDiag.residuoFinal) console.warn(`[notação] resíduo ASCII na questão entregue (${disciplina}: "${String(data?.tema || "").slice(0, 60)}") — ` + JSON.stringify(notacaoDiag.notacao?.residuosDepois ?? notacaoDiag));
     else if (notacaoDiag.residuoAntesDoRevisor) console.log(`[notação] resíduo corrigido pelo revisor (${notacaoDiag.notacao?.tentativas ?? "?"} tentativa(s))`);
