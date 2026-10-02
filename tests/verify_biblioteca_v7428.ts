@@ -61,6 +61,7 @@ ${entre("const PALAVRAS_VAZIAS_FONTE", "\n]);\n")}
 ${recorta("normalizaUrl")}${recorta("fonteEstaNaListaDeEvitar")}${recorta("normalizaParaComparar")}
 ${entre("/* ═══════════ v74.28 — BIBLIOTECA", "/* ═══════════ FIM DA BIBLIOTECA (v74.28)")}
 ${recorta("dossieDoTextoEnem")}${recorta("buildBlocoTextoEnem")}${recorta("buscaDaGeracao")}
+${entre("/* ═══════════ v74.31 — BIBLIOTECA → CONHECIMENTO DA IA", "/* ═══════════ FIM DO v74.31")}
 ${recorta("pesquisarFonteReal", "async function ")}
 export { semPesquisaWeb, provaDoTexto, escolheTextoMaisProximo, consultarTextoMaisProximo, dossieDoTextoEnem, buildBlocoTextoEnem, buscaDaGeracao, pesquisarFonteReal, DISCIPLINAS_SEM_PESQUISA_WEB, linhasDaBiblioteca, BIBLIOTECA_PAGINA };
 `;
@@ -145,7 +146,7 @@ __d.chamadasModelo = 0;
 r = await pesquisa("Língua Portuguesa", "Variação linguística");
 t("C8 Língua Portuguesa sem nenhum texto na biblioteca (neste dublê): bloqueio com o motivo, sem cair na internet", r && r.encontrou === false && r.semPesquisaWeb === true && __d.chamadasModelo === 0);
 r = await pesquisa("História", "Revolução Francesa", [], "humanas");
-t("C9 História (e as demais) continuam pesquisando na internet quando não há texto nem banco", __d.chamadasModelo >= 1);
+t("C9 História (e as demais) passam para o conhecimento da IA quando não há texto nem banco (v74.31; o fluxo inteiro é provado em verify_ordem_ia_v7431.ts)", __d.chamadasModelo >= 1);
 __d.tabela = Array.from({ length: 2345 }, (_, i) => lit(1000 + i, ["tema " + i], "Autor " + i, "Obra " + i));
 __d.paginas = [];
 const todas = await M.linhasDaBiblioteca(["Literatura"]);

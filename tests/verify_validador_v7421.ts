@@ -32,6 +32,8 @@ const mAcervos = fonte.match(/const ACERVOS_PRIORITARIOS: \{ nome: string; url: 
 // O bloco do validador inteiro + pesquisarFonteReal, como estão no arquivo de produção.
 const blocoValidador = fatiar("/* ═══════════ v74.21 — AGENTE VALIDADOR DE FONTES E EVIDÊNCIAS", "/* ═══════════ FIM DO BLOCO DO VALIDADOR");
 const pesquisar = fatiar("async function pesquisarFonteReal(", "/* v74.23 — ÚLTIMO RECURSO");
+// v74.31 — o bloco da ordem biblioteca → IA → internet (pesquisarFonteReal o consulta em toda chamada)
+const blocoOrdemIA = fatiar("/* ═══════════ v74.31 — BIBLIOTECA → CONHECIMENTO DA IA", "/* ═══════════ FIM DO v74.31");
 // níveis por domínio + consulta combinada + DISCIPLINAS_COM_ACERVO_PRIORITARIO + buildAcervosPrioritarios + buildPesquisaFontePrompt + buildDossieFonte, reais
 const dominios = fatiar("const ORDEM_NIVEL = ", "\n/* ═══════════ v74.21 — AGENTE VALIDADOR");
 const acervosFns = fatiar("function hostDaUrl(", "const DOMINIOS_VETADOS");                          // hostDaUrl, ehDominioDeAcervo, acervoFoiConsultado
@@ -67,6 +69,7 @@ ${normalizaUrl}
 ${acervosFns}
 ${dominios}
 ${blocoValidador}
+${blocoOrdemIA}
 ${pesquisar}
 /* dublê roteirizado: cada chamada consome a próxima resposta da fila */
 export const __stub: any = { fila: [] as any[], chamadas: [] as any[] };
@@ -88,8 +91,12 @@ export { pesquisarFonteReal, liberaGeracao, liberaRestritoAoConfirmado, conferen
    pesquisa): aqui, e só aqui, a lista das disciplinas sem pesquisa fica vazia. */
 const moduloComPesquisa = modulo.replace(/const DISCIPLINAS_SEM_PESQUISA_WEB = \[[^\]]*\];/, "const DISCIPLINAS_SEM_PESQUISA_WEB: string[] = [];");
 if (moduloComPesquisa === modulo) { console.error("FALHA: não achei DISCIPLINAS_SEM_PESQUISA_WEB no trecho recortado"); Deno.exit(1); }
+/* v74.31 — o mesmo vale para a ordem biblioteca → IA → internet (provada em verify_ordem_ia_v7431.ts):
+   aqui a lista fica vazia, para que este arquivo continue provando a máquina de pesquisa de 3 rodadas. */
+const moduloMaquina = moduloComPesquisa.replace(/const DISCIPLINAS_ORDEM_IA = \[[^\]]*\];/, "const DISCIPLINAS_ORDEM_IA: string[] = [];");
+if (moduloMaquina === moduloComPesquisa) { console.error("FALHA: não achei DISCIPLINAS_ORDEM_IA no trecho recortado"); Deno.exit(1); }
 const tmp = await Deno.makeTempDir();
-await Deno.writeTextFile(`${tmp}/mod.ts`, moduloComPesquisa);
+await Deno.writeTextFile(`${tmp}/mod.ts`, moduloMaquina);
 const M: any = await import("file://" + `${tmp}/mod.ts`);
 const { pesquisarFonteReal, __stub, __banco, __enem, MODO_VALIDADOR } = M;
 

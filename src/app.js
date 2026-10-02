@@ -4333,7 +4333,15 @@ function auditaQuestaoLocal(q){
          questão é paráfrase com referência, sem citação. */
       const restrita = v.estado === "aprovado_restrito";
       /* v18.29 — texto da prova do ENEM: não houve pesquisa nem validador na web. */
-      if(v.estado === "aprovado_enem"){
+      /* v18.32 — material do conhecimento da própria IA, sem internet (backend v74.31):
+         História, Geografia, Filosofia, Sociologia, Práticas Corporais e Língua
+         Estrangeira, quando a biblioteca não tem o texto. Só tela. */
+      if(v.estado === "ia_autoral" || v.estado === "ia_parafrase"){
+        info(v.estado === "ia_parafrase"
+          ? "Fonte: conhecimento da própria IA, sem pesquisa na internet · paráfrase da obra pedida, com a referência só com os dados certos (autor, título e ano), sem citação literal · conferida pelo auditor."
+          : "Texto-base autoral com dados reais, escrito a partir do conhecimento da própria IA, sem pesquisa na internet e sem citar ninguém" +
+            (v.motivo ? " (" + String(v.motivo).slice(0, 200) + ")" : "") + " · conferido pelo auditor.");
+      } else if(v.estado === "aprovado_enem"){
         const provaDoTexto = q.insistencia && q.insistencia.doEnem && q.insistencia.doEnem.prova && q.insistencia.doEnem.prova !== "ENEM" ? String(q.insistencia.doEnem.prova) : "";
         info(provaDoTexto
           ? "Fonte: biblioteca de textos do professor · prova " + provaDoTexto + " · referência como impressa na prova · sem pesquisa na web."

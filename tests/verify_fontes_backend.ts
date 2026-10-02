@@ -192,6 +192,7 @@ export { ACERVOS_PRIORITARIOS, DISCIPLINAS_COM_ACERVO_PRIORITARIO, temAcervoPrio
 export { DOMINIOS_ACERVO_PRIORITARIO, hostDaUrl, ehDominioDeAcervo, acervoFoiConsultado, consultaCombinadaAcervos };
 export { existenciaProvadaPeloValidador, ITENS_DE_EXISTENCIA_DA_FICHA };
 export { pontuaTextoEnem, dossieDoTextoEnem, buildBlocoTextoEnem, urlsDaReferencia, conferenciaIneditismo, buildIneditismoParaAuditoria, DISCIPLINAS_TEXTOS_ENEM, chaveEvitarEnem };
+export { usaOrdemIA, dossieAutoralIA, dossieParafraseIA, parafraseIAUtilizavel, buildBlocoConhecimentoIA, buildBlocoAuditoriaIA, consultarConhecimentoIA, FERRAMENTA_DOSSIE_IA, SISTEMA_PESQUISA_IA, buildPesquisaIAPrompt };   // v74.31
 export { conferenciaFontes, conferenciaDossie, tokensDeFonte, normalizaUrl, buildAuditoriaFontesPrompt,
          garantirFontesReais, FERRAMENTA_AUDITORIA_FONTE, MENSAGEM_FONTE_BLOQUEIO, fontesReaisEstrito,
          buscaDaGeracao, buildDossieFonte,
@@ -212,6 +213,7 @@ const { conferenciaFontes, conferenciaDossie, normalizaUrl, buildAuditoriaFontes
         liberaGeracao, liberaRestritoAoConfirmado, buildValidacaoPrompt, ferramentaFetchPara, ferramentaBuscaNoDominioPara, SISTEMA_VALIDACAO_FONTE, FERRAMENTA_VALIDACAO_FONTE, buildBlocoValidacaoDossie,
         existenciaProvadaPeloValidador, ITENS_DE_EXISTENCIA_DA_FICHA,
         pontuaTextoEnem, dossieDoTextoEnem, buildBlocoTextoEnem, urlsDaReferencia, conferenciaIneditismo, buildIneditismoParaAuditoria, DISCIPLINAS_TEXTOS_ENEM, chaveEvitarEnem,
+        usaOrdemIA, dossieAutoralIA, dossieParafraseIA, parafraseIAUtilizavel, buildBlocoConhecimentoIA, buildBlocoAuditoriaIA, consultarConhecimentoIA, FERRAMENTA_DOSSIE_IA, SISTEMA_PESQUISA_IA, buildPesquisaIAPrompt,
         __stub } = M;
 
 let ok = 0, bad = 0;
@@ -852,7 +854,7 @@ t("P1 o handler lê tentativa, fontesEvitar, ultimoRecurso e bancoFontes do pedi
   fonte.includes("const fontesEvitar: string[] = listaCurta(body.fontesEvitar, MAX_FONTES_EVITAR, 300);")
   && fonte.includes("const ultimoRecursoPedido = body.ultimoRecurso === true;")
   && fonte.includes("const usarBanco = body.bancoFontes !== false;")
-  && handlerP.includes("pesquisarFonteReal({ area, disciplina, tema, eixoTematico, recorte, fontesEvitar, usarBanco, usarTextosEnem }"));
+  && handlerP.includes("pesquisarFonteReal({ area, disciplina, tema, eixoTematico, recorte, fontesEvitar, usarBanco, usarTextosEnem, tentativaApp }"));   // v74.31: + tentativaApp
 t("P2 sem fonte validada: bloqueia (422) com as fontes tentadas — EXCETO quando o app pediu o último recurso, que vira texto próprio",
   handlerP.includes("if (!ultimoRecursoPedido) {") && handlerP.includes("tentativa: tentativaApp, fontesTentadas }")
   && handlerP.includes("textoProprio = { tentativa: tentativaApp, motivo };") && handlerP.includes("dossie = null;")
@@ -904,7 +906,8 @@ t("Q4 pontuação: autor e tema catalogado casam; obra diferente do mesmo autor,
   && pontuaTextoEnem("Romantismo", { temas: ["machado de assis", "ruptura com o romantismo"], autor: "Machado de Assis", obra: "Memórias" }) < 10
   && pontuaTextoEnem("Max Weber", { temas: [], autor: "Max Weber", obra: "A ciência como vocação" }) >= 10
   && DISCIPLINAS_TEXTOS_ENEM["Práticas Corporais"].includes("Educação Física") && DISCIPLINAS_TEXTOS_ENEM["Língua Portuguesa"].includes("Tecnologias da Informação")
-  && !("Língua Estrangeira (Inglês/Espanhol)" in DISCIPLINAS_TEXTOS_ENEM) && chaveEvitarEnem("2016-regular-12") === "enem:2016-regular-12");
+  && DISCIPLINAS_TEXTOS_ENEM["Língua Estrangeira (Inglês/Espanhol)"].join() === "Língua Estrangeira"   // v74.31: Língua Estrangeira passou a usar a biblioteca
+  && chaveEvitarEnem("2016-regular-12") === "enem:2016-regular-12");
 t("Q5 URLs impressas na referência do INEP viram URLs reais da geração (com e sem http)",
   JSON.stringify(urlsDaReferencia("Disponível em: http://www.brasilescola.com. Acesso em: 18 maio 2010. Ver também www.ibge.gov.br/x;")) === JSON.stringify(["http://www.brasilescola.com", "http://www.ibge.gov.br/x"])
   && urlsDaReferencia(linhaEnem.referencia).length === 0);
@@ -992,6 +995,97 @@ const dR6 = await roda(qR6, "linguagens", 120_000, [], dossR);
 t("R6 campos vazios (incompleto) com dossiê: autor, referência e comoVerificou vêm do dossiê",
   dR6.estado === "aprovado" && qR6.fonte.autor === "Maria Silva" && qR6.fonte.referencia === dossR.referencia && qR6.fonte.comoVerificou.startsWith("Conforme o dossiê validado:")
   && JSON.stringify(dR6.fonteCompletadaPeloDossie) === JSON.stringify(["referencia", "autor", "comoVerificou"]), JSON.stringify({ dR6, fonte: qR6.fonte }));
+
+/* ---------- S. v74.31 — biblioteca → conhecimento da IA → internet (decisões do professor, 01/10/2026) ---------- */
+const iaS: any = { pedeAutorOuObra: true, autorPedido: "Hannah Arendt", obraPedida: "", conheceComSeguranca: true, autor: "Hannah Arendt", obra: "Eichmann em Jerusalém", anoOriginal: "1963",
+  referencia: "ARENDT, Hannah. Eichmann em Jerusalém. 1963.", parafrase: "A autora sustenta que crimes de enorme gravidade podem ser cometidos por pessoas comuns, que cumprem ordens sem pensar no sentido do que fazem; o mal, nesse caso, nasce da incapacidade de julgar, e não de uma natureza monstruosa.",
+  fatos: ["O julgamento de Adolf Eichmann ocorreu em Jerusalém, em 1961.", "Eichmann foi condenado à morte e executado em 1962."], fonteDosFatos: "registros históricos do julgamento", idioma: "portugues" };
+const autS = dossieAutoralIA({ ...iaS, pedeAutorOuObra: false, autorPedido: "" }, "tema sem autor nem obra pedidos e sem texto na biblioteca");
+const parS = dossieParafraseIA(iaS);
+const fbS = dossieAutoralIA(iaS, "pesquisa única sem fonte", "Hannah Arendt");
+t("S1 as seis disciplinas da ordem nova, e só elas",
+  ["História", "Geografia", "Filosofia", "Sociologia", "Práticas Corporais", "Língua Estrangeira (Inglês/Espanhol)"].every((d) => usaOrdemIA(d))
+  && ["Literatura", "Língua Portuguesa", "Artes", "Biologia", "Matemática", ""].every((d) => !usaOrdemIA(d)));
+t("S2 dossiê autoral: liberado, sem autor/obra/referência/URL, estado ia_autoral, com os fatos numerados",
+  autS.encontrou === true && autS.validacao.libera === true && autS.validacao.estado === "ia_autoral" && autS.origemIA === "autoral"
+  && autS.autor === "" && autS.obra === "" && autS.referencia === "" && autS.url === "" && autS.trecho.startsWith("1. O julgamento de Adolf Eichmann")
+  && autS.validacao.afirmacoesComSuporte.length === 0 && autS.validacao.fonteAberta === false);
+t("S3 dossiê de paráfrase: autor, obra, ano e referência da IA, sem URL, estado ia_parafrase",
+  parS.validacao.estado === "ia_parafrase" && parS.validacao.libera === true && parS.autor === "Hannah Arendt" && parS.obra === "Eichmann em Jerusalém"
+  && parS.ano === "1963" && parS.referencia === iaS.referencia && parS.url === "" && parS.trechoEhLiteral === false && parS.fatosContexto.length === 2);
+t("S4 a paráfrase só passa completa, sem URL na referência, com o título na referência e fora da lista a evitar",
+  parafraseIAUtilizavel(iaS, []) === ""
+  && parafraseIAUtilizavel({ ...iaS, conheceComSeguranca: false }, []).includes("não conhece")
+  && parafraseIAUtilizavel({ ...iaS, pedeAutorOuObra: false }, []) !== ""
+  && parafraseIAUtilizavel({ ...iaS, parafrase: "curta" }, []).includes("curta")
+  && parafraseIAUtilizavel({ ...iaS, referencia: "ARENDT, Hannah. Eichmann em Jerusalém. Disponível em: www.x.org" }, []).includes("endereço")
+  && parafraseIAUtilizavel({ ...iaS, referencia: "ARENDT, Hannah. As origens do totalitarismo. 1951." }, []).includes("título")
+  && parafraseIAUtilizavel(iaS, ["Hannah Arendt — Eichmann em Jerusalém"]).includes("evitar"));
+const blocoAut = buildDossieFonte(autS), blocoPar = buildDossieFonte(parS), blocoFb = buildDossieFonte(fbS);
+t("S5 elaborador, modo autoral: texto SEU com dados reais, tipoUso proprio, sem aspas, e nada do bloco da pesquisa na web",
+  blocoAut.includes("TEXTO-BASE AUTORAL COM DADOS REAIS") && blocoAut.includes('"tipoUso": "proprio"') && blocoAut.includes("Sem aspas")
+  && blocoAut.includes("1. O julgamento de Adolf Eichmann") && !blocoAut.includes("A BUSCA NA WEB ESTÁ DESLIGADA") && !blocoAut.includes("MATERIAL JÁ PESQUISADO")
+  && !blocoAut.includes("NÃO exponha o conteúdo da obra"));
+t("S6 elaborador, modo paráfrase: SEM ASPAS, referência exatamente como veio, tipoUso parafrase, sem URL",
+  blocoPar.includes("PARÁFRASE COM REFERÊNCIA") && blocoPar.includes("SEM ASPAS") && blocoPar.includes(iaS.referencia) && blocoPar.includes('"tipoUso": "parafrase"')
+  && blocoPar.includes('"urlVerificacao": ""') && blocoPar.includes(iaS.parafrase));
+t("S7 elaborador, autor/obra que a IA não conhece: questão SEMELHANTE autoral, sem expor a obra nem atribuir ideias ao autor; sem pesquisa, não fala em pesquisa",
+  blocoFb.includes("Hannah Arendt") && blocoFb.includes("questão é SEMELHANTE") && blocoFb.includes("NÃO exponha o conteúdo da obra")
+  && blocoFb.includes("e a IA não o conhece com segurança:") && !blocoFb.includes("pesquisa única")
+  && buildDossieFonte(dossieAutoralIA(iaS, "m", "Hannah Arendt", true)).includes("a pesquisa única na internet não confirmou uma fonte"));
+t("S8 Língua Estrangeira autoral: o texto-base sai no idioma escolhido, comando e alternativas em português",
+  buildDossieFonte(dossieAutoralIA({ ...iaS, pedeAutorOuObra: false, idioma: "espanhol" }, "m")).includes("escrito em espanhol; comando e alternativas em português"));
+const audAut = buildAuditoriaFontesPrompt({ ...questao({ tipoUso: "proprio" }), disciplina: "História" }, autS);
+const audPar = buildAuditoriaFontesPrompt({ ...questao(fonteBoa()), disciplina: "Filosofia" }, parS);
+t("S9 auditor nos modos da IA: sabe que não houve internet nem validador, confere com o próprio conhecimento, e o bloco do dossiê da web não aparece",
+  audAut.includes("CONHECIMENTO DA PRÓPRIA IA, SEM INTERNET") && audAut.includes("TODO dado factual") && !audAut.includes("com busca real na web")
+  && !audAut.includes("DOSSIÊ DA PESQUISA PRÉVIA") && !audAut.includes("USE a ferramenta web_search")
+  && audPar.includes("PARÁFRASE desta obra") && audPar.includes(iaS.referencia) && audPar.includes("NÃO é falha nesta modalidade") && !audPar.includes("com busca real na web"));
+const proprioS = () => ({ tipoUso: "proprio", autor: "", instituicao: "", obra: "", ano: "", referencia: "", comoVerificou: "texto autoral com dados reais", conferidoNaFonte: false, urlVerificacao: "" });
+__stub.resposta = fichaBoa(); __stub.erro = null; __stub.chamadas = 0; __stub.buscaLigada = "nao-chamado";
+const qS10: any = { ...questao(proprioS()), disciplina: "História" };
+const dS10 = await roda(qS10, "humanas", 120_000, [], autS);
+t("S10 autoral com tipoUso proprio: vai ao auditor SEM busca na web e é aprovada",
+  dS10.estado === "aprovado" && __stub.chamadas === 1 && __stub.buscaLigada === false, JSON.stringify(dS10));
+__stub.chamadas = 0;
+const qS11: any = { ...questao(fonteBoa({ autor: "Hannah Arendt", obra: "Eichmann em Jerusalém", referencia: "ARENDT. Eichmann em Jerusalém." })), disciplina: "História" };
+const dS11 = await roda(qS11, "humanas", 120_000, [], autS);
+t("S11 autoral declarado como paráfrase de um autor: reprovada em código, sem gastar o auditor (vai para a reelaboração com o motivo)",
+  dS11.estado === "reprovado" && dS11.determinista === "tipo_de_uso_da_ia" && __stub.chamadas === 0 && /tipoUso": "proprio"/.test(dS11.motivo) && qS11.fonteNaoVerificada);
+__stub.chamadas = 0;
+const qS12: any = { ...questao(fonteBoa({ tipoUso: "citacao", autor: "Hannah Arendt", obra: "Eichmann em Jerusalém", referencia: iaS.referencia, conferidoNaFonte: true })), disciplina: "Filosofia" };
+const dS12 = await roda(qS12, "humanas", 120_000, [], parS);
+t("S12 material da IA declarado como CITAÇÃO literal: reprovada em código (só paráfrase)",
+  dS12.estado === "reprovado" && dS12.determinista === "tipo_de_uso_da_ia" && __stub.chamadas === 0 && /PARÁFRASE/.test(dS12.motivo));
+__stub.chamadas = 0; __stub.buscaLigada = "nao-chamado";
+const qS13: any = { ...questao(fonteBoa({ autor: "Hannah Arendt", obra: "Eichmann em Jerusalém", ano: "1963", referencia: iaS.referencia, comoVerificou: "conhecimento da própria IA", conferidoNaFonte: false, urlVerificacao: "https://inventada.example.org/eichmann" })), disciplina: "Filosofia" };
+const dS13 = await roda(qS13, "humanas", 120_000, [], parS);
+t("S13 paráfrase com URL que nenhuma busca confirmou: a URL sai da fonte (não reprova por isso), o auditor confere sem web e aprova",
+  dS13.estado === "aprovado" && qS13.fonte.urlVerificacao === "" && dS13.urlRemovida === "https://inventada.example.org/eichmann" && __stub.chamadas === 1 && __stub.buscaLigada === false,
+  JSON.stringify(dS13));
+__stub.chamadas = 0;
+const qS14: any = { ...questao(fonteBoa({ autor: "Michel Foucault", obra: "Vigiar e punir", referencia: "FOUCAULT, Michel. Vigiar e punir. 1975.", conferidoNaFonte: false })), disciplina: "Filosofia" };
+const dS14 = await roda(qS14, "humanas", 120_000, [], parS);
+t("S14 paráfrase de OUTRA obra que não a do material da IA: fonte trocada, reprovada sem auditor", dS14.estado === "reprovado" && dS14.dossie === "fonte_trocada" && __stub.chamadas === 0 && String(dS14.motivo).startsWith("o material do conhecimento da IA é \"Hannah Arendt\""), JSON.stringify(dS14));
+__stub.chamadas = 0;
+const qS15: any = { ...questao(proprioS()), disciplina: "História" };
+const dS15 = await roda(qS15, "humanas", 120_000, [], parS);
+t("S15 material de paráfrase, mas a questão saiu autoral (tipoUso proprio): permitido, vai ao auditor", dS15.estado === "aprovado" && __stub.chamadas === 1);
+t("S16 a ferramenta do pesquisador sem internet exige a decisão autor/obra, a segurança, a referência, a paráfrase, os fatos e a fonte deles",
+  ["pedeAutorOuObra", "conheceComSeguranca", "autor", "obra", "anoOriginal", "referencia", "parafrase", "fatos", "fonteDosFatos", "idioma"].every((k) => FERRAMENTA_DOSSIE_IA.input_schema.required.includes(k))
+  && SISTEMA_PESQUISA_IA.includes("SEM ACESSO À INTERNET") && SISTEMA_PESQUISA_IA.includes("PROIBIDO INVENTAR") && SISTEMA_PESQUISA_IA.includes("Nenhuma frase entre aspas"));
+t("S17 o pedido ao pesquisador leva tema, recorte e a lista a evitar; eixo só com tema em branco",
+  buildPesquisaIAPrompt({ disciplina: "História", tema: "Era Vargas", recorte: "CLT", eixoTematico: "E" }, ["x — y"]).includes("Recorte reservado para esta questão: CLT")
+  && buildPesquisaIAPrompt({ disciplina: "História", tema: "Era Vargas", eixoTematico: "E" }, []).indexOf("Eixo temático") < 0
+  && buildPesquisaIAPrompt({ disciplina: "História", tema: "", eixoTematico: "Brasil República" }, []).includes("Eixo temático reservado: Brasil República")
+  && buildPesquisaIAPrompt({ disciplina: "História", tema: "t" }, ["x — y"]).includes("A evitar"));
+__stub.resposta = { ...iaS }; __stub.chamadas = 0; __stub.buscaLigada = "nao-chamado";
+const usosS: any[] = [];
+const rS18 = await consultarConhecimentoIA({ disciplina: "Filosofia", tema: "Hannah Arendt" }, [], usosS);
+t("S18 o pesquisador da IA é chamado SEM ferramenta de busca na web", rS18 && rS18.autor === "Hannah Arendt" && __stub.chamadas === 1 && __stub.buscaLigada === false);
+__stub.erro = "falha simulada"; __stub.chamadas = 0;
+t("S19 falha na chamada do pesquisador da IA não derruba nada: devolve null", (await consultarConhecimentoIA({ disciplina: "Filosofia", tema: "x" }, [], [])) === null);
+__stub.erro = null;
 
 console.log(`\n${ok} verificações passaram, ${bad} falharam.`);
 if (bad) Deno.exit(1);

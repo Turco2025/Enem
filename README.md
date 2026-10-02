@@ -125,6 +125,53 @@ Teste: `verify_fontes_app.js` — 19 verificações; as seções B e C bis prova
 quatro marcas ligadas ao mesmo tempo nenhuma conferência bloqueia, e que nenhuma delas tem sequer um
 `return true` no corpo. `verify_gabarito_coerente.js` H1 passou a exigir o contrário do que exigia.
 
+## Biblioteca → conhecimento da IA → autoral → internet (generate-question v74.31 / app v18.32, 01/10/2026)
+
+Decisões do professor (01/10) para **História, Geografia, Filosofia, Sociologia, Práticas Corporais e
+Língua Estrangeira** (`DISCIPLINAS_ORDEM_IA`). Literatura, Língua Portuguesa e Artes não mudam (v74.28).
+
+- **Tema sem autor nem obra pedidos:** a biblioteca primeiro (texto que casa com o tema, depois o banco
+  de fontes já validadas). Sem texto, o pesquisador roda **sem internet** (`consultarConhecimentoIA`,
+  etapa `pesquisa-ia`) e entrega dados reais e consolidados sobre o tema, ancorados numa fonte real
+  e conhecida; a questão sai com **texto-base autoral com dados reais**, sem citar ninguém
+  (`tipoUso` "proprio"). Sem validador — palavras do professor: "se o texto for autoral, com dados
+  reais, com o banco de dados da própria IA ou com o banco de dados da biblioteca, não tem
+  necessidade de validador".
+- **Tema com autor ou obra:** 1. a biblioteca; 2. o conhecimento da própria IA, em **paráfrase** (sem
+  aspas, sem citação literal) com a referência só com os dados certos — autor, título e ano da
+  publicação original, sem editora, página ou URL —, sem validador; 3. questão **semelhante autoral,
+  com dados reais**, sem expor o conteúdo da obra nem atribuir ideias ao autor, sem internet;
+  4. **uma única pesquisa** na internet (`RODADAS_PESQUISA_UNICA` = 1), com o validador de sempre.
+  Ordem trocada pelo professor (01/10): "a etapa 3 no lugar da etapa 4, e a etapa 4 no lugar da
+  etapa 3". Como o 3º passo sempre produz uma questão, o 4º só acontece quando a questão autoral não
+  passa no auditor e o app faz o 2º pedido (`TENTATIVA_DA_PESQUISA_UNICA` = 2); sem fonte aprovada
+  nela, volta a questão autoral. No 3º pedido não se pesquisa de novo. Se a chamada à IA falhar, não
+  se pesquisa na internet: o app repete o pedido.
+- Quem decide se o tema pede autor ou obra é o próprio pesquisador sem internet: nome de pessoa que é
+  assunto histórico ("Era Vargas", "governo FHC") não é pedido de autor.
+- **Língua Estrangeira entra na biblioteca** (107 textos, todos em inglês, com os temas catalogados em
+  português — "redes sociais" casa, "social media" não). Tema que pede espanhol não a consulta.
+- **Rodízio da biblioteca** nessas seis disciplinas: texto usado nas últimas 3 horas não se repete
+  enquanto houver outro que case com o tema; esgotados, segue para o conhecimento da IA.
+- O **auditor continua conferindo toda questão** — nos modos da IA, sem internet, com o próprio
+  conhecimento (`buildBlocoAuditoriaIA`): todo dado factual tem de estar certo; na dúvida, reprova e a
+  questão é reelaborada. Em código (`garantirFontesReais`): texto autoral só como "proprio"; material
+  da IA nunca como citação ou adaptação; URL declarada sai da fonte (nenhuma busca a confirmaria).
+- O app (v18.32) diz no cartão de onde veio o material ("conhecimento da própria IA, sem pesquisa na
+  internet"), e não "fonte validada pelo agente validador".
+
+Custo medido nos registros de 30 dias dessas disciplinas: biblioteca US$ 0,10–0,13 por questão;
+internet US$ 0,20–0,25 por chamada aprovada, e US$ 0,20–0,28 perdidos por chamada reprovada (custo
+efetivo médio US$ 0,22 por questão entregue). Estimado para os modos da IA: chamada sem internet
+≈ US$ 0,01–0,02 + geração e auditoria ≈ US$ 0,08 → cerca de US$ 0,09–0,12 por questão.
+
+Testes: `tests/verify_ordem_ia_v7431.ts` (o fluxo com dublês, inclusive a pesquisa só no 2º pedido,
+Língua Estrangeira e o rodízio), `tests/verify_fontes_backend.ts` seção S (19: elaborador, auditor e conferência dos modos
+da IA), `tests/verify_ordem_ia_app.js` (6, no navegador) e o selftest `v7431_ordemIA`.
+`verify_validador_v7421.ts` esvazia `DISCIPLINAS_ORDEM_IA` para continuar provando a máquina de três
+rodadas; `verify_biblioteca_v7428.ts` (C9), `verify_fontes_backend.ts` (Q4) e o selftest
+`v7425_textosEnem` passaram a exigir Língua Estrangeira na biblioteca.
+
 ## Menos reescritas com texto da biblioteca (generate-question v74.30, 26/09/2026)
 
 Leva de Artes de 26/09 (já com a v74.29): 11 questões, **US$ 1,50** (US$ 0,137 por questão).

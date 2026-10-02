@@ -961,6 +961,7 @@ ${com.map((a: string, i: number) => `  ${i + 1}. ${a}`).join("\n") || "  (nenhum
 }
 function buildDossieFonte(d: any): string {
   if (!d || d.encontrou !== true || !String(d.trecho || "").trim()) return "";
+  if (d.origemIA) return buildBlocoConhecimentoIA(d);   // v74.31 — material do conhecimento da IA, sem internet
   const quem = String(d.autor || "").trim() || String(d.instituicao || "").trim();
   return `📚 MATERIAL JÁ PESQUISADO E VERIFICADO — escreva a questão EM CIMA DELE.
 Uma etapa anterior pesquisou o assunto e trouxe esta fonte real. Use ESTA fonte no texto-base; não troque por outra de memória e não acrescente a ela nada que não esteja abaixo.
@@ -1468,6 +1469,7 @@ const DISCIPLINAS_TEXTOS_ENEM: Record<string, string[]> = {
   "Geografia": ["Geografia"],
   "Filosofia": ["Filosofia"],
   "Sociologia": ["Sociologia"],
+  "Língua Estrangeira (Inglês/Espanhol)": ["Língua Estrangeira"],   // v74.31 — só textos em inglês (ver pedeEspanhol)
 };
 const TEXTOS_ENEM_LITERARIOS = ["literario", "poema", "cancao"];
 const TEXTOS_ENEM_TEMAS_GENERICOS = new Set(["literatura", "lingua portuguesa", "historia", "geografia", "filosofia", "sociologia", "artes", "arte", "educacao fisica", "praticas corporais", "interpretacao de texto", "interpretacao textual", "leitura", "texto", "poesia", "poema", "brasil", "sociedade", "cultura", "politica"]);
@@ -1543,7 +1545,7 @@ async function linhasDaBiblioteca(discs: string[]): Promise<any[]> {
   const todas: any[] = [];
   for (let de = 0; de < BIBLIOTECA_LIMITE_LINHAS; de += BIBLIOTECA_PAGINA) {
     const { data, error } = await supabase.from("textos_enem")
-      .select("id, chave, temas, autor, instituicao, obra, referencia, usos")
+      .select("id, chave, temas, autor, instituicao, obra, referencia, usos, updated_at")   // v74.31: updated_at para o rodízio
       .in("disciplina", discs).eq("aproveitavel", true).order("id", { ascending: true }).range(de, de + BIBLIOTECA_PAGINA - 1);
     if (error) { if (!todas.length) throw error; break; }
     if (!Array.isArray(data) || !data.length) break;
@@ -1662,21 +1664,29 @@ async function consultarTextosEnem(o: { disciplina: string; tema: string; recort
     const tema = String(o.tema || "").trim();
     const discs = DISCIPLINAS_TEXTOS_ENEM[o.disciplina];
     if (!tema || !discs) return null;
+    /* v74.31 — a biblioteca de Língua Estrangeira só tem textos em inglês. */
+    if (o.disciplina === "Língua Estrangeira (Inglês/Espanhol)" && pedeEspanhol(`${tema} ${o.recorte || ""}`)) return null;
     const data = await linhasDaBiblioteca(discs);   // v74.28 — era .limit(500): com os textos do professor a biblioteca passa disso
     if (!data.length) return null;
     const doRecorte = new Set(tokensDeFonte(o.recorte || "").map(radicalEnem));
     const cands: { row: any; p: number; bonus: number }[] = [];
+    const rodizio = usaOrdemIA(o.disciplina), agora = Date.now();   // v74.31
+    let usadosHaPouco = 0;
     for (const row of data) {
       if (!String(row.referencia || "").trim() || (!String(row.autor || "").trim() && !String(row.instituicao || "").trim())) continue;
       if (evitar.includes(chaveEvitarEnem(row.chave))) continue;
       if (fonteEstaNaListaDeEvitar({ url: "", obra: row.obra }, evitar)) continue;
       const p = pontuaTextoEnem(tema, row);
       if (p < TEXTOS_ENEM_MINIMO_PONTOS) continue;
+      if (rodizio && usadoHaPouco(row, agora)) { usadosHaPouco++; continue; }   // v74.31 — rodízio
       const doTexto = new Set(tokensDeFonte(`${(row.temas || []).join(" ")} ${row.obra || ""}`).map(radicalEnem));
       const bonus = doRecorte.size ? Math.min(3, [...doRecorte].filter((w) => doTexto.has(w)).length) : 0;
       cands.push({ row, p, bonus });
     }
-    if (!cands.length) return null;
+    if (!cands.length) {
+      if (usadosHaPouco) console.log(`[textos-enem] ${usadosHaPouco} texto(s) da biblioteca casam com o tema, todos usados nas últimas 3 h — rodízio: segue para o próximo passo`);
+      return null;
+    }
     const melhor = Math.max(...cands.map((c) => c.p));
     const faixa = cands.filter((c) => c.p >= melhor - TEXTOS_ENEM_FAIXA_EMPATE);
     for (let i = faixa.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [faixa[i], faixa[j]] = [faixa[j], faixa[i]]; }
@@ -1717,6 +1727,211 @@ ${e.aproximado ? `
 · A imagem, se o recurso pedir, é NOVA — nada de reproduzir a da prova.
 `;
 }
+/* ═══════════ v74.31 — BIBLIOTECA → CONHECIMENTO DA IA → INTERNET (01/10/2026) ═══════════
+   Decisões do professor (01/10) para História, Geografia, Filosofia, Sociologia,
+   Práticas Corporais e Língua Estrangeira:
+   · Tema SEM autor nem obra pedidos: a biblioteca primeiro; sem texto na biblioteca, o
+     pesquisador roda SEM internet e a questão sai com TEXTO-BASE AUTORAL COM DADOS
+     REAIS, sem citar ninguém. Sem validador: "se o texto for autoral, com dados reais,
+     com o banco de dados da própria IA ou com o banco de dados da biblioteca, não tem
+     necessidade de validador".
+   · Tema COM autor ou obra: 1. a biblioteca; 2. o conhecimento da própria IA, em
+     PARÁFRASE com a referência só com os dados certos (autor, título, ano da publicação
+     original), sem citação literal e sem validador; 3. questão semelhante AUTORAL, com
+     dados reais, sem expor a obra nem atribuir ideias ao autor; 4. UMA única pesquisa na
+     internet, com o validador de sempre — o último passo: como o 3º sempre produz uma
+     questão, a pesquisa só acontece quando a questão autoral não passa no auditor e o
+     app faz o 2º pedido (TENTATIVA_DA_PESQUISA_UNICA). Sem fonte aprovada nela, volta a
+     questão autoral. (Ordem trocada pelo professor em 01/10: "a etapa 3 no lugar da
+     etapa 4, e a etapa 4 no lugar da etapa 3".)
+   O banco de fontes já validadas continua no 1º passo, junto com a biblioteca. O auditor
+   continua conferindo toda questão — nos modos da IA, sem internet. */
+const DISCIPLINAS_ORDEM_IA = ["História", "Geografia", "Filosofia", "Sociologia", "Práticas Corporais", "Língua Estrangeira (Inglês/Espanhol)"];
+const RODADAS_PESQUISA_UNICA = 1;   // "tentar encontrar na internet como uma única pesquisa"
+const TENTATIVA_DA_PESQUISA_UNICA = 2;   // o 4º passo só no 2º pedido do app (a questão autoral do 1º não passou no auditor)
+/* O autor ou a obra como o professor pediu (para o elaborador, o auditor e o log). */
+function pedidoDoProfessor(ia: any, tema: string): string {
+  return [ia && ia.autorPedido, ia && ia.obraPedida].map((x: any) => String(x || "").trim()).filter(Boolean).join(" — ") || String(tema || "").trim();
+}
+function usaOrdemIA(disciplina: string): boolean {
+  return DISCIPLINAS_ORDEM_IA.includes(String(disciplina || "").trim());
+}
+/* Rodízio: um texto da biblioteca usado nas últimas 3 horas não volta enquanto houver
+   outro que case com o tema (uma leva de 14 questões de "Cruzadas na Terra Santa" tinha
+   um único texto na biblioteca). Esgotados, segue para o conhecimento da IA. */
+const RODIZIO_BIBLIOTECA_MS = 3 * 60 * 60 * 1000;
+function usadoHaPouco(row: any, agora: number): boolean {
+  const t = Date.parse(String((row && row.updated_at) || ""));
+  return (Number(row && row.usos) || 0) > 0 && Number.isFinite(t) && agora - t >= 0 && agora - t < RODIZIO_BIBLIOTECA_MS;
+}
+/* A biblioteca de Língua Estrangeira só tem textos em inglês: pedido de espanhol não a consulta. */
+function pedeEspanhol(s: string): boolean {
+  return /espanhol|español|espanol|hisp[aâ]n|castelhan/i.test(String(s || ""));
+}
+
+const FERRAMENTA_DOSSIE_IA = {
+  name: "entregar_material_ia",
+  description: "Entrega, SEM pesquisa na internet, o material real que você conhece com segurança para a questão.",
+  input_schema: {
+    type: "object",
+    properties: {
+      pedeAutorOuObra: { type: "boolean", description: "O professor pediu um AUTOR (pessoa cuja produção — texto, ideia, obra — deve ser cobrada) ou uma OBRA específica? Nome de pessoa que é ASSUNTO histórico (\"Era Vargas\", \"governo Fernando Henrique Cardoso\", \"Bandeirantes\") NÃO é pedido de autor." },
+      autorPedido: { type: "string", description: "O autor pedido, como o professor escreveu. Vazio se não houver." },
+      obraPedida: { type: "string", description: "A obra pedida, como o professor escreveu. Vazio se não houver." },
+      conheceComSeguranca: { type: "boolean", description: "Só quando pedeAutorOuObra = true: você conhece com SEGURANÇA uma obra real desse autor (ou a obra pedida), a autoria, o ano da publicação original e o conteúdo, a ponto de parafraseá-la fielmente? Qualquer dúvida → false. Sem autor/obra pedidos → false." },
+      autor: { type: "string", description: "Autor da obra, quando conheceComSeguranca = true. Vazio nos demais casos." },
+      obra: { type: "string", description: "Título real da obra (o título consagrado em português, quando houver), quando conheceComSeguranca = true. Vazio nos demais casos." },
+      anoOriginal: { type: "string", description: "Ano da publicação ORIGINAL, só se tiver certeza (ex.: 1963; c. 375 a.C.). Vazio se não tiver." },
+      referencia: { type: "string", description: "Referência SÓ com os dados certos: SOBRENOME, Nome. Título. Ano da publicação original. SEM editora, cidade, edição, página, tradutor ou URL. Vazio se conheceComSeguranca = false." },
+      parafrase: { type: "string", description: "Exposição fiel, com as SUAS palavras e SEM ASPAS, de uma ideia central da obra (300 a 700 caracteres). Nenhuma frase apresentada como sendo do autor. Vazio se conheceComSeguranca = false." },
+      fatos: { type: "array", items: { type: "string" }, description: "De 3 a 8 dados REAIS e consolidados sobre o tema (ou, se o autor ou a obra lhe forem pouco conhecidos, sobre o contexto do tema): acontecimentos, datas, leis, documentos, dados oficiais. Só o que você sabe com certeza; número ou data duvidosos ficam de fora." },
+      fonteDosFatos: { type: "string", description: "A fonte real e conhecida de onde vêm os fatos — documento histórico, lei, obra clássica, dado oficial. Ex.: \"Constituição de 1937\"; \"Censo Demográfico 2022 (IBGE)\"." },
+      idioma: { type: "string", enum: ["portugues", "ingles", "espanhol"], description: "Língua Estrangeira: o idioma do texto-base — espanhol se o tema pedir espanhol; senão, inglês ou espanhol conforme o tema. Demais disciplinas: portugues." },
+    },
+    required: ["pedeAutorOuObra", "autorPedido", "obraPedida", "conheceComSeguranca", "autor", "obra", "anoOriginal", "referencia", "parafrase", "fatos", "fonteDosFatos", "idioma"],
+  },
+};
+
+const SISTEMA_PESQUISA_IA = `Você é o PESQUISADOR, nesta etapa SEM ACESSO À INTERNET (decisão do professor, 01/10/2026, para História, Geografia, Filosofia, Sociologia, Práticas Corporais e Língua Estrangeira). NÃO escreva questão nenhuma: outro agente a escreverá em cima do material que você entregar.
+
+REGRAS ABSOLUTAS
+· É PROIBIDO INVENTAR autores, obras, títulos, datas, números, leis, documentos, citações ou referências. Só entra o que você sabe com SEGURANÇA. Na dúvida, deixe de fora.
+· Nenhuma frase entre aspas atribuída a alguém: citação literal de memória não é aceita. Tudo o que você entregar é paráfrase ou fato.
+
+O QUE FAZER
+1. Decida se o professor pediu um AUTOR ou uma OBRA específica (o nome aparece no tema ou no recorte). Nome de pessoa que é ASSUNTO histórico ("Era Vargas", "governo Fernando Henrique Cardoso", "Bandeirantes") não é pedido de autor.
+2. Em TODOS os casos, entregue "fatos": dados reais e consolidados sobre o tema, ancorados numa fonte real e conhecida — documento histórico, lei, obra clássica, dado oficial —, que você nomeia em "fonteDosFatos". Eles servem a um texto-base AUTORAL: o elaborador escreve com as próprias palavras, sem citar ninguém.
+3. Se o professor pediu autor ou obra: escolha uma obra REAL desse autor (ou a obra pedida). Se conhece com segurança a obra, a autoria, o ano da publicação original e o conteúdo, marque "conheceComSeguranca": true e entregue a referência só com os dados certos e a "parafrase" de uma ideia central da obra. Com qualquer dúvida, marque false: o sistema fará uma única pesquisa na internet.
+4. Não use as fontes ou obras listadas como "a evitar".`;
+
+function buildPesquisaIAPrompt(o: { disciplina: string; tema: string; eixoTematico?: string; recorte?: string }, evitar: string[]): string {
+  return `Disciplina: ${o.disciplina}
+Tema pedido pelo professor: ${String(o.tema || "").trim() || "(em branco)"}${o.recorte ? `\nRecorte reservado para esta questão: ${o.recorte}` : ""}${!String(o.tema || "").trim() && o.eixoTematico ? `\nEixo temático reservado: ${o.eixoTematico}` : ""}${evitar.length ? `\nA evitar (já usadas ou reprovadas): ${evitar.slice(0, MAX_FONTES_EVITAR).join(" · ")}` : ""}
+
+Entregue o material pela ferramenta "entregar_material_ia".`;
+}
+function listaFatosIA(v: unknown): string[] {
+  return (Array.isArray(v) ? v : []).map((x) => String(x || "").replace(/\s+/g, " ").trim()).filter((x) => x.length >= 15).slice(0, 8).map((x) => x.slice(0, 300));
+}
+function validacaoIA(estado: string, motivo: string): any {
+  return {
+    estado, etapa: "conhecimento_ia", libera: true, motivo: String(motivo || "").slice(0, 300), rodada: 0, modo: "conhecimento_ia",
+    fonteAberta: false, nivel: "", suporte: "", confianca: "", natureza: "", risco: "",
+    afirmacoesComSuporte: [], afirmacoesSemSuporte: [], correcoes: [], observacoes: "", divergencia: "",
+    comoVerificou: "conhecimento da própria IA, sem internet e sem validador (decisão do professor, 01/10/2026)",
+  };
+}
+/* Texto-base autoral com dados reais. "porque" vai para o elaborador, o log e o app. */
+function dossieAutoralIA(ia: any, porque: string, autorNaoConfirmado = "", pesquisouNaInternet = false): any {
+  const fatos = listaFatosIA(ia && ia.fatos);
+  return {
+    encontrou: true, autor: "", instituicao: "", obra: "", ano: "", referencia: "", url: "",
+    trecho: fatos.length ? fatos.map((f, i) => `${i + 1}. ${f}`).join("\n") : "(nenhum dado listado — use só dados consolidados que você conhece com certeza)",
+    trechoEhLiteral: false, restritoAoConfirmado: false, abriuAFonte: false,
+    comoVerificou: "texto autoral com dados reais (conhecimento da própria IA, sem internet)",
+    origemIA: "autoral", fonteDosFatos: String((ia && ia.fonteDosFatos) || "").trim().slice(0, 200),
+    idioma: String((ia && ia.idioma) || ""), autorNaoConfirmado: String(autorNaoConfirmado || "").trim().slice(0, 160),
+    pesquisouNaInternet: pesquisouNaInternet === true,
+    rodadas: 0, fontesTentadas: [],
+    validacao: validacaoIA("ia_autoral", porque),
+  };
+}
+function dossieParafraseIA(ia: any): any {
+  return {
+    encontrou: true, autor: String(ia.autor || "").trim().slice(0, 160), instituicao: "", obra: String(ia.obra || "").trim().slice(0, 200),
+    ano: String(ia.anoOriginal || "").trim().slice(0, 30), referencia: String(ia.referencia || "").trim().slice(0, 300), url: "",
+    trecho: String(ia.parafrase || "").trim().slice(0, 1200), trechoEhLiteral: false, restritoAoConfirmado: false, abriuAFonte: false,
+    comoVerificou: "conhecimento da própria IA, sem internet — paráfrase sem citação literal",
+    origemIA: "parafrase", fatosContexto: listaFatosIA(ia.fatos), idioma: String(ia.idioma || ""),
+    rodadas: 0, fontesTentadas: [],
+    validacao: validacaoIA("ia_parafrase", "paráfrase do conhecimento da própria IA, com referência só com os dados certos"),
+  };
+}
+/* "" = a paráfrase pode ser usada; senão, o motivo de seguir para a pesquisa única. */
+function parafraseIAUtilizavel(ia: any, evitar: string[]): string {
+  if (!ia || ia.pedeAutorOuObra !== true) return "o tema não pede autor nem obra";
+  if (ia.conheceComSeguranca !== true) return "a IA não conhece a obra com segurança";
+  const autor = String(ia.autor || "").trim(), obra = String(ia.obra || "").trim(), ref = String(ia.referencia || "").trim(), par = String(ia.parafrase || "").trim();
+  if (!autor || !obra || !ref) return "faltou autor, obra ou referência";
+  if (par.length < 150) return "paráfrase curta demais";
+  if (/https?:\/\/|www\.|dispon[ií]vel em/i.test(ref)) return "referência com endereço eletrônico, que não se confere sem internet";
+  const tokObra = tokensDeFonte(obra);
+  if (tokObra.length && !tokObra.some((w) => normalizaParaComparar(ref).includes(w))) return "a referência não traz o título da obra";
+  if (fonteEstaNaListaDeEvitar({ url: "", obra }, evitar)) return "obra na lista a evitar";
+  return "";
+}
+async function consultarConhecimentoIA(o: { disciplina: string; tema: string; eixoTematico?: string; recorte?: string }, evitar: string[], usos: any[]): Promise<any | null> {
+  try {
+    const sistema: SistemaPrompt = [{ type: "text", text: SISTEMA_PESQUISA_IA, cache_control: cacheControlAtual() }];
+    const ia = await callClaudeForJSON(sistema, buildPesquisaIAPrompt(o, evitar), false, usos, FERRAMENTA_DOSSIE_IA, undefined, "pesquisa-ia", undefined, 45_000);
+    if (!ia || typeof ia !== "object") return null;
+    console.log(`[ia] pede autor/obra: ${ia.pedeAutorOuObra === true}${ia.pedeAutorOuObra === true ? ` (${String(ia.autorPedido || ia.obraPedida || "").slice(0, 60)}) · conhece com segurança: ${ia.conheceComSeguranca === true}` : ""} · ${listaFatosIA(ia.fatos).length} fato(s) · base: ${String(ia.fonteDosFatos || "").slice(0, 80)}`);
+    return ia;
+  } catch (e) {
+    console.warn(`[ia] consulta ao conhecimento da IA falhou: ${String((e as any)?.message || e).slice(0, 160)}`);
+    return null;
+  }
+}
+
+/* O que o ELABORADOR recebe nos modos da IA, no lugar do dossiê de pesquisa. */
+function buildBlocoConhecimentoIA(d: any): string {
+  if (!d || !d.origemIA) return "";
+  const idioma = d.idioma === "ingles" ? "inglês" : d.idioma === "espanhol" ? "espanhol" : "";
+  if (d.origemIA === "parafrase") {
+    const ctx: string[] = Array.isArray(d.fatosContexto) ? d.fatosContexto : [];
+    return `📘 MATERIAL DO CONHECIMENTO DA PRÓPRIA IA — PARÁFRASE COM REFERÊNCIA (decisão do professor, 01/10/2026). A biblioteca não tinha texto para o autor/obra pedido; o pesquisador, sem internet, conhece com segurança esta obra real:
+· autor: ${String(d.autor || "")}
+· obra: ${String(d.obra || "")}
+· ano da publicação original: ${String(d.ano || "") || "(não informado — NÃO escreva ano)"}
+· referência, só com os dados certos: ${String(d.referencia || "")}
+· IDEIA CENTRAL DA OBRA, parafraseada pelo pesquisador:
+"""
+${String(d.trecho || "")}
+"""${ctx.length ? `
+· contexto (dados reais): ${ctx.map((f, i) => `${i + 1}. ${f}`).join(" ")}` : ""}
+REGRAS DESTA MODALIDADE, sem exceção (o professor decidiu que, aqui, o conhecimento seguro da IA é a fonte, sem pesquisa na internet):
+· O texto-base é PARÁFRASE: com as suas palavras, SEM ASPAS e sem apresentar nenhuma frase como sendo do autor. Exponha fielmente a ideia acima (pode organizar e contextualizar com os dados listados)${idioma ? `, escrevendo em ${idioma}` : ""}; na linha de baixo, a referência EXATAMENTE como acima.
+· Campo "fonte": "tipoUso": "parafrase"; autor, obra, ano e referência os de cima, sem acrescentar editora, cidade, edição, página, tradutor ou URL; "urlVerificacao": ""; "conferidoNaFonte": false; "comoVerificou": "conhecimento da própria IA, sem internet — paráfrase".
+· PROIBIDO: aspas atribuídas ao autor, citação literal, e afirmar sobre a obra ou o autor o que não está acima. O auditor confere e reprova.
+· Se o material não der uma boa questão, escreva texto autoral com dados reais ("tipoUso": "proprio", campos de autoria vazios), sem atribuir nada ao autor.
+
+`;
+  }
+  return `✍️ TEXTO-BASE AUTORAL COM DADOS REAIS (decisão do professor, 01/10/2026). ${d.autorNaoConfirmado ? `O autor/obra pedido (${d.autorNaoConfirmado}) não está na biblioteca${d.pesquisouNaInternet ? ", a IA não o conhece com segurança e a pesquisa única na internet não confirmou uma fonte" : " e a IA não o conhece com segurança"}: a questão é SEMELHANTE, sobre o mesmo tema, em texto autoral — NÃO exponha o conteúdo da obra nem atribua ideias ao autor.` : "Não há texto na biblioteca para este tema e, sem autor nem obra pedidos, nesta disciplina a questão não pesquisa na internet."} O texto-base é SEU, escrito por você, sem citar ninguém, e construído com dados REAIS.
+· DADOS REAIS que você pode usar${d.fonteDosFatos ? ` (base: ${d.fonteDosFatos})` : ""}:
+${String(d.trecho || "")}
+REGRAS DESTA MODALIDADE, sem exceção:
+· Campo "fonte": "tipoUso": "proprio"; autor, instituicao, obra, ano, referencia e urlVerificacao VAZIOS; "conferidoNaFonte": false; "comoVerificou": "texto autoral com dados reais (conhecimento da própria IA)".
+· Sem aspas, sem "segundo…" ou "de acordo com…", sem atribuir frase, opinião ou trecho a pessoa, obra ou instituição. Acontecimentos, datas, leis, documentos e dados oficiais REAIS podem aparecer como informação — prefira os listados; outro dado, só se for consolidado e você tiver certeza; número, data ou nome duvidoso fica de fora. Nada inventado.
+· Use um formato de situação-problema do Guia do Inep: texto expositivo, relato, notícia ou diálogo de situação hipotética, descrição de cenário${idioma ? ` — escrito em ${idioma}; comando e alternativas em português` : ""}.
+· O auditor confere cada dado factual da questão inteira e reprova o que estiver errado ou duvidoso.
+
+`;
+}
+
+/* O que o AUDITOR recebe nos modos da IA, no lugar do bloco do dossiê de pesquisa. */
+function buildBlocoAuditoriaIA(d: any): string {
+  if (!d || !d.origemIA) return "";
+  const comum = `
+
+ORIGEM DO MATERIAL: CONHECIMENTO DA PRÓPRIA IA, SEM INTERNET (decisão do professor, 01/10/2026, para História, Geografia, Filosofia, Sociologia, Práticas Corporais e Língua Estrangeira). Não houve pesquisa na web nem validador, e a busca está desligada também aqui: nesta modalidade o professor decidiu que o conhecimento seguro da IA é a fonte e que o SEU julgamento, com o seu conhecimento, é a verificação. Seja rigoroso: na dúvida, reprove o item e diga qual dado.`;
+  if (d.origemIA === "parafrase") return `${comum}
+A questão deve ser PARÁFRASE desta obra, com a referência só com os dados certos — sem editora, página ou URL, o que NÃO é falha nesta modalidade:
+· autor: ${String(d.autor || "")} · obra: ${String(d.obra || "")} · ano original: ${String(d.ano || "") || "(não informado)"}
+· referência: ${String(d.referencia || "")}
+· ideia central (paráfrase do pesquisador): """${String(d.trecho || "").slice(0, 1200)}"""
+COMO JULGAR: "autorExiste", "obraExiste", "obraPertenceAoAutor", "fonteExiste" e "referenciaLocalizavelEConfirmada" = true só se a obra existe, é desse autor e o ano está certo, pelo que você sabe com segurança. "trechoConferidoNaFonte" e "parafraseFielAFonte" = true só se a paráfrase é fiel ao que a obra de fato sustenta. Reprove: aspas ou citação literal atribuídas ao autor; obra inexistente ou de outro autor; ano errado; ideia atribuída à obra que ela não sustenta; qualquer dado factual errado na questão.`;
+  return `${comum}
+A questão é TEXTO AUTORAL COM DADOS REAIS ("tipoUso" "proprio"). Os itens de autoria vêm true. Confira com rigor:
+1. Nada de aspas, citação ou frase/ideia atribuída como citação a pessoa, obra ou instituição.
+2. TODO dado factual (data, número, lei, documento, acontecimento, nome) do texto-base, do comando, das alternativas, das legendas e da resolução está correto. Dado errado ou duvidoso → "nadaFoiInventado" = false e "comprovavelPelaFonte" = false, nomeando o dado no motivo.
+3. Mencionar acontecimentos, leis, documentos e dados oficiais reais como informação NÃO é atribuição indevida.${d.autorNaoConfirmado ? `
+4. O autor/obra pedido (${String(d.autorNaoConfirmado)}) NÃO foi confirmado: a questão não pode expor o conteúdo dessa obra nem atribuir ideias a esse autor.` : ""}
+DADOS que o pesquisador preparou:
+${String(d.trecho || "").slice(0, 1500)}`;
+}
+/* ═══════════ FIM DO v74.31 ═══════════ */
+
 /* ═══════════ FIM DA CAMADA ZERO (TEXTOS DO ENEM) ═══════════ */
 
 /* Uma chamada curta, com busca, ANTES da geração. Nunca derruba a geração. */
@@ -1736,7 +1951,7 @@ ${e.aproximado ? `
    um objeto com encontrou:false e bloqueado:true — e o handler NÃO gera a
    questão (regra do professor: SEM FONTE VERIFICADA = SEM QUESTÃO). */
 async function pesquisarFonteReal(
-  o: { area: string; disciplina: string; tema: string; eixoTematico?: string; recorte?: string; fontesEvitar?: string[]; usarBanco?: boolean; usarTextosEnem?: boolean },
+  o: { area: string; disciplina: string; tema: string; eixoTematico?: string; recorte?: string; fontesEvitar?: string[]; usarBanco?: boolean; usarTextosEnem?: boolean; tentativaApp?: number },
   usos: any[], buscas: { url: string; title: string }[],
   restanteMs: () => number = () => LIMITE_FUNCAO_MS,
 ): Promise<any | null> {
@@ -1780,12 +1995,47 @@ async function pesquisarFonteReal(
     console.warn(`[biblioteca] ${o.disciplina}: nenhum texto disponível na biblioteca — sem pesquisa na internet nesta disciplina`);
     return { encontrou: false, bloqueado: true, semPesquisaWeb: true, motivo: `a biblioteca de textos de ${o.disciplina} não devolveu texto (nesta disciplina não se pesquisa na internet)`, validacao: null, rodadas: 0, fontesTentadas: tentadas };
   }
+  /* v74.31 — BIBLIOTECA → CONHECIMENTO DA IA → AUTORAL → INTERNET (ver DISCIPLINAS_ORDEM_IA).
+     A biblioteca e o banco de fontes já foram consultados acima. Sem autor nem obra pedidos:
+     texto autoral com dados reais, sem internet. Com autor ou obra: paráfrase do que a IA
+     conhece com segurança; senão, questão semelhante autoral, com dados reais; e só no 2º
+     pedido do app (a autoral não passou no auditor), UMA pesquisa na internet. */
+  const ordemIA = usaOrdemIA(o.disciplina);
+  const tentativaApp = Math.max(1, Number(o.tentativaApp) || 1);
+  let ia: any = null;
+  if (ordemIA) {
+    ia = await consultarConhecimentoIA(o, evitar, usos);
+    if (ia && ia.pedeAutorOuObra !== true) {
+      console.log(`[ia] ${o.disciplina}: tema sem autor nem obra pedidos e sem texto na biblioteca — texto-base autoral com dados reais, sem internet`);
+      return dossieAutoralIA(ia, "tema sem autor nem obra pedidos e sem texto na biblioteca");
+    }
+    if (ia) {
+      const porQue = parafraseIAUtilizavel(ia, evitar);
+      if (!porQue) {
+        console.log(`[ia] ${o.disciplina}: paráfrase do conhecimento da IA — ${String(ia.referencia || "").slice(0, 120)}`);
+        return dossieParafraseIA(ia);
+      }
+      /* 3º passo: questão semelhante AUTORAL, com dados reais, sem internet. */
+      if (tentativaApp !== TENTATIVA_DA_PESQUISA_UNICA) {
+        console.log(`[ia] ${o.disciplina}: autor/obra pedido sem paráfrase segura (${porQue}) — questão semelhante autoral, com dados reais, sem internet (pedido ${tentativaApp} do app)`);
+        return dossieAutoralIA(ia, `autor/obra pedido fora da biblioteca e sem paráfrase segura da IA (${porQue}) — questão semelhante autoral, com dados reais`, pedidoDoProfessor(ia, o.tema));
+      }
+      /* 4º passo: a questão autoral do 1º pedido não passou no auditor — UMA pesquisa na internet. */
+      console.warn(`[ia] ${o.disciplina}: 2º pedido do app (a questão autoral não passou no auditor) — uma única pesquisa na internet`);
+    } else {
+      /* Sem a resposta da IA não se sabe se o tema pede autor: não se pesquisa na internet;
+         o app repete o pedido. */
+      console.warn(`[ia] ${o.disciplina}: sem resposta do conhecimento da IA — o app repete o pedido`);
+      return { encontrou: false, bloqueado: true, motivo: "o conhecimento da IA não respondeu nesta chamada", validacao: null, rodadas: 0, fontesTentadas: tentadas };
+    }
+  }
   const sistema: SistemaPrompt = [{ type: "text", text: SISTEMA_PESQUISA_FONTE, cache_control: cacheControlAtual() }];
   const exigeAcervo = temAcervoPrioritario(o.disciplina);
   let motivoAnterior = "";
   let ultimaValidacao: any = null;
   let rodadas = 0;
-  for (let tentativa = 1; tentativa <= RODADAS_VALIDACAO; tentativa++) {
+  const rodadasMax = ordemIA ? RODADAS_PESQUISA_UNICA : RODADAS_VALIDACAO;   // v74.31
+  for (let tentativa = 1; tentativa <= rodadasMax; tentativa++) {
     if (tentativa > 1 && restanteMs() < MS_MINIMO_PARA_SEGUNDA_RODADA) {
       console.warn(`[pesquisa] sem tempo para a rodada ${tentativa} (restavam ${Math.round(restanteMs() / 1000)} s)`);
       motivoAnterior = motivoAnterior || "sem tempo para uma nova rodada de pesquisa";
@@ -1889,6 +2139,15 @@ async function pesquisarFonteReal(
     console.warn(`[validador] rodada ${tentativa} REPROVADA: ${lib.motivo}`);
   }
   console.warn(`[pesquisa] nenhuma fonte aprovada pelo validador em ${rodadas} rodada(s) nesta chamada`);
+  /* v74.31 — a pesquisa única não confirmou fonte: volta a questão semelhante autoral, com dados reais. */
+  if (ordemIA && ia) {
+    const pedido = pedidoDoProfessor(ia, o.tema);
+    console.warn(`[ia] ${o.disciplina}: "${pedido.slice(0, 80)}" não confirmado na pesquisa única — questão semelhante autoral, com dados reais`);
+    const d = dossieAutoralIA(ia, `autor/obra pedido não confirmado na pesquisa única na internet (${String(motivoAnterior || "nenhuma fonte aprovada").slice(0, 160)})`, pedido, true);
+    d.rodadas = rodadas;
+    d.fontesTentadas = tentadas;
+    return d;
+  }
   return { encontrou: false, bloqueado: true, motivo: motivoAnterior || "nenhuma fonte real foi localizada e validada", validacao: ultimaValidacao, rodadas, fontesTentadas: tentadas };
 }
 
@@ -4516,7 +4775,9 @@ function conferenciaDossie(d: any, dossie: any): { estado: string; motivo: strin
     const pesquisado = String(dossie.autor || "").trim() || String(dossie.instituicao || "").trim() || String(dossie.obra || "").trim();
     return {
       estado: "fonte_trocada",
-      motivo: `a pesquisa validou "${pesquisado.slice(0, 80)}" (${String(dossie.referencia || "").slice(0, 120)}) e a questão foi escrita sobre outra fonte, "${quem.slice(0, 80)}", que ninguém verificou — o item 3 da regra manda que a questão nasça da fonte pesquisada`,
+      motivo: dossie.origemIA   // v74.31 — material do conhecimento da IA, sem pesquisa
+        ? `o material do conhecimento da IA é "${pesquisado.slice(0, 80)}" (${String(dossie.referencia || "").slice(0, 120)}) e a questão foi escrita sobre outra fonte, "${quem.slice(0, 80)}" — a questão tem de nascer do material entregue`
+        : `a pesquisa validou "${pesquisado.slice(0, 80)}" (${String(dossie.referencia || "").slice(0, 120)}) e a questão foi escrita sobre outra fonte, "${quem.slice(0, 80)}", que ninguém verificou — o item 3 da regra manda que a questão nasça da fonte pesquisada`,
     };
   }
   return { estado: "ok", motivo: "" };
@@ -4638,7 +4899,8 @@ function buildAuditoriaFontesPrompt(data: any, dossie?: any): string {
      fato diz — que é exatamente o item decisivo (comprovavelPelaFonte), o que
      teria pego o mural do Kobra. */
   const temDossie = !!(dossie && dossie.encontrou === true && String(dossie.trecho || "").trim());
-  const blocoDossie = temDossie
+  const daIA = temDossie && !!dossie.origemIA;   // v74.31 — material do conhecimento da IA, sem internet
+  const blocoDossie = daIA ? buildBlocoAuditoriaIA(dossie) : temDossie
     ? `
 
 DOSSIÊ DA PESQUISA PRÉVIA — esta é a fonte real, já pesquisada e aberta, de onde a questão deveria ter nascido
@@ -4663,7 +4925,9 @@ COMO USAR O DOSSIÊ:
   return `VALIDAÇÃO OBRIGATÓRIA DE FONTES — audite a questão abaixo contra a regra do professor, que não admite exceções: é EXPRESSAMENTE PROIBIDO INVENTAR AUTORES, OBRAS, CITAÇÕES OU REFERÊNCIAS.
 
 Responda às DEZ perguntas da ficha de validação final do professor, uma a uma, e só então decida:
-O autor existe? · A obra existe? · A fonte existe? · A instituição citada existe? · O trecho pertence realmente à obra indicada? · Se houve paráfrase, ela está fiel à fonte? · A referência bibliográfica corresponde ao material consultado? · Alguma informação foi inventada? · Alguma frase foi atribuída indevidamente a um autor? · A questão poderia ser comprovada por meio da fonte indicada? ${temDossie
+O autor existe? · A obra existe? · A fonte existe? · A instituição citada existe? · O trecho pertence realmente à obra indicada? · Se houve paráfrase, ela está fiel à fonte? · A referência bibliográfica corresponde ao material consultado? · Alguma informação foi inventada? · Alguma frase foi atribuída indevidamente a um autor? · A questão poderia ser comprovada por meio da fonte indicada? ${daIA
+    ? "O MATERIAL DESTA QUESTÃO VEIO DO CONHECIMENTO DA PRÓPRIA IA, SEM INTERNET, por decisão do professor (bloco logo abaixo). A busca está desligada nesta chamada: confira a questão com o seu próprio conhecimento, com rigor."
+    : temDossie
     ? "VOCÊ TEM, LOGO ABAIXO, O DOSSIÊ DA PESQUISA QUE ORIGINOU ESTA QUESTÃO: a fonte já foi pesquisada, aberta e validada numa etapa anterior, com busca real na web. A sua tarefa agora é a etapa 7 da regra (REVISAR), não uma segunda pesquisa: confira a questão CONTRA esse dossiê. Por isso a busca está desligada nesta chamada — e não precisa dela: o que o dossiê não sustentar, você reprova."
     : "USE a ferramenta web_search sempre que precisar confirmar a existência de um autor, de uma obra, a autoria ou o conteúdo — a sua memória, isoladamente, NÃO comprova autenticidade (regra 4)."} Não afirme que verificou algo que não verificou.${temDossie ? "" : buildAcervosPrioritarios(String((data && data.disciplina) || ""))}${blocoDossie}
 
@@ -4774,6 +5038,31 @@ async function garantirFontesReais(
   diag.validacao = dossiePrevio && dossiePrevio.validacao ? dossiePrevio.validacao : null;
   if (!diag.aplicavel) { diag.estado = "nao_se_aplica"; return diag; }
 
+  /* v74.31 — MODOS DA IA (sem internet). Não há busca que confirme uma URL: endereço
+     declarado sai do campo "fonte". E o tipo de uso tem de ser o da modalidade: texto
+     autoral só como "proprio"; material parafraseado nunca como citação ou adaptação. */
+  if (dossiePrevio && dossiePrevio.origemIA && data && data.fonte && typeof data.fonte === "object") {
+    const urlIA = String(data.fonte.urlVerificacao || "").trim();
+    if (urlIA) {
+      diag.urlRemovida = urlIA.slice(0, 200);
+      data.fonte.urlVerificacao = "";
+      console.warn(`[fontes] modo da IA, sem internet: URL declarada removida da fonte (${urlIA.slice(0, 100)}) — nenhuma busca a confirmou`);
+    }
+    const usoIA = String(data.fonte.tipoUso || "").trim().toLowerCase();
+    const motivoIA = dossiePrevio.origemIA === "autoral" && usoIA !== "proprio"
+      ? 'texto-base autoral com dados reais: o campo "fonte" tem de ser "tipoUso": "proprio", com autor, instituição, obra e referência vazios — nada foi pesquisado nem citado'
+      : dossiePrevio.origemIA === "parafrase" && (usoIA === "citacao" || usoIA === "adaptacao")
+      ? 'material do conhecimento da IA: só PARÁFRASE (tipoUso "parafrase", sem aspas), nunca citação literal nem adaptação de trecho'
+      : "";
+    if (motivoIA) {
+      diag.estado = "reprovado";
+      diag.motivo = motivoIA;
+      diag.determinista = "tipo_de_uso_da_ia";
+      data.fonteNaoVerificada = { motivo: motivoIA, mensagem: MENSAGEM_FONTE_BLOQUEIO, etapa: "conferência do dossiê" };
+      console.error(`[fontes] BLOQUEADA: ${motivoIA}`);
+      return diag;
+    }
+  }
   let det = conferenciaFontes(data, buscas, dossiePrevio);   // v74.30: com o dossiê (texto da biblioteca)
   /* v74.29 — campo "fonte" mal preenchido, com dossiê validado: completa pelo
      dossiê e confere de novo (ver corrigeFonteDoDossie). Sem passar, volta como estava. */
@@ -5054,6 +5343,11 @@ function selfTestResponse() {
     montaFerramentas.toString(), ferramentasDaQuestao.toString(), corrigeFonteDoDossie.toString(), textoVisivelDaQuestao.toString(), normalizaParaComparar.toString(),   // v74.29
     nomesDoPedido.toString(), escolheTextoMaisProximo.toString(), buildDiversidadeTematica.toString(), conferenciaFontes.toString(),   // v74.30
     textoCanonicoDaBiblioteca.toString(), fixaTextoDaBiblioteca.toString(),   // v74.30 — texto da biblioteca intocável
+    usaOrdemIA.toString(), usadoHaPouco.toString(), pedeEspanhol.toString(), JSON.stringify([DISCIPLINAS_ORDEM_IA, RODADAS_PESQUISA_UNICA, RODIZIO_BIBLIOTECA_MS, TENTATIVA_DA_PESQUISA_UNICA]),   // v74.31
+    pedidoDoProfessor.toString(),
+    JSON.stringify(FERRAMENTA_DOSSIE_IA), SISTEMA_PESQUISA_IA, buildPesquisaIAPrompt.toString(), listaFatosIA.toString(), validacaoIA.toString(),
+    dossieAutoralIA.toString(), dossieParafraseIA.toString(), parafraseIAUtilizavel.toString(), consultarConhecimentoIA.toString(),
+    buildBlocoConhecimentoIA.toString(), buildBlocoAuditoriaIA.toString(), consultarTextosEnem.toString(),
     JSON.stringify([Object.fromEntries(Object.entries(MARCAS_IDIOMA).map(([k, v]) => [k, [...v]])), IDIOMA_MIN_MARCAS, ENEM_REAL_IDIOMA]),
     JSON.stringify([ABSOLUTOS_ALTERNATIVAS, ABSOLUTOS_EXIBICAO, [...PALAVRAS_VAZIAS_ECO], ECO_MIN_LETRAS, CORRETA_DOMINANTE_MINIMO, CORRETA_DOMINANTE_RAZAO, CORRETA_DOMINANTE_CARACTERES, CORRECOES_ALTERNATIVAS_MAX, MS_MINIMO_PARA_CORRIGIR_ALTERNATIVAS, ENEM_REAL_ALTERNATIVAS]),
     JSON.stringify([TEXTOS_ENEM_MINIMO_PONTOS, TEXTOS_ENEM_COBERTURA_MINIMA, TEXTOS_ENEM_FAIXA_EMPATE, DISCIPLINAS_TEXTOS_ENEM, TEXTOS_ENEM_LITERARIOS, [...TEXTOS_ENEM_TEMAS_GENERICOS], INEDITISMO_LIMITE, INEDITISMO_MIN_TOKENS_COMANDO, INEDITISMO_MIN_TOKENS_ALTERNATIVA]),
@@ -5658,6 +5952,36 @@ function selfTestResponse() {
             && DISCIPLINAS_SEM_PESQUISA_WEB.join() === "Literatura,Língua Portuguesa,Artes" && DISCIPLINAS_TEXTOS_ENEM["Literatura"][0] === "Literatura"
             && linhasDaBiblioteca.toString().includes(".range(de, de + BIBLIOTECA_PAGINA - 1)") && BIBLIOTECA_PAGINA === 1000;
         })(),
+        /* v74.31 — BIBLIOTECA → CONHECIMENTO DA IA → INTERNET (decisões do professor, 01/10/2026). */
+        v7431_ordemIA: (() => {
+          const ia: any = { pedeAutorOuObra: true, autorPedido: "Hannah Arendt", obraPedida: "", conheceComSeguranca: true, autor: "Hannah Arendt", obra: "Eichmann em Jerusalém", anoOriginal: "1963",
+            referencia: "ARENDT, Hannah. Eichmann em Jerusalém. 1963.", parafrase: "x".repeat(200), fatos: ["O julgamento de Adolf Eichmann ocorreu em Jerusalém em 1961."], fonteDosFatos: "f", idioma: "portugues" };
+          const par = dossieParafraseIA(ia), aut = dossieAutoralIA({ ...ia, pedeAutorOuObra: false }, "m"), fb = dossieAutoralIA(ia, "m", "Hannah Arendt");
+          const agora = Date.now();
+          return DISCIPLINAS_ORDEM_IA.length === 6 && usaOrdemIA("História") && usaOrdemIA("Geografia") && usaOrdemIA("Filosofia") && usaOrdemIA("Sociologia")
+            && usaOrdemIA("Práticas Corporais") && usaOrdemIA("Língua Estrangeira (Inglês/Espanhol)")
+            && !usaOrdemIA("Literatura") && !usaOrdemIA("Língua Portuguesa") && !usaOrdemIA("Artes") && !usaOrdemIA("Biologia")
+            && RODADAS_PESQUISA_UNICA === 1 && DISCIPLINAS_TEXTOS_ENEM["Língua Estrangeira (Inglês/Espanhol)"][0] === "Língua Estrangeira"
+            && pedeEspanhol("Cultura hispânica, texto em espanhol") && !pedeEspanhol("social media")
+            && usadoHaPouco({ usos: 1, updated_at: new Date(agora - 3_600_000).toISOString() }, agora) && !usadoHaPouco({ usos: 0, updated_at: new Date(agora).toISOString() }, agora)
+            && !usadoHaPouco({ usos: 2, updated_at: new Date(agora - 4 * 3_600_000).toISOString() }, agora)
+            && parafraseIAUtilizavel(ia, []) === "" && parafraseIAUtilizavel({ ...ia, conheceComSeguranca: false }, []) !== ""
+            && parafraseIAUtilizavel({ ...ia, referencia: "ARENDT, Hannah. Eichmann em Jerusalém. Disponível em: http://x.org" }, []) !== ""
+            && par.validacao.libera === true && par.validacao.estado === "ia_parafrase" && par.origemIA === "parafrase" && par.url === ""
+            && aut.validacao.libera === true && aut.validacao.estado === "ia_autoral" && aut.autor === "" && aut.referencia === "" && fb.autorNaoConfirmado === "Hannah Arendt"
+            && buildDossieFonte(par).includes("PARÁFRASE COM REFERÊNCIA") && buildDossieFonte(aut).includes("TEXTO-BASE AUTORAL COM DADOS REAIS")
+            && !buildDossieFonte(aut).includes("A BUSCA NA WEB ESTÁ DESLIGADA") && buildDossieFonte(fb).includes("NÃO exponha o conteúdo da obra")
+            && buildAuditoriaFontesPrompt({ fonte: {}, disciplina: "História" }, aut).includes("CONHECIMENTO DA PRÓPRIA IA, SEM INTERNET")
+            && !buildAuditoriaFontesPrompt({ fonte: {}, disciplina: "História" }, aut).includes("com busca real na web")
+            && buscaDaGeracao(aut, "humanas", "História") === false && buscaDaGeracao(par, "humanas", "Filosofia") === false
+            && pesquisarFonteReal.toString().indexOf("consultarConhecimentoIA(o, evitar, usos)") > pesquisarFonteReal.toString().indexOf("await consultarBancoFontes(o, evitar")
+            && pesquisarFonteReal.toString().indexOf("consultarConhecimentoIA(o, evitar, usos)") < pesquisarFonteReal.toString().indexOf("SISTEMA_PESQUISA_FONTE")
+            && pesquisarFonteReal.toString().includes("tentativa <= rodadasMax")
+            && TENTATIVA_DA_PESQUISA_UNICA === 2 && pesquisarFonteReal.toString().includes("if (tentativaApp !== TENTATIVA_DA_PESQUISA_UNICA)")
+            && pesquisarFonteReal.toString().indexOf("if (tentativaApp !== TENTATIVA_DA_PESQUISA_UNICA)") < pesquisarFonteReal.toString().indexOf("SISTEMA_PESQUISA_FONTE")
+            && buildDossieFonte(fb).includes("e a IA não o conhece com segurança:") && buildDossieFonte(dossieAutoralIA(ia, "m", "Hannah Arendt", true)).includes("a pesquisa única na internet não confirmou")
+            && garantirFontesReais.toString().includes('diag.determinista = "tipo_de_uso_da_ia"');
+        })(),
         v7429_custo: (() => {
           const q = ferramentaQuestaoPara("nenhum", true, "Literatura");
           const fam = ferramentasDaQuestao(q);
@@ -5745,7 +6069,7 @@ function selfTestResponse() {
             && pontuaTextoEnem("Durkheim", row(["sociologia classica"], "Émile Durkheim", "O suicídio")) >= 10
             && pontuaTextoEnem("literatura", row(["literatura", "machado de assis"], "Machado de Assis")) === 0
             && pontuaTextoEnem("Kant", row([], "", "")) === 0
-            && DISCIPLINAS_TEXTOS_ENEM["Práticas Corporais"][0] === "Educação Física" && !DISCIPLINAS_TEXTOS_ENEM["Língua Estrangeira (Inglês/Espanhol)"]
+            && DISCIPLINAS_TEXTOS_ENEM["Práticas Corporais"][0] === "Educação Física" && DISCIPLINAS_TEXTOS_ENEM["Língua Estrangeira (Inglês/Espanhol)"][0] === "Língua Estrangeira"   // v74.31
             && d.encontrou === true && d.validacao.libera === true && d.validacao.estado === "aprovado_enem" && d.url === "" && d.doEnem.literario === true
             && d.doEnem.gabaritoOriginal === "C" && d.validacao.afirmacoesComSuporte.length === 2
             && urlsDaReferencia(t.referencia)[0] === "http://www.dominiopublico.gov.br"
@@ -6264,7 +6588,7 @@ ATENÇÃO — sua resposta anterior não pôde ser usada: o argumento da ferrame
     /* v74.10 — PESQUISA ANTES DE ESCREVER. Em Linguagens e Humanas o assunto é
        pesquisado primeiro e a questão nasce do material verificado. Fora dessas
        áreas, e quando nada é encontrado, dossie fica null e nada muda. */
-    let dossie = await pesquisarFonteReal({ area, disciplina, tema, eixoTematico, recorte, fontesEvitar, usarBanco, usarTextosEnem }, usos, buscasWeb, () => LIMITE_FUNCAO_MS - (Date.now() - inicioReq));
+    let dossie = await pesquisarFonteReal({ area, disciplina, tema, eixoTematico, recorte, fontesEvitar, usarBanco, usarTextosEnem, tentativaApp }, usos, buscasWeb, () => LIMITE_FUNCAO_MS - (Date.now() - inicioReq));
     const fontesTentadas = (dossie && Array.isArray(dossie.fontesTentadas)) ? dossie.fontesTentadas : [];
     const fonteDoBanco = !!(dossie && dossie.doBanco);
     // v74.25 — de qual prova do ENEM veio o texto-base (sem a questão original, que não sai do backend)
@@ -6466,6 +6790,7 @@ ATENÇÃO — sua resposta anterior não pôde ser usada: o argumento da ferrame
     fontesDiag.fontesTentadas = fontesTentadas;
     fontesDiag.doBanco = fonteDoBanco;
     if (textoEnem) fontesDiag.doEnem = textoEnem;   // v74.25
+    if (dossie && dossie.origemIA) fontesDiag.conhecimentoIA = { modo: String(dossie.origemIA), autorNaoConfirmado: String(dossie.autorNaoConfirmado || "") };   // v74.31
     if (textoProprio) fontesDiag.ultimoRecurso = textoProprio;
     if (reelaboracoes) console.log(`[fontes] após ${reelaboracoes} reelaboração(ões): ${fontesDiag.estado}`);
 
