@@ -73,6 +73,10 @@ header.topbar{display:flex;align-items:center;justify-content:space-between;gap:
 .btn.ghost{background:var(--glass);border:1px solid var(--glass-brd);box-shadow:none;color:var(--ink-1);}
 .btn.ghost:hover{background:rgba(255,255,255,.1);color:#fff;}
 .btn.sm{padding:7px 12px;font-size:12.5px;border-radius:9px;}
+/* v18.33 — botão "Interromper geração" */
+.btn.parar{border-color:rgba(248,113,113,.55);color:#fecaca;}
+.btn.parar:hover{background:rgba(248,113,113,.16);color:#fff;}
+.btn.parar:disabled{opacity:.6;cursor:default;}
 .btn:disabled{opacity:.5;cursor:not-allowed;transform:none;}
 
 .card{
@@ -622,6 +626,7 @@ body.mode-professor .qcard{box-shadow:0 25px 60px -25px rgba(0,0,0,.6), 0 0 0 1.
             <button type="button" id="viewAluno">Versão do aluno</button>
             <button type="button" id="viewProfessor" class="active">Versão do professor</button>
           </div>
+          <button type="button" class="btn ghost sm parar hidden" id="btnInterromper" title="Para a geração agora: as questões prontas ficam; as que faltam podem ser geradas depois com &quot;Regenerar&quot;.">⏹️ Interromper geração</button>
           <button class="btn ghost sm" id="btnPrint">🖨️ Imprimir</button>
           <button class="btn ghost sm" id="btnExportPdf">📄 Exportar PDF</button>
           <button class="btn ghost sm" id="btnExportDocx">📝 Exportar DOCX</button>

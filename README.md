@@ -125,6 +125,29 @@ Teste: `verify_fontes_app.js` — 19 verificações; as seções B e C bis prova
 quatro marcas ligadas ao mesmo tempo nenhuma conferência bloqueia, e que nenhuma delas tem sequer um
 `return true` no corpo. `verify_gabarito_coerente.js` H1 passou a exigir o contrário do que exigia.
 
+## Botão "Interromper geração" (app v18.33, 02/10/2026)
+
+Pedido do professor: um botão para interromper a geração do simulado a qualquer momento.
+
+- O botão **⏹️ Interromper geração** aparece na barra do painel "Simulado gerado" enquanto a leva
+  está sendo gerada (texto e imagens) e some quando ela termina.
+- Ao clicar: nenhuma questão nova começa; os pedidos em andamento (questão, planejamento de
+  recortes e imagem) são cancelados no aplicativo (`AbortController`); as questões já prontas
+  ficam; as demais ficam marcadas com "⏹️ Geração interrompida pelo professor…" e o botão
+  "Regenerar" para gerá-las depois, uma a uma. O resumo passa a dizer "N/T prontas · M
+  interrompida(s)", e no lugar de "Simulado gerado!" aparece o aviso da interrupção. O simulado
+  parcial é arquivado em "Meus Simulados" como qualquer outro.
+- "Regenerar" depois da interrupção não é afetado: só os pedidos da leva interrompida carregam o
+  sinal de cancelamento (`geracaoAtiva`).
+- Limite conhecido: uma etapa que o servidor já começou termina lá mesmo depois de cancelada no
+  aplicativo, e é cobrada; o que ainda não começou não é pedido.
+- Nada muda no backend, nas regras de elaboração ou nas exportações.
+
+Teste: `node tests/verify_interromper_v1833.js <caminho absoluto do index.html>` — 23 verificações
+(backend simulado com atraso: botão, cancelamento, nenhuma questão nova depois do clique, resumo,
+avisos, "Regenerar" depois da interrupção, leva sem interrupção igual à de antes, imagens sem
+retentativa).
+
 ## Biblioteca → conhecimento da IA → autoral → internet (generate-question v74.31 / app v18.32, 01/10/2026)
 
 Decisões do professor (01/10) para **História, Geografia, Filosofia, Sociologia, Práticas Corporais e

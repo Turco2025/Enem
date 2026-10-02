@@ -94,6 +94,65 @@ async function aguardaImagensPendentes(){
   return true;
 }
 
+/* v18.33 — INTERROMPER A GERAÇÃO (pedido do professor, 02/10/2026): "um botão para
+   interromper a geração do simulado em qualquer momento". O botão aparece no painel
+   do simulado enquanto a leva está sendo gerada (texto e imagens) e some quando ela
+   termina. Ao clicar: nenhuma questão nova começa; os pedidos em andamento (texto e
+   imagem) são cancelados no aplicativo; as questões já prontas ficam; as que faltavam
+   ficam marcadas, com "Regenerar" para gerá-las depois, uma a uma; o simulado parcial
+   é arquivado como qualquer outro. Uma etapa que o servidor já começou termina lá
+   mesmo depois de cancelada aqui (e é cobrada); o que ainda não começou não é pedido.
+   "Regenerar" depois da interrupção não é afetado: só os pedidos da leva interrompida
+   carregam o sinal de cancelamento. */
+const MSG_GERACAO_INTERROMPIDA = 'Geração interrompida pelo professor antes de esta questão ficar pronta. Clique em "Regenerar" para gerá-la.';
+const MSG_IMAGEM_INTERROMPIDA = 'Geração interrompida pelo professor antes da imagem obrigatória. Use "Tentar novamente" na imagem ou "Regenerar".';
+let geracaoAtual = null;   // { controller: AbortController, interrompida, emAndamento } da leva em curso
+function geracaoEmCurso(){
+  return geracaoAtual && geracaoAtual.emAndamento ? geracaoAtual : null;
+}
+/* A leva à qual um pedido novo pertence: só a que está em curso e ainda não foi
+   interrompida (um "Regenerar" clicado depois da interrupção segue normalmente). */
+function geracaoAtiva(){
+  const run = geracaoEmCurso();
+  return run && !run.interrompida ? run : null;
+}
+function erroDeInterrupcao(msg){
+  const e = new Error(msg || MSG_GERACAO_INTERROMPIDA);
+  e.interrompida = true;
+  return e;
+}
+function ehQuestaoInterrompida(q){
+  return !!q && q.status === "error" && (q.errorMsg === MSG_GERACAO_INTERROMPIDA || q.errorMsg === MSG_IMAGEM_INTERROMPIDA);
+}
+function atualizaBotaoInterromper(){
+  const b = document.getElementById("btnInterromper");
+  if(!b) return;
+  const run = geracaoEmCurso();
+  b.classList.toggle("hidden", !run);
+  b.disabled = !!(run && run.interrompida);
+  b.textContent = run && run.interrompida ? "⏹️ Interrompendo…" : "⏹️ Interromper geração";
+}
+function interromperGeracao(){
+  const run = geracaoEmCurso();
+  if(!run || run.interrompida) return;
+  run.interrompida = true;
+  try{ run.controller.abort(); }catch(e){ /* nada a cancelar */ }
+  let paradas = 0;
+  state.questions.forEach(q => {
+    if(q.status === "idle" || q.status === "generating" || q.status === "validating"){
+      q.status = "error"; q.errorMsg = MSG_GERACAO_INTERROMPIDA; q.statusDetalhe = ""; paradas++;
+    }else if(q.status === "imagem"){
+      q.status = "error"; q.errorMsg = MSG_IMAGEM_INTERROMPIDA; paradas++;
+    }
+  });
+  console.warn(`[geração] interrompida pelo professor: ${paradas} questão(ões) parada(s)`);
+  atualizaBotaoInterromper();
+  renderResults();
+  updateProgress();
+  const prontas = state.questions.filter(q => q.status === "done").length;
+  toast(`Geração interrompida: ${prontas} de ${state.questions.length} questão(ões) pronta(s)` + (paradas ? `; ${paradas} ficaram marcadas — use "Regenerar" em cada uma quando quiser.` : "."), "info");
+}
+
 function initAuth(){
   supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY);
   supabaseClient.auth.onAuthStateChange((_event, session) => {
@@ -942,7 +1001,7 @@ function diagImagem(q, etapa, detalhe){
 // Pede a imagem ao backend até IMG_MAX_TENTATIVAS vezes. Só desiste de vez
 // quando a causa não é transitória (questão sem especificação: repetir não
 // ajuda) ou quando as tentativas acabam. Devolve { dataUrl, uso, tentativas }.
-async function gerarImagemComRetentativas(promptText, q){
+async function gerarImagemComRetentativas(promptText, q, run){   // v18.33: run = leva em curso (ou nada)
   let ultimoErro = null;
   /* v18.28 — RECUSA DA MODERAÇÃO (generate-image v32 devolve code "moderation_blocked").
      Repetir o mesmo prompt não adianta — foi o que deixou 5 questões de 23 sem
@@ -951,12 +1010,14 @@ async function gerarImagemComRetentativas(promptText, q){
      se recusar de novo, nível 2 (sem figuras humanas, estilo infográfico). */
   let nivelSeguranca = 0;
   for(let tentativa = 1; tentativa <= IMG_MAX_TENTATIVAS; tentativa++){
+    if(run && run.interrompida) throw erroDeInterrupcao(MSG_IMAGEM_INTERROMPIDA);   // v18.33
     diagImagem(q, "imagem_tentativa", `${tentativa}/${IMG_MAX_TENTATIVAS} · prompt ${imgTextoDeEspecificacao(promptText, 0).length} chars`);
     try{
-      const r = await generateImageViaBackend(promptText);
+      const r = await generateImageViaBackend(promptText, run ? run.controller.signal : undefined);
       diagImagem(q, "imagem_ok", `tentativa ${tentativa} · ${Math.round((r.dataUrl || "").length / 1024)} KB` + (r.uso ? ` · ${r.uso.segundos}s · US$ ${Number(r.uso.custoUSD || 0).toFixed(4)}` : ""));
       return { dataUrl: r.dataUrl, uso: r.uso, tentativas: tentativa };
     }catch(err){
+      if(run && run.interrompida) throw erroDeInterrupcao(MSG_IMAGEM_INTERROMPIDA);   // v18.33: nada de nova tentativa
       ultimoErro = err;
       const msg = err && err.message ? err.message : String(err);
       diagImagem(q, "imagem_erro", `tentativa ${tentativa}: ${msg}`);
@@ -982,13 +1043,14 @@ async function gerarImagemComRetentativas(promptText, q){
   throw ultimoErro || new Error("Falha desconhecida ao gerar a imagem.");
 }
 
-async function generateImageViaBackend(promptText){
+async function generateImageViaBackend(promptText, signal){   // v18.33: signal cancela o pedido
   const texto = imgTextoDeEspecificacao(promptText, 0);
   if(!texto) throw new Error("A questão veio sem a especificação da imagem. Use \"Refazer imagem\" para gerá-la.");
   const prompt = imgEhEspecificacaoCompleta(texto) ? texto : (IMG_PREAMBULO_CURTO + texto);
 
   const res = await fetch(IMAGE_BACKEND_URL, {
     method: "POST",
+    signal,
     headers: { "Content-Type": "application/json", ...authHeaders() },
     body: JSON.stringify({
       prompt,
@@ -2214,9 +2276,12 @@ async function planejaRecortesPorTema(){
   });
   for(const g of grupos.values()){
     if(g.qs.length < 2) continue; // uma questão só não tem com o que repetir
+    const run = geracaoAtiva();   // v18.33
+    if(geracaoEmCurso() && !run) break;   // v18.33: leva interrompida — não planeja mais nada
     try{
       const resp = await fetch(QUESTION_BACKEND_URL, {
         method: "POST",
+        signal: run ? run.controller.signal : undefined,
         headers: { "Content-Type": "application/json", ...authHeaders() },
         body: JSON.stringify({
           planejarRecortes: true,
@@ -2300,6 +2365,7 @@ async function planejaRecortesPorTema(){
       console.log(`[tema] recortes planejados para "${g.tema}" (${payload.recortes.length}/${g.qs.length}): ` + g.qs.map(q => `${state.questions.indexOf(q) + 1}: ${q.recorte}`).join(" · "));
     }catch(e){
       // O planejamento é um refinamento: se falhar, a leva segue sem ele.
+      if(run && run.interrompida) break;   // v18.33: cancelado pelo botão "Interromper geração"
       console.warn(`[tema] planejamento de recortes falhou para "${g.tema}" (a leva segue sem recortes):`, e && e.message || e);
       toast(`Não foi possível planejar os recortes do tema "${g.tema}"; as questões serão geradas sem essa distribuição.`, "err");
     }
@@ -2714,6 +2780,7 @@ function corrigirQuebrasLiterais(valor){
 }
 
 async function generateQuestion(q){
+  const run = geracaoAtiva();   // v18.33 — a leva em curso (cancelável), ou nada
   q.status = "generating"; q.errorMsg = ""; updateQuestionCard(q, state.questions.indexOf(q));
   try{
     const MAX_TENTATIVAS = 3;
@@ -2746,6 +2813,7 @@ async function generateQuestion(q){
     const revisarMatematica = document.getElementById("chkValidacao").checked;
     let resp, rawBody, payload;
     while(true){
+      if(run && run.interrompida) throw erroDeInterrupcao();   // v18.33
       tentativa++;
       tentativaFonte++;
       q.tentativasFonte = tentativaFonte;
@@ -2753,6 +2821,7 @@ async function generateQuestion(q){
       if(tentativaFonte > 1) updateQuestionCard(q, state.questions.indexOf(q));
       resp = await fetch(QUESTION_BACKEND_URL, {
         method: "POST",
+        signal: run ? run.controller.signal : undefined,   // v18.33
         headers: { "Content-Type": "application/json", ...authHeaders() },
         body: JSON.stringify({
           // v18.21: tamanho da leva — o backend decide por ele o TTL do cache
@@ -2920,6 +2989,7 @@ async function generateQuestion(q){
     const vd = payload.visualDiag || null;
     diagImagem(q, "questao_recebida", `recurso pedido "${q.recurso}" · visual entregue ${q.data.visual ? `tipo "${q.data.visual.tipo}"` : "nulo"} · promptImagem ${imgTextoDeEspecificacao(q.data.visual && q.data.visual.promptImagem, 0).length} chars` + (vd ? ` · backend: refeito ${vd.refeito}x, conforme ${vd.conforme}${vd.motivo ? ", " + vd.motivo : ""}` : "") + (q.data.visualPendente ? ` · visualPendente: ${q.data.visualPendente.motivo}` : ""));
     let conf = visualConformeApp(q.data, q.recurso);
+    if(!conf.ok && run && run.interrompida) throw erroDeInterrupcao();   // v18.33: não pede mais nada ao servidor
     if(!conf.ok){
       diagImagem(q, "visual_nao_conforme", conf.motivo + " — pedindo ao backend para refazer só o recurso visual");
       try{
@@ -2939,6 +3009,7 @@ async function generateQuestion(q){
          quando a imagem estiver gerada e gravada em visual.imagemDataUrl. O
          pedido corre em paralelo com as demais questões (não trava a fila),
          com retentativas automáticas; ver garanteImagemDaQuestao(). */
+      if(run && run.interrompida) throw erroDeInterrupcao(MSG_IMAGEM_INTERROMPIDA);   // v18.33: o texto fica; a imagem não é pedida
       q.status = "imagem";
       garanteImagemDaQuestao(q);
     }else{
@@ -2946,7 +3017,10 @@ async function generateQuestion(q){
     }
   } catch(err){
     q.status = "error";
-    q.errorMsg = err.message || String(err);
+    /* v18.33 — cancelada pelo botão "Interromper geração": a mensagem diz isso, e não
+       "The operation was aborted". */
+    q.errorMsg = run && run.interrompida ? (err && err.interrompida ? err.message : MSG_GERACAO_INTERROMPIDA) : (err.message || String(err));
+    q.statusDetalhe = "";
     diagImagem(q, "questao_erro", q.errorMsg);
   }
   updateQuestionCard(q, state.questions.indexOf(q));
@@ -3019,7 +3093,8 @@ function garanteImagemDaQuestao(q){
   }
   if(imagensEmAndamento.has(visual)) return; // já há um pedido em voo para este visual
   const promptText = montaPromptImagem(visual, q.data);
-  const pedido = gerarImagemComRetentativas(promptText, q);
+  const run = geracaoAtiva();   // v18.33
+  const pedido = gerarImagemComRetentativas(promptText, q, run);
   imagensEmAndamento.set(visual, pedido);
   const promessa = pedido.then(({ dataUrl }) => {
     /* v18.28 — o prompt seguro pode ter substituído q.data.visual; a imagem
@@ -3032,7 +3107,8 @@ function garanteImagemDaQuestao(q){
     diagImagem(q, "imagem_vinculada", `gravada em visual.imagemDataUrl da questão ${state.questions.indexOf(q) + 1} (tema "${q.data.tema || q.tema || ""}")`);
   }).catch(err => {
     q.status = "error";
-    q.errorMsg = `Imagem obrigatória NÃO gerada após ${IMG_MAX_TENTATIVAS} tentativas: ${err && err.message || String(err)}. A questão não foi concluída — clique em "Regenerar" ou em "Tentar novamente" na imagem.`;
+    q.errorMsg = run && run.interrompida ? MSG_IMAGEM_INTERROMPIDA   // v18.33
+      : `Imagem obrigatória NÃO gerada após ${IMG_MAX_TENTATIVAS} tentativas: ${err && err.message || String(err)}. A questão não foi concluída — clique em "Regenerar" ou em "Tentar novamente" na imagem.`;
     diagImagem(q, "imagem_perdida", q.errorMsg);
   }).finally(() => {
     imagensEmAndamento.delete(visual);
@@ -3208,10 +3284,10 @@ function agendaMarcaPassoDoCache(){
   console.log(`[cache] marca-passo agendado para daqui a ${Math.round(AQUECIMENTO_INTERVALO_MS / 60000)} min.`);
 }
 
-async function runPool(items, worker, concurrency){
+async function runPool(items, worker, concurrency, deveParar){   // v18.33: deveParar() → nenhum item novo começa
   let i = 0;
   const runners = new Array(Math.min(concurrency, items.length)).fill(0).map(async () => {
-    while(i < items.length){
+    while(i < items.length && !(deveParar && deveParar())){
       const idx = i++; await worker(items[idx]);
     }
   });
@@ -3262,6 +3338,10 @@ async function generateAll(){
   document.getElementById("formPanel").style.display = "none";
   document.getElementById("resultsPanel").style.display = "block";
   document.getElementById("genProgressWrap").classList.remove("hidden");
+  /* v18.33 — a leva ganha um sinal de cancelamento e o botão "Interromper geração". */
+  const run = geracaoAtual = { controller: new AbortController(), interrompida: false, emAndamento: true };
+  atualizaBotaoInterromper();
+  try{
   /* Reset completo do estado "órfão" de uma geração anterior antes de começar
      uma leva nova. Sem isto, trocar de disciplina no formulário (ex.: Física
      -> Matemática) e clicar em Gerar reaproveita os MESMOS objetos de questão
@@ -3307,7 +3387,7 @@ async function generateAll(){
      prompt inteiro. Gerando a primeira sozinha, ela grava; as demais leem.
      Custa a espera de uma questão e economiza o prompt em todas as outras. */
   const [primeira, ...demais] = state.questions;
-  if(primeira) await generateQuestion(primeira);
+  if(primeira && !run.interrompida) await generateQuestion(primeira);
   // Concorrência 5 (era 4): cada questão já roda inteiramente no backend
   // (Supabase Edge Function), então gerar mais em paralelo reduz o tempo
   // total — para 10 questões, 3 rodadas em vez de 4. Não muda o número de
@@ -3316,7 +3396,7 @@ async function generateAll(){
   // crescente — e esse erro acontece ANTES de a IA ser chamada, então a
   // retentativa não é cobrada. Se esses erros aparecerem com frequência no
   // console, o valor pode voltar para 4.
-  if(demais.length) await runPool(demais, generateQuestion, 5);
+  if(demais.length && !run.interrompida) await runPool(demais, generateQuestion, 5, () => run.interrompida);   // v18.33
   document.getElementById("genProgressWrap").classList.add("hidden");
   // v12: baixa o jsPDF (≈ 420 KB) em segundo plano assim que o simulado fica
   // pronto, para o primeiro "Exportar PDF"/"Imprimir" não pagar o download do
@@ -3351,7 +3431,9 @@ async function generateAll(){
     renderResults();
   }
   const problemas = auditaGabaritos();
-  if(problemas.length){
+  if(run.interrompida){
+    /* v18.33 — o aviso da interrupção já foi dado no clique; "Simulado gerado!" seria falso. */
+  }else if(problemas.length){
     toast("Simulado gerado, mas a distribuição do gabarito ficou imperfeita: " + problemas[0] + ". Regenere a questão para corrigir.", "err");
   }else if(presos){
     toast("Simulado gerado. " + presos + " quest" + (presos > 1 ? "ões vieram" : "ão veio") + " com o gabarito fora da posição planejada e não pôde ser reposicionada sem quebrar a ordem numérica das alternativas.", "err");
@@ -3365,6 +3447,8 @@ async function generateAll(){
   // em "Meus Simulados" já leve as imagens prontas — nunca só o texto — e
   // reabri-lo depois não precise (nem vá) gerar nenhuma imagem de novo.
   await aguardaImagensPendentes();
+  run.emAndamento = false;   // v18.33 — texto e imagens terminaram (ou foram cancelados): o botão some
+  atualizaBotaoInterromper();
 
   // Conferência final, questão a questão: nenhuma imagem obrigatória pode
   // ter ficado de fora sem aviso. Tabela completa no console; aviso na tela.
@@ -3372,7 +3456,7 @@ async function generateAll(){
   if(resumo.total.pedidas){
     console.table(resumo.linhas);
     console.log(`[imagens] pedidas ${resumo.total.pedidas} · com prompt ${resumo.total.comPrompt} · chamadas ao gerador ${resumo.total.chamadas} · geradas ${resumo.total.geradas} · vinculadas ${resumo.total.vinculadas}` + (resumo.total.semImagem.length ? ` · SEM IMAGEM: questões ${resumo.total.semImagem.join(", ")}` : " · nenhuma faltando"));
-    if(resumo.total.semImagem.length){
+    if(resumo.total.semImagem.length && !run.interrompida){   // v18.33: interrompida, o professor já sabe
       toast(`⚠️ ${resumo.total.semImagem.length} questão(ões) com imagem obrigatória NÃO gerada (nº ${resumo.total.semImagem.join(", ")}). Elas estão marcadas com erro — use "Regenerar" ou "Tentar novamente" na imagem.`, "err");
     }
   }
@@ -3380,7 +3464,14 @@ async function generateAll(){
   // Arquiva automaticamente em "Meus Simulados" (todo simulado gerado fica
   // arquivado). Roda por último e nunca interrompe o fluxo do professor —
   // qualquer falha aqui só avisa por toast, sem desfazer o simulado na tela.
+  // v18.33: interrompido, arquiva o que ficou pronto (as demais, marcadas).
   await salvarSimuladoAtual();
+  }finally{
+    /* v18.33 — aconteça o que acontecer, a leva deixa de estar "em curso" e o botão some. */
+    run.emAndamento = false;
+    document.getElementById("genProgressWrap").classList.add("hidden");
+    atualizaBotaoInterromper();
+  }
 }
 
 
@@ -4132,8 +4223,13 @@ function updateProgress(){
   document.getElementById("genProgressFill").style.width = pct + "%";
   const temaComum = temaDaLevaParaTitulo();
   const rodizio = temaLoteComum() ? ` · distribuição: ${resumoTema(textoDistribuicaoLote(), 200)}` : "";
+  /* v18.33 — com questões interrompidas, o resumo diz quantas ficaram prontas e quantas pararam. */
+  const interrompidas = state.questions.filter(ehQuestaoInterrompida).length;
+  const andamento = interrompidas
+    ? `${state.questions.filter(q => q.status === "done").length}/${total} prontas · ${interrompidas} interrompida(s)`
+    : `${done}/${total} concluídas`;
   document.getElementById("resultsSummary").textContent =
-    `${AREA_META[state.area].label} · ${state.disciplina} · ${total} questão(ões) · ${done}/${total} concluídas` + (temaComum ? ` · tema pedido: "${resumoTema(temaComum, 140)}"` : "") + rodizio;
+    `${AREA_META[state.area].label} · ${state.disciplina} · ${total} questão(ões) · ${andamento}` + (temaComum ? ` · tema pedido: "${resumoTema(temaComum, 140)}"` : "") + rodizio;
 }
 
 /* ---------------- Results rendering ---------------- */
@@ -4579,7 +4675,7 @@ function renderQuestionCard(q, idx){
     inner.appendChild(s);
   } else if(q.status === "error"){
     const s = document.createElement("div"); s.className = "status-line";
-    s.innerHTML = `⚠️ Erro ao gerar: ${escapeHtml(q.errorMsg)}`;
+    s.innerHTML = ehQuestaoInterrompida(q) ? `⏹️ ${escapeHtml(q.errorMsg)}` : `⚠️ Erro ao gerar: ${escapeHtml(q.errorMsg)}`;   // v18.33
     inner.appendChild(s);
     // A questão pode ter texto pronto e só a imagem obrigatória ter falhado:
     // mostra o texto, para que o professor veja o que existe e possa tentar a
@@ -8263,6 +8359,7 @@ function init(){
      a página depois de configurar o lote. */
   document.getElementById("btnGenerate").addEventListener("click", iniciarGeracao);
   document.getElementById("btnGerarLote").addEventListener("click", iniciarGeracao);
+  document.getElementById("btnInterromper").addEventListener("click", interromperGeracao);   // v18.33
   document.getElementById("btnBackToForm").addEventListener("click", () => {
     simuladoAbertoId = null;
     document.getElementById("formPanel").style.display = "block";
