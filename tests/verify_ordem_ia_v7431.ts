@@ -172,6 +172,13 @@ t("O8 banco de fontes já validadas continua no 1º passo, sem chamada à IA", r
 zera(); roteiro({ resposta: { ...iaSemAutor, idioma: "ingles" } });
 r = await pesquisarFonteReal({ area: "linguagens", disciplina: "Língua Estrangeira (Inglês/Espanhol)", tema: "social media" }, [], [], muitoTempo);
 t("O9 Língua Estrangeira segue a mesma ordem: autoral, sem internet, com o idioma escolhido", etapas() === "pesquisa-ia" && r.origemIA === "autoral" && r.idioma === "ingles");
+zera(); roteiro({ resposta: { ...iaSemAutor, idioma: "ingles" } });
+r = await pesquisarFonteReal({ area: "linguagens", disciplina: "Espanhol", tema: "migración" }, [], [], muitoTempo);
+t("O9b v74.32 — Espanhol: mesma ordem, e o idioma do texto-base é o da disciplina mesmo que o modelo responda outro",
+  etapas() === "pesquisa-ia" && r.origemIA === "autoral" && r.idioma === "espanhol" && __stub.chamadas[0].userMsg.includes("Idioma do texto-base: espanhol"));
+zera(); roteiro({ resposta: { ...iaSemAutor, idioma: "espanhol" } });
+r = await pesquisarFonteReal({ area: "linguagens", disciplina: "Inglês", tema: "social media" }, [], [], muitoTempo);
+t("O9c v74.32 — Inglês: idioma inglês", r.origemIA === "autoral" && r.idioma === "ingles");
 zera(); roteiro();
 r = await pesquisarFonteReal({ area: "linguagens", disciplina: "Literatura", tema: "Machado de Assis" }, [], [], muitoTempo);
 t("O10 Literatura (e Língua Portuguesa e Artes) NÃO chamam a IA: continuam só na biblioteca, como na v74.28",

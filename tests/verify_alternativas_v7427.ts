@@ -33,6 +33,8 @@ async function callClaudeForJSON(_s: any, userMsg: string, _w: any, usos: any[],
   return __stub.respostas.length ? __stub.respostas.shift() : null;
 }
 ` + fonte.slice(g1, g2) + fonte.slice(i, j) + fonte.slice(r1, r2) + `
+// v74.32 — idioma fixo de Inglês e Espanhol (usado por buildRegraIdiomaLinguaEstrangeira)
+` + fonte.slice(fonte.indexOf("function idiomaDaDisciplina("), fonte.indexOf("\n}\n", fonte.indexOf("function idiomaDaDisciplina(")) + 3) + `
 export { conferenciaAlternativas, termosAbsolutosEm, aplicaCorrecaoAlternativas, buildCorrecaoAlternativasPrompt, garantirAlternativasConformes,
   FERRAMENTA_ALTERNATIVAS, ABSOLUTOS_ALTERNATIVAS, CORRETA_DOMINANTE_RAZAO, CORRETA_DOMINANTE_CARACTERES, MS_MINIMO_PARA_CORRIGIR_ALTERNATIVAS, ENEM_REAL_ALTERNATIVAS,
   contaMarcasIdioma, linguaEstrangeiraEm, idiomaDoItem, buildPortuguesDoItemPrompt, aplicaPortuguesDoItem, FERRAMENTA_IDIOMA, ENEM_REAL_IDIOMA,

@@ -125,6 +125,38 @@ Teste: `verify_fontes_app.js` — 19 verificações; as seções B e C bis prova
 quatro marcas ligadas ao mesmo tempo nenhuma conferência bloqueia, e que nenhuma delas tem sequer um
 `return true` no corpo. `verify_gabarito_coerente.js` H1 passou a exigir o contrário do que exigia.
 
+## Inglês e Espanhol separados (generate-question v74.32 / app v18.34, 02/10/2026)
+
+Pedido do professor: no lugar da caixa "Língua Estrangeira (Inglês/Espanhol)", uma caixa de
+**Inglês** e uma de **Espanhol**.
+
+- **App:** em Linguagens, os chips passam a ser Língua Portuguesa, Literatura, Artes, Práticas
+  Corporais, **Inglês** e **Espanhol**. Objetos de conhecimento ("Estudo do texto" e "Estudo dos
+  aspectos linguísticos em diferentes textos") e calibração de extensão são os mesmos da Língua
+  Estrangeira (as provas de 2022–2025 não separam os dois idiomas). Simulado arquivado com o
+  rótulo antigo: o chip antigo aparece marcado enquanto ele estiver aberto (a tela nunca mostra
+  uma disciplina com o estado guardando outra) e some ao escolher outra.
+- **Backend:** o idioma do texto-base deixa de ser escolha do modelo e passa a ser o da
+  disciplina — na regra do elaborador ("TEXTO-BASE: SEMPRE em INGLÊS/ESPANHOL"; comando,
+  alternativas e resolução continuam em português), no pesquisador sem internet (o idioma que
+  ele devolver é trocado pelo da disciplina, em código), no pesquisador na internet (fonte
+  publicada originalmente no idioma) e numa **conferência em código do texto-base**
+  (`idiomaErradoDoTextoBase`, custo zero): texto na outra língua estrangeira, meio a meio, ou em
+  português volta ao elaborador com o motivo. Medido nos 110 textos em inglês da biblioteca:
+  nenhum seria acusado em Inglês; os 110 seriam acusados em Espanhol.
+- **Biblioteca:** Inglês usa os textos de Língua Estrangeira (todos em inglês); Espanhol não tem
+  texto na biblioteca e vai direto ao conhecimento da IA. O banco de fontes é por disciplina:
+  começa vazio para as duas.
+- Ordem biblioteca → IA → autoral → pesquisa única (v74.31) vale para as duas.
+- A chave antiga "Língua Estrangeira (Inglês/Espanhol)" continua funcionando como antes
+  (texto em inglês ou espanhol), para "Regenerar" nos simulados já arquivados.
+
+Testes: `tests/verify_ingles_espanhol_v7432.ts` (22; com um 2º argumento, um JSON de textos em
+inglês, confere que nenhum é acusado), `tests/verify_ingles_espanhol_app.js` (16, no navegador),
+`verify_fontes_backend.ts` seção T (4), `verify_ordem_ia_v7431.ts` O9b/O9c e o selftest
+`v7432_inglesEspanhol`. `verify_extensao_v7419.ts` (E2b) passou a contar 16 disciplinas na
+calibração.
+
 ## Botão "Interromper geração" (app v18.33, 02/10/2026)
 
 Pedido do professor: um botão para interromper a geração do simulado a qualquer momento.

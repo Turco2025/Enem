@@ -75,7 +75,7 @@ const AREA_LABELS: Record<string, string> = {
 // buildUserPrompt). Comparação por substring, em minúsculas,
 // para cobrir variações do rótulo (ex.: "Língua Estrangeira (Inglês/Espanhol)").
 const DISCIPLINAS_FONTES_REAIS_OBRIGATORIAS = [
-  "literatura", "língua portuguesa", "artes", "língua estrangeira",
+  "literatura", "língua portuguesa", "artes", "língua estrangeira", "inglês", "espanhol",   // v74.32: Inglês e Espanhol separados
   "história", "geografia", "filosofia", "sociologia", "biologia",
 ];
 function precisaFontesReais(disciplina: string): boolean {
@@ -155,7 +155,9 @@ const OBJETOS_POR_DISCIPLINA: Record<string, string[]> = {
   "Literatura": ["Estudo do texto literário", "Produção e recepção de textos artísticos"],
   "Artes": ["Produção e recepção de textos artísticos"],
   "Práticas Corporais": ["Estudo das práticas corporais"],
-  "Língua Estrangeira (Inglês/Espanhol)": ["Estudo do texto", "Estudo dos aspectos linguísticos em diferentes textos"],
+  "Língua Estrangeira (Inglês/Espanhol)": ["Estudo do texto", "Estudo dos aspectos linguísticos em diferentes textos"],   // simulados arquivados antes da v74.32
+  "Inglês": ["Estudo do texto", "Estudo dos aspectos linguísticos em diferentes textos"],     // v74.32
+  "Espanhol": ["Estudo do texto", "Estudo dos aspectos linguísticos em diferentes textos"],   // v74.32
 };
 
 /* Objetos que a questão PODE declarar. Disciplina sem recorte próprio (Humanas,
@@ -253,6 +255,11 @@ const CALIBRACAO_EXTENSAO: Record<string, { n: number; texto: [number, number, n
   "Práticas Corporais": { n: 122, texto: [799, 1134, 962], comando: [83, 128, 106], item: [46, 69, 58], avisoMedia: 80 },
   "Educação Física": { n: 122, texto: [799, 1134, 962], comando: [83, 128, 106], item: [46, 69, 58], avisoMedia: 80 },
   "Língua Estrangeira (Inglês/Espanhol)": { n: 15, texto: [409, 1073, 761], comando: [77, 179, 129], item: [42, 63, 53], avisoMedia: 70 },
+  /* v74.32 — Inglês e Espanhol separados (pedido do professor, 02/10/2026): a mesma faixa
+     medida nas provas de 2022–2025, que não separava os dois idiomas. A chave antiga fica
+     para os simulados já arquivados. */
+  "Inglês": { n: 15, texto: [409, 1073, 761], comando: [77, 179, 129], item: [42, 63, 53], avisoMedia: 70 },
+  "Espanhol": { n: 15, texto: [409, 1073, 761], comando: [77, 179, 129], item: [42, 63, 53], avisoMedia: 70 },
   "História": { n: 146, texto: [469, 757, 620], comando: [84, 130, 104], item: [28, 46, 38], avisoMedia: 61 },
   "Geografia": { n: 146, texto: [398, 737, 554], comando: [76, 126, 101], item: [28, 46, 38], avisoMedia: 61 },
   "Filosofia": { n: 146, texto: [477, 671, 596], comando: [78, 118, 95], item: [28, 46, 38], avisoMedia: 61 },
@@ -633,8 +640,21 @@ ${JSON_SCHEMA_TXT}`;
 function ehLinguaEstrangeira(disciplina: string): boolean {
   return /l[ií]ngua estrangeira|ingl[eê]s|espanhol/i.test(String(disciplina || ""));
 }
+/* v74.32 — idioma fixo para Inglês e Espanhol: ver idiomaDaDisciplina (bloco v74.31). */
 function buildRegraIdiomaLinguaEstrangeira(disciplina: string): string {
   if (!ehLinguaEstrangeira(disciplina)) return "";
+  const fixo = idiomaDaDisciplina(disciplina);
+  if (fixo) {
+    const lingua = fixo === "ingles" ? "inglês" : "espanhol", outra = fixo === "ingles" ? "espanhol" : "inglês";
+    const LINGUA = lingua.toUpperCase();
+    return `
+
+IDIOMA DO ITEM — ${LINGUA} (o professor escolheu a disciplina ${disciplina}; é assim em todas as provas do ENEM de 2022 a 2025: o texto na língua estrangeira, a pergunta e as respostas em português)
+· TEXTO-BASE: SEMPRE em ${LINGUA}, no idioma em que a fonte foi publicada — sem tradução e sem paráfrase para outro idioma. Texto-base em ${outra} ou em português não serve para esta disciplina.
+· COMANDO e as CINCO ALTERNATIVAS: SEMPRE em PORTUGUÊS do Brasil. O candidato lê o texto em ${lingua} e responde em português; comando ou alternativa em ${lingua} não existe no ENEM. Palavra ou expressão do texto que o item precise citar vai no original, entre aspas, dentro da frase em português (ex.: No texto, a expressão “...” indica que).
+· RESOLUÇÃO COMENTADA e COMENTÁRIOS das alternativas: em português.
+Questão com comando ou alternativas em ${lingua} volta para ser passada ao português antes de chegar ao professor — é uma chamada a mais e atrasa a entrega.`;
+  }
   return `
 
 IDIOMA DO ITEM — LÍNGUA ESTRANGEIRA (é assim em todas as provas do ENEM de 2022 a 2025: o texto em inglês ou espanhol; a pergunta e as respostas em português)
@@ -931,7 +951,7 @@ function buildPesquisaFontePrompt(o: { area: string; disciplina: string; tema: s
   const blocoEvitar = evitar.length ? `\n🚫 FONTES JÁ REPROVADAS PELO VALIDADOR EM TENTATIVAS ANTERIORES — NÃO as use de novo, nem outra página do mesmo documento; procure OUTRA obra, OUTRO documento ou OUTRA instituição sobre o mesmo assunto:\n${evitar.map((f, i) => `  ${i + 1}. ${String(f).slice(0, 160)}`).join("\n")}\n` : "";
   return `ÁREA: ${o.area} · DISCIPLINA: ${o.disciplina}
 ASSUNTO PEDIDO PELO PROFESSOR: ${assunto}${o.eixoTematico && o.eixoTematico !== assunto ? `\nOBJETO DE CONHECIMENTO (Matriz do ENEM): ${o.eixoTematico}` : ""}${o.recorte && o.recorte !== assunto ? `\nRECORTE PEDIDO: ${o.recorte.slice(0, 300)}` : ""}
-${buildAcervosPrioritarios(o.disciplina)}
+${buildAcervosPrioritarios(o.disciplina)}${idiomaDaDisciplina(o.disciplina) ? `\n🌐 IDIOMA (v74.32): a disciplina é ${o.disciplina} — a fonte TEM de ser um texto publicado originalmente em ${idiomaDaDisciplina(o.disciplina) === "ingles" ? "INGLÊS" : "ESPANHOL"}, e o trecho sai nesse idioma, sem tradução.` : ""}
 ${o.buscaRestritaAosAcervos ? `\n🏛️ ESTA BUSCA JÁ ESTÁ RESTRITA, PELO SISTEMA, AOS DOMÍNIOS DOS CINCO ACERVOS DO PROFESSOR (v74.21: allowed_domains da web_search). NÃO use o operador site: — consulte direto pelo autor, pela obra ou pelo documento. Se nada utilizável vier, devolva "encontrou": false sem inventar: a próxima tentativa abre para as demais fontes confiáveis do item 1.\n` : ""}${blocoEvitar}${retry ? `\n⚠️ NOVA TENTATIVA. A anterior não deu fonte aprovada (${retry.slice(0, 360)}). O item 2 da regra manda, nesse caso, "procurar outra obra, outro documento ou outra referência real relacionada ao tema" — então procure em OUTRO lugar: troque a obra, troque o documento, troque a instituição. Se a primeira tentativa foi restrita aos acervos de prioridade e eles não tinham o material, procure AGORA fora deles, nas demais fontes confiáveis do item 1. Se a reprovação veio do VALIDADOR, corrija exatamente o que ele apontou. Não repita a busca anterior e não baixe o nível da exigência.\n` : ""}
 ANTES DE BUSCAR, identifique o que o assunto acima nomeia:
 · um AUTOR (pessoa)? Então a fonte TEM de ser uma obra real DESSE autor, e o trecho tem de sair dela. Um texto que apenas imite o estilo dele está proibido pelo item 6.
@@ -1470,6 +1490,7 @@ const DISCIPLINAS_TEXTOS_ENEM: Record<string, string[]> = {
   "Filosofia": ["Filosofia"],
   "Sociologia": ["Sociologia"],
   "Língua Estrangeira (Inglês/Espanhol)": ["Língua Estrangeira"],   // v74.31 — só textos em inglês (ver pedeEspanhol)
+  "Inglês": ["Língua Estrangeira"],   // v74.32 — os 107 textos de Língua Estrangeira da biblioteca são todos em inglês; Espanhol não tem texto na biblioteca
 };
 const TEXTOS_ENEM_LITERARIOS = ["literario", "poema", "cancao"];
 const TEXTOS_ENEM_TEMAS_GENERICOS = new Set(["literatura", "lingua portuguesa", "historia", "geografia", "filosofia", "sociologia", "artes", "arte", "educacao fisica", "praticas corporais", "interpretacao de texto", "interpretacao textual", "leitura", "texto", "poesia", "poema", "brasil", "sociedade", "cultura", "politica"]);
@@ -1746,7 +1767,7 @@ ${e.aproximado ? `
      etapa 4, e a etapa 4 no lugar da etapa 3".)
    O banco de fontes já validadas continua no 1º passo, junto com a biblioteca. O auditor
    continua conferindo toda questão — nos modos da IA, sem internet. */
-const DISCIPLINAS_ORDEM_IA = ["História", "Geografia", "Filosofia", "Sociologia", "Práticas Corporais", "Língua Estrangeira (Inglês/Espanhol)"];
+const DISCIPLINAS_ORDEM_IA = ["História", "Geografia", "Filosofia", "Sociologia", "Práticas Corporais", "Língua Estrangeira (Inglês/Espanhol)", "Inglês", "Espanhol"];   // v74.32: + Inglês e Espanhol
 const RODADAS_PESQUISA_UNICA = 1;   // "tentar encontrar na internet como uma única pesquisa"
 const TENTATIVA_DA_PESQUISA_UNICA = 2;   // o 4º passo só no 2º pedido do app (a questão autoral do 1º não passou no auditor)
 /* O autor ou a obra como o professor pediu (para o elaborador, o auditor e o log). */
@@ -1755,6 +1776,16 @@ function pedidoDoProfessor(ia: any, tema: string): string {
 }
 function usaOrdemIA(disciplina: string): boolean {
   return DISCIPLINAS_ORDEM_IA.includes(String(disciplina || "").trim());
+}
+/* v74.32 — INGLÊS E ESPANHOL SEPARADOS (pedido do professor, 02/10/2026): o app passa a
+   oferecer as duas disciplinas no lugar de "Língua Estrangeira (Inglês/Espanhol)". O
+   idioma do texto-base deixa de ser escolha do modelo: é o da disciplina (regra do
+   elaborador, pesquisador sem internet, pesquisador na internet e conferência em código
+   do texto-base). A chave antiga continua valendo, igual a antes, para os simulados já
+   arquivados. */
+function idiomaDaDisciplina(disciplina: string): "ingles" | "espanhol" | "" {
+  const d = String(disciplina || "").trim();
+  return d === "Inglês" ? "ingles" : d === "Espanhol" ? "espanhol" : "";
 }
 /* Rodízio: um texto da biblioteca usado nas últimas 3 horas não volta enquanto houver
    outro que case com o tema (uma leva de 14 questões de "Cruzadas na Terra Santa" tinha
@@ -1805,7 +1836,8 @@ O QUE FAZER
 4. Não use as fontes ou obras listadas como "a evitar".`;
 
 function buildPesquisaIAPrompt(o: { disciplina: string; tema: string; eixoTematico?: string; recorte?: string }, evitar: string[]): string {
-  return `Disciplina: ${o.disciplina}
+  const fixo = idiomaDaDisciplina(o.disciplina);   // v74.32
+  return `Disciplina: ${o.disciplina}${fixo ? `\nIdioma do texto-base: ${fixo === "ingles" ? "inglês" : "espanhol"} (a disciplina define o idioma; em "idioma" responda "${fixo}")` : ""}
 Tema pedido pelo professor: ${String(o.tema || "").trim() || "(em branco)"}${o.recorte ? `\nRecorte reservado para esta questão: ${o.recorte}` : ""}${!String(o.tema || "").trim() && o.eixoTematico ? `\nEixo temático reservado: ${o.eixoTematico}` : ""}${evitar.length ? `\nA evitar (já usadas ou reprovadas): ${evitar.slice(0, MAX_FONTES_EVITAR).join(" · ")}` : ""}
 
 Entregue o material pela ferramenta "entregar_material_ia".`;
@@ -1865,6 +1897,8 @@ async function consultarConhecimentoIA(o: { disciplina: string; tema: string; ei
     const sistema: SistemaPrompt = [{ type: "text", text: SISTEMA_PESQUISA_IA, cache_control: cacheControlAtual() }];
     const ia = await callClaudeForJSON(sistema, buildPesquisaIAPrompt(o, evitar), false, usos, FERRAMENTA_DOSSIE_IA, undefined, "pesquisa-ia", undefined, 45_000);
     if (!ia || typeof ia !== "object") return null;
+    const fixo = idiomaDaDisciplina(o.disciplina);   // v74.32 — o idioma é o da disciplina, não o que o modelo escolher
+    if (fixo) ia.idioma = fixo;
     console.log(`[ia] pede autor/obra: ${ia.pedeAutorOuObra === true}${ia.pedeAutorOuObra === true ? ` (${String(ia.autorPedido || ia.obraPedida || "").slice(0, 60)}) · conhece com segurança: ${ia.conheceComSeguranca === true}` : ""} · ${listaFatosIA(ia.fatos).length} fato(s) · base: ${String(ia.fonteDosFatos || "").slice(0, 80)}`);
     return ia;
   } catch (e) {
@@ -4003,6 +4037,31 @@ function idiomaDoItem(d: any): { lingua: string; partes: string[] } {
   return { lingua, partes };
 }
 
+/* v74.32 — O TEXTO-BASE NO IDIOMA DA DISCIPLINA (Inglês ou Espanhol). Conferência em
+   código, custo zero, com as mesmas palavras gramaticais de MARCAS_IDIOMA. Acusa: (a) a
+   OUTRA língua estrangeira com peso (3 palavras diferentes dela e o idioma pedido sem
+   chegar ao dobro delas) — um texto em inglês que cita uma frase curta em espanhol
+   continua sendo inglês, mas um texto meio inglês, meio espanhol não serve; ou (b) o
+   texto-base em português (12 palavras portuguesas, 8 diferentes, e no máximo 2
+   estrangeiras). Texto curto demais para dizer não é acusado. Medido: nos 110 textos em
+   inglês da biblioteca, a razão espanhol/inglês máxima é 0,06 — nenhum seria acusado em
+   Inglês, e os 110 seriam acusados em Espanhol. Acusado, a questão volta ao elaborador com o motivo (reelaboração). A
+   chave antiga, "Língua Estrangeira (Inglês/Espanhol)", não tem idioma fixo: não confere. */
+function idiomaErradoDoTextoBase(d: any, disciplina: string): string {
+  const esperado = idiomaDaDisciplina(disciplina);
+  if (!esperado) return "";
+  const t = String((d && d.textoBase) || "").normalize("NFC").toLowerCase();
+  const c = { pt: 0, en: 0, es: 0 };
+  const dist = { pt: new Set<string>(), en: new Set<string>(), es: new Set<string>() };
+  for (const w of t.match(/[\p{L}\p{N}]+(?:['’-][\p{L}\p{N}]+)*/gu) || []) {
+    for (const k of ["pt", "en", "es"] as const) if (MARCAS_IDIOMA[k].has(w)) { c[k]++; dist[k].add(w); }
+  }
+  const outra = esperado === "ingles" ? "es" : "en", propria = esperado === "ingles" ? "en" : "es";
+  if (dist[outra].size >= IDIOMA_MIN_MARCAS && c[propria] < 2 * c[outra]) return outra === "en" ? "inglês" : "espanhol";
+  if (c.pt >= 12 && dist.pt.size >= 8 && c.en + c.es <= 2) return "português";
+  return "";
+}
+
 const FERRAMENTA_IDIOMA = {
   name: "entregar_item_em_portugues",
   description: "Entrega o comando e as cinco alternativas em português (mesmo sentido, mesma letra correta), os comentários das cinco e a resolução comentada, também em português.",
@@ -5038,6 +5097,19 @@ async function garantirFontesReais(
   diag.validacao = dossiePrevio && dossiePrevio.validacao ? dossiePrevio.validacao : null;
   if (!diag.aplicavel) { diag.estado = "nao_se_aplica"; return diag; }
 
+  /* v74.32 — Inglês e Espanhol: o texto-base tem de estar no idioma da disciplina. */
+  const discIdioma = disciplina || String((data && data.disciplina) || "");
+  const idiomaTB = idiomaErradoDoTextoBase(data, discIdioma);
+  if (idiomaTB) {
+    const pedido = idiomaDaDisciplina(discIdioma) === "ingles" ? "inglês" : "espanhol";
+    diag.estado = "reprovado";
+    diag.determinista = "idioma_do_texto_base";
+    diag.motivo = `o texto-base está em ${idiomaTB}, mas a disciplina pedida é ${discIdioma}: o texto-base tem de estar em ${pedido} (comando, alternativas e resolução continuam em português)`;
+    data.fonteNaoVerificada = { motivo: diag.motivo, mensagem: MENSAGEM_FONTE_BLOQUEIO, etapa: "idioma do texto-base" };
+    console.error(`[idioma] BLOQUEADA: ${diag.motivo}`);
+    return diag;
+  }
+
   /* v74.31 — MODOS DA IA (sem internet). Não há busca que confirme uma URL: endereço
      declarado sai do campo "fonte". E o tipo de uso tem de ser o da modalidade: texto
      autoral só como "proprio"; material parafraseado nunca como citação ou adaptação. */
@@ -5345,6 +5417,7 @@ function selfTestResponse() {
     textoCanonicoDaBiblioteca.toString(), fixaTextoDaBiblioteca.toString(),   // v74.30 — texto da biblioteca intocável
     usaOrdemIA.toString(), usadoHaPouco.toString(), pedeEspanhol.toString(), JSON.stringify([DISCIPLINAS_ORDEM_IA, RODADAS_PESQUISA_UNICA, RODIZIO_BIBLIOTECA_MS, TENTATIVA_DA_PESQUISA_UNICA]),   // v74.31
     pedidoDoProfessor.toString(),
+    idiomaDaDisciplina.toString(), idiomaErradoDoTextoBase.toString(),   // v74.32 — Inglês e Espanhol separados
     JSON.stringify(FERRAMENTA_DOSSIE_IA), SISTEMA_PESQUISA_IA, buildPesquisaIAPrompt.toString(), listaFatosIA.toString(), validacaoIA.toString(),
     dossieAutoralIA.toString(), dossieParafraseIA.toString(), parafraseIAUtilizavel.toString(), consultarConhecimentoIA.toString(),
     buildBlocoConhecimentoIA.toString(), buildBlocoAuditoriaIA.toString(), consultarTextosEnem.toString(),
@@ -5958,7 +6031,7 @@ function selfTestResponse() {
             referencia: "ARENDT, Hannah. Eichmann em Jerusalém. 1963.", parafrase: "x".repeat(200), fatos: ["O julgamento de Adolf Eichmann ocorreu em Jerusalém em 1961."], fonteDosFatos: "f", idioma: "portugues" };
           const par = dossieParafraseIA(ia), aut = dossieAutoralIA({ ...ia, pedeAutorOuObra: false }, "m"), fb = dossieAutoralIA(ia, "m", "Hannah Arendt");
           const agora = Date.now();
-          return DISCIPLINAS_ORDEM_IA.length === 6 && usaOrdemIA("História") && usaOrdemIA("Geografia") && usaOrdemIA("Filosofia") && usaOrdemIA("Sociologia")
+          return DISCIPLINAS_ORDEM_IA.length === 8 && usaOrdemIA("História")   // v74.32: + Inglês e Espanhol && usaOrdemIA("Geografia") && usaOrdemIA("Filosofia") && usaOrdemIA("Sociologia")
             && usaOrdemIA("Práticas Corporais") && usaOrdemIA("Língua Estrangeira (Inglês/Espanhol)")
             && !usaOrdemIA("Literatura") && !usaOrdemIA("Língua Portuguesa") && !usaOrdemIA("Artes") && !usaOrdemIA("Biologia")
             && RODADAS_PESQUISA_UNICA === 1 && DISCIPLINAS_TEXTOS_ENEM["Língua Estrangeira (Inglês/Espanhol)"][0] === "Língua Estrangeira"
@@ -5981,6 +6054,34 @@ function selfTestResponse() {
             && pesquisarFonteReal.toString().indexOf("if (tentativaApp !== TENTATIVA_DA_PESQUISA_UNICA)") < pesquisarFonteReal.toString().indexOf("SISTEMA_PESQUISA_FONTE")
             && buildDossieFonte(fb).includes("e a IA não o conhece com segurança:") && buildDossieFonte(dossieAutoralIA(ia, "m", "Hannah Arendt", true)).includes("a pesquisa única na internet não confirmou")
             && garantirFontesReais.toString().includes('diag.determinista = "tipo_de_uso_da_ia"');
+        })(),
+        /* v74.32 — Inglês e Espanhol separados (pedido do professor, 02/10/2026). */
+        v7432_inglesEspanhol: (() => {
+          const en = "The report describes how young people use social media to share news, and it shows that most of them do not check the sources of what they read.";
+          const es = "El informe describe cómo los jóvenes usan las redes sociales para compartir noticias, y muestra que la mayoría de ellos no verifica las fuentes de lo que lee.";
+          const pt = "O relatório descreve como os jovens usam as redes sociais para compartilhar notícias e mostra que a maioria deles não verifica as fontes do que lê, pois há muita pressa e pouca atenção quando a notícia chega pelo celular. Segundo os autores, essa é uma prática comum entre estudantes, que também confiam em amigos e na própria família.";
+          const enComCitacaoEs = en + " One page states: \"Los refugiados tienen los mismos derechos.\"";
+          return idiomaDaDisciplina("Inglês") === "ingles" && idiomaDaDisciplina("Espanhol") === "espanhol" && idiomaDaDisciplina("Língua Estrangeira (Inglês/Espanhol)") === ""
+            && ehLinguaEstrangeira("Inglês") && ehLinguaEstrangeira("Espanhol") && !ehLinguaEstrangeira("Artes")
+            && buildRegraIdiomaLinguaEstrangeira("Inglês").includes("TEXTO-BASE: SEMPRE em INGLÊS") && buildRegraIdiomaLinguaEstrangeira("Espanhol").includes("TEXTO-BASE: SEMPRE em ESPANHOL")
+            && buildRegraIdiomaLinguaEstrangeira("Língua Estrangeira (Inglês/Espanhol)").includes("TEXTO-BASE: em inglês ou em espanhol")
+            && idiomaErradoDoTextoBase({ textoBase: en }, "Inglês") === "" && idiomaErradoDoTextoBase({ textoBase: es }, "Espanhol") === ""
+            && idiomaErradoDoTextoBase({ textoBase: es }, "Inglês") === "espanhol" && idiomaErradoDoTextoBase({ textoBase: en }, "Espanhol") === "inglês"
+            && idiomaErradoDoTextoBase({ textoBase: enComCitacaoEs }, "Inglês") === "" && idiomaErradoDoTextoBase({ textoBase: enComCitacaoEs }, "Espanhol") === "inglês"
+            && idiomaErradoDoTextoBase({ textoBase: pt }, "Espanhol") === "português" && idiomaErradoDoTextoBase({ textoBase: es }, "Língua Estrangeira (Inglês/Espanhol)") === ""
+            && idiomaErradoDoTextoBase({ textoBase: "Sale!" }, "Espanhol") === ""
+            && DISCIPLINAS_TEXTOS_ENEM["Inglês"][0] === "Língua Estrangeira" && !DISCIPLINAS_TEXTOS_ENEM["Espanhol"]
+            && usaOrdemIA("Inglês") && usaOrdemIA("Espanhol") && usaOrdemIA("Língua Estrangeira (Inglês/Espanhol)")
+            && OBJETOS_POR_DISCIPLINA["Inglês"].join() === OBJETOS_POR_DISCIPLINA["Língua Estrangeira (Inglês/Espanhol)"].join()
+            && OBJETOS_POR_DISCIPLINA["Espanhol"].join() === OBJETOS_POR_DISCIPLINA["Língua Estrangeira (Inglês/Espanhol)"].join()
+            && JSON.stringify(CALIBRACAO_EXTENSAO["Inglês"]) === JSON.stringify(CALIBRACAO_EXTENSAO["Língua Estrangeira (Inglês/Espanhol)"])
+            && JSON.stringify(CALIBRACAO_EXTENSAO["Espanhol"]) === JSON.stringify(CALIBRACAO_EXTENSAO["Língua Estrangeira (Inglês/Espanhol)"])
+            && precisaFontesReais("Inglês") && precisaFontesReais("Espanhol")
+            && buildPesquisaIAPrompt({ disciplina: "Espanhol", tema: "t" }, []).includes("Idioma do texto-base: espanhol")
+            && !buildPesquisaIAPrompt({ disciplina: "História", tema: "t" }, []).includes("Idioma do texto-base")
+            && buildPesquisaFontePrompt({ area: "linguagens", disciplina: "Inglês", tema: "t" }).includes("publicado originalmente em INGLÊS")
+            && consultarConhecimentoIA.toString().includes("if (fixo) ia.idioma = fixo;")
+            && garantirFontesReais.toString().includes('diag.determinista = "idioma_do_texto_base"');
         })(),
         v7429_custo: (() => {
           const q = ferramentaQuestaoPara("nenhum", true, "Literatura");

@@ -170,6 +170,9 @@ const REELABORACOES_MAX = 2;
 ` + recorta("ferramentaFetchPara") + `
 ` + recorta("ferramentaBuscaNoDominioPara") + `
 ` + recorta("liberaRestritoAoConfirmado") + `
+// v74.32 — conferência do idioma do texto-base (Inglês e Espanhol), usada por garantirFontesReais
+` + fonte.slice(fonte.indexOf("const MARCAS_IDIOMA"), fonte.indexOf("\nconst ENEM_REAL_IDIOMA")) + `
+` + fonte.slice(fonte.indexOf("\nfunction idiomaErradoDoTextoBase("), fonte.indexOf("\n}\n", fonte.indexOf("\nfunction idiomaErradoDoTextoBase(")) + 3) + `
 // v74.25 — a camada zero (textos das provas do ENEM), inteira, como está no arquivo de produção
 ` + fonte.slice(fonte.indexOf("const TEXTOS_ENEM_MINIMO_PONTOS = "), fonte.indexOf("/* ═══════════ FIM DA CAMADA ZERO")) + `
 const MINIMO_FATOS_APROVACAO_RESTRITA = 3;
@@ -1086,6 +1089,28 @@ t("S18 o pesquisador da IA é chamado SEM ferramenta de busca na web", rS18 && r
 __stub.erro = "falha simulada"; __stub.chamadas = 0;
 t("S19 falha na chamada do pesquisador da IA não derruba nada: devolve null", (await consultarConhecimentoIA({ disciplina: "Filosofia", tema: "x" }, [], [])) === null);
 __stub.erro = null;
+
+/* ---------- T. v74.32 — Inglês e Espanhol: o texto-base no idioma da disciplina ---------- */
+const textoEnT = "The report describes how young people use social media to share news, and it shows that most of them do not check the sources of what they read before they share it with their friends.";
+const textoEsT = "El informe describe cómo los jóvenes usan las redes sociales para compartir noticias, y muestra que la mayoría de ellos no verifica las fuentes de lo que lee antes de compartirlo con sus amigos.";
+__stub.resposta = fichaBoa(); __stub.chamadas = 0;
+const qT1: any = { ...questao(proprioS()), disciplina: "Espanhol", textoBase: textoEnT };
+const dT1 = await roda(qT1, "linguagens", 120_000, [], autS);
+t("T1 Espanhol com texto-base em inglês: reprovada em código, sem gastar o auditor, com o motivo para a reelaboração",
+  dT1.estado === "reprovado" && dT1.determinista === "idioma_do_texto_base" && __stub.chamadas === 0
+  && dT1.motivo.startsWith("o texto-base está em inglês, mas a disciplina pedida é Espanhol") && qT1.fonteNaoVerificada && qT1.fonteNaoVerificada.etapa === "idioma do texto-base", JSON.stringify(dT1));
+__stub.chamadas = 0;
+const qT2: any = { ...questao(proprioS()), disciplina: "Espanhol", textoBase: textoEsT };
+const dT2 = await roda(qT2, "linguagens", 120_000, [], autS);
+t("T2 Espanhol com texto-base em espanhol: segue para o auditor e é aprovada", dT2.estado === "aprovado" && __stub.chamadas === 1, JSON.stringify(dT2));
+__stub.chamadas = 0;
+const qT3: any = { ...questao(proprioS()), disciplina: "Inglês", textoBase: textoEsT };
+const dT3 = await roda(qT3, "linguagens", 120_000, [], autS);
+t("T3 Inglês com texto-base em espanhol: reprovada em código", dT3.estado === "reprovado" && dT3.determinista === "idioma_do_texto_base" && __stub.chamadas === 0);
+__stub.chamadas = 0;
+const qT4: any = { ...questao(proprioS()), disciplina: "Língua Estrangeira (Inglês/Espanhol)", textoBase: textoEsT };
+const dT4 = await roda(qT4, "linguagens", 120_000, [], autS);
+t("T4 a chave antiga não confere o idioma (como antes)", dT4.estado === "aprovado" && __stub.chamadas === 1);
 
 console.log(`\n${ok} verificações passaram, ${bad} falharam.`);
 if (bad) Deno.exit(1);

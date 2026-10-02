@@ -800,8 +800,11 @@ const CARLITO_COBERTURA = " !\"#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRS
 /* ===================== Gerador Inteligente de Simulados ENEM ===================== */
 
 const AREA_META = {
-  linguagens: { label: "Linguagens, Códigos e suas Tecnologias", icon: "📖", desc: "Português, literatura, artes, práticas corporais, línguas estrangeiras",
-    disciplinas: ["Língua Portuguesa","Literatura","Artes","Práticas Corporais","Língua Estrangeira (Inglês/Espanhol)"] },
+  /* v18.34 — Inglês e Espanhol separados (pedido do professor, 02/10/2026), no lugar de
+     "Língua Estrangeira (Inglês/Espanhol)". O rótulo antigo continua nas tabelas abaixo
+     só para os simulados já arquivados com ele. */
+  linguagens: { label: "Linguagens, Códigos e suas Tecnologias", icon: "📖", desc: "Português, literatura, artes, práticas corporais, inglês e espanhol",
+    disciplinas: ["Língua Portuguesa","Literatura","Artes","Práticas Corporais","Inglês","Espanhol"] },
   humanas: { label: "Ciências Humanas e suas Tecnologias", icon: "🏛️", desc: "História, geografia, filosofia, sociologia",
     disciplinas: ["História","Geografia","Filosofia","Sociologia"] },
   natureza: { label: "Ciências da Natureza e suas Tecnologias", icon: "🧬", desc: "Biologia, física, química",
@@ -1981,7 +1984,13 @@ function renderDisciplinaChips(){
   const wrap = document.getElementById("disciplinaChips");
   wrap.innerHTML = "";
   if(!state.area){ wrap.innerHTML = `<span class="hint">Selecione uma área do conhecimento primeiro.</span>`; return; }
-  AREA_META[state.area].disciplinas.forEach(d => {
+  /* v18.34 — simulado arquivado com um rótulo que saiu da lista (ex.: "Língua Estrangeira
+     (Inglês/Espanhol)", antes de Inglês e Espanhol se separarem): o chip dele aparece,
+     marcado, para a tela nunca mostrar uma disciplina e o estado guardar outra (ver
+     v18.4). Escolhida outra disciplina, ele some. */
+  const lista = AREA_META[state.area].disciplinas.slice();
+  if(state.disciplina && !lista.includes(state.disciplina)) lista.push(state.disciplina);
+  lista.forEach(d => {
     const chip = document.createElement("div");
     const marcada = state.disciplina === d;
     chip.className = "chip" + (marcada ? " sel" : "");
@@ -2618,7 +2627,9 @@ const OBJETOS_POR_DISCIPLINA = {
   "Literatura": ["Estudo do texto literário", "Produção e recepção de textos artísticos"],
   "Artes": ["Produção e recepção de textos artísticos"],
   "Práticas Corporais": ["Estudo das práticas corporais"],
-  "Língua Estrangeira (Inglês/Espanhol)": ["Estudo do texto", "Estudo dos aspectos linguísticos em diferentes textos"],
+  "Língua Estrangeira (Inglês/Espanhol)": ["Estudo do texto", "Estudo dos aspectos linguísticos em diferentes textos"],   // simulados arquivados antes da v18.34
+  "Inglês": ["Estudo do texto", "Estudo dos aspectos linguísticos em diferentes textos"],     // v18.34
+  "Espanhol": ["Estudo do texto", "Estudo dos aspectos linguísticos em diferentes textos"],   // v18.34
 };
 
 // Objetos de conhecimento válidos para (área, disciplina): a lista da
@@ -4991,6 +5002,8 @@ const CALIBRACAO_APP = {
   "Práticas Corporais": { texto: [799,1134,962], comando: [83,128,106], item: [46,69,58], avisoMedia: 80 },
   "Educação Física": { texto: [799,1134,962], comando: [83,128,106], item: [46,69,58], avisoMedia: 80 },
   "Língua Estrangeira (Inglês/Espanhol)": { texto: [409,1073,761], comando: [77,179,129], item: [42,63,53], avisoMedia: 70 },
+  "Inglês": { texto: [409,1073,761], comando: [77,179,129], item: [42,63,53], avisoMedia: 70 },     // v18.34: a mesma faixa (as provas não separam os idiomas)
+  "Espanhol": { texto: [409,1073,761], comando: [77,179,129], item: [42,63,53], avisoMedia: 70 },   // v18.34
   "História": { texto: [469,757,620], comando: [84,130,104], item: [28,46,38], avisoMedia: 61 },
   "Geografia": { texto: [398,737,554], comando: [76,126,101], item: [28,46,38], avisoMedia: 61 },
   "Filosofia": { texto: [477,671,596], comando: [78,118,95], item: [28,46,38], avisoMedia: 61 },

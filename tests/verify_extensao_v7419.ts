@@ -116,8 +116,8 @@ for (const [disc, item] of [["Artes", "[46, 69, 58]"], ["História", "[28, 46, 3
 }
 // item: [number, number, number] da assinatura não conta — só as linhas com números
 t("E2b toda disciplina tem o teto do aviso (p90 da média das cinco)",
-  (tabela.match(/avisoMedia: \d+/g) || []).length === 14
-  && (tabela.match(/item: \[\d/g) || []).length === 14,
+  (tabela.match(/avisoMedia: \d+/g) || []).length === 16   // v74.32: + Inglês e Espanhol (14 antes)
+  && (tabela.match(/item: \[\d/g) || []).length === 16,
   `avisoMedia=${(tabela.match(/avisoMedia: \d+/g) || []).length} item=${(tabela.match(/item: \[\d/g) || []).length}`);
 t("E2c o prompt cita as quatro provas recentes, não 2015-2025",
   src.includes("2022, 2023, 2024 e 2025") && !/nas provas do ENEM 2015-2025/.test(src));
