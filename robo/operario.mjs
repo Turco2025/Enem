@@ -151,6 +151,44 @@ export async function gerarNoApp({ page, url, parametros, sessao, aoProgresso = 
 // ---------------------------------------------------------------------------
 // um pedido, do começo ao fim
 // ---------------------------------------------------------------------------
+// Bibliotecas que o app carrega de CDNs. Em ambientes sem acesso a CDN (LIBS_LOCAIS=pasta), são
+// servidas a partir das cópias locais — as mesmas versões que o app pede (ver robo/libs_locais/).
+export const LIBS_CDN = {
+  "https://cdnjs.cloudflare.com/ajax/libs/jspdf/4.2.1/jspdf.umd.min.js": "jspdf.umd.min.js",
+  "https://cdn.jsdelivr.net/npm/docx@8.5.0/build/index.umd.js": "docx.umd.js",
+  "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js": "supabase.js",
+  "https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.5.0/chart.umd.min.js": "chart.umd.js",
+};
+export async function servirLibsLocais(contexto, pasta) {
+  for (const [url, arquivo] of Object.entries(LIBS_CDN)) {
+    const corpo = await readFile(path.join(pasta, arquivo));
+    await contexto.route(url, (route) => route.fulfill({ status: 200, contentType: "application/javascript", body: corpo }));
+  }
+}
+
+// Em ambientes em que o Chromium não alcança a rede diretamente (proxy corporativo que só o Node
+// honra, via HTTPS_PROXY/NODE_USE_ENV_PROXY), REDE_PELO_NODE=1 faz TODA requisição da página passar
+// pelo fetch do Node. Só para uso local/depuração; no GitHub Actions o Chromium fala direto.
+const CABECALHOS_PROIBIDOS = new Set(["host", "content-length", "connection", "accept-encoding", "transfer-encoding", "keep-alive", "upgrade", "te", "trailer", "proxy-connection"]);
+export async function redePeloNode(contexto) {
+  await contexto.route("**/*", async (route) => {
+    const req = route.request();
+    const url = req.url();
+    if (/^https?:\/\/(127\.0\.0\.1|localhost)[:/]/.test(url) || !/^https?:/.test(url)) return route.continue();
+    try {
+      const cab = Object.fromEntries(Object.entries(req.headers()).filter(([k]) => !CABECALHOS_PROIBIDOS.has(k.toLowerCase()) && !k.startsWith(":")));
+      const corpo = req.postDataBuffer();
+      const resp = await fetch(url, { method: req.method(), headers: cab, body: corpo && corpo.length ? corpo : undefined, redirect: "manual", signal: AbortSignal.timeout(170_000) });
+      const bytes = Buffer.from(await resp.arrayBuffer());
+      const saida = {};
+      resp.headers.forEach((v, k) => { if (!["content-encoding", "content-length", "transfer-encoding", "connection"].includes(k.toLowerCase())) saida[k] = v; });
+      await route.fulfill({ status: resp.status, headers: saida, body: bytes });
+    } catch (e) {
+      await route.fulfill({ status: 502, contentType: "text/plain", body: "rede pelo Node falhou: " + String(e && e.message || e).slice(0, 200) });
+    }
+  });
+}
+
 async function processar(browser, urlApp, trabalho, dono, sessao) {
   const id = trabalho.id;
   const p = trabalho.parametros || {};
@@ -158,6 +196,9 @@ async function processar(browser, urlApp, trabalho, dono, sessao) {
   let contexto = null, page = null;
   try {
     contexto = await browser.newContext({ viewport: { width: 1280, height: 1000 }, locale: "pt-BR", timezoneId: "America/Sao_Paulo" });
+    // ordem importa: o Playwright consulta as rotas da última para a primeira — o encaminhamento geral entra antes, as bibliotecas locais depois (prevalecem)
+    if (process.env.REDE_PELO_NODE === "1") { await redePeloNode(contexto); log("rede da página encaminhada pelo Node (proxy do ambiente)"); }
+    if (process.env.LIBS_LOCAIS) { await servirLibsLocais(contexto, process.env.LIBS_LOCAIS); log("bibliotecas de CDN servidas das cópias locais"); }
     page = await contexto.newPage();
     page.on("pageerror", (e) => log("erro na página:", curto(e.message, 200)));
     page.on("console", (m) => { if (m.type() === "error") log("console.error:", curto(m.text(), 200)); });

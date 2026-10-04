@@ -26,7 +26,7 @@
 // do robô exigem um token OIDC válido do repositório/branch configurados (ou o segredo
 // compartilhado opcional WA_OPERARIO_TOKEN).
 
-export const VERSAO = "B2.0";
+export const VERSAO = "B2.1";
 
 import * as P from "./pedido.ts";
 import * as O from "./operario.ts";
@@ -429,14 +429,14 @@ export const TEXTOS = {
   gerando: (p: P.Pedido, minutos: number) =>
     `🛠️ Comecei a gerar seu simulado de ${p.disciplina} (${p.quantidade} ${p.quantidade === 1 ? "questão" : "questões"}${p.temas_texto ? ` · ${p.temas_texto.slice(0, 120)}` : ""}). Leva cerca de ${minutos} min; aviso aqui quando terminar.`,
   legendaDocumento: (rotulo: string, p: P.Pedido) => `${O.descricaoRotulo(rotulo)} — ${p.disciplina}, ${p.quantidade} ${p.quantidade === 1 ? "questão" : "questões"}`,
+  // O custo de IA fica só em progresso.resumo (uso interno do administrador); o professor não vê valores.
   pronto: (p: P.Pedido, r: ResumoGeracao, documentos = 4) => {
-    const custo = r.custoUSD > 0 ? ` Custo de IA ≈ US$ ${r.custoUSD.toFixed(2)}.` : "";
     const arquivos = documentos >= 4 ? "PDF e Word, nas versões do aluno e do professor" : `${documentos} ${documentos === 1 ? "arquivo" : "arquivos"}`;
     const arquivado = r.simuladoId ? ` O simulado também está em "Meus Simulados" no app.` : "";
     const falhas = r.falhas.length
       ? `\n\n⚠️ ${r.falhas.length === 1 ? "1 questão não ficou pronta" : `${r.falhas.length} questões não ficaram prontas`} (nº ${r.falhas.map((f) => f.numero).join(", ")}): ${r.falhas[0].motivo.slice(0, 160)}. Abra o simulado no app e use "Regenerar".`
       : "";
-    return `✅ Simulado pronto: ${r.prontas} de ${r.total} ${r.total === 1 ? "questão" : "questões"} de ${p.disciplina}${p.temas_texto ? ` · ${p.temas_texto.slice(0, 120)}` : ""}. Seguem os arquivos acima: ${arquivos}.${arquivado}${custo}${falhas}`;
+    return `✅ Simulado pronto: ${r.prontas} de ${r.total} ${r.total === 1 ? "questão" : "questões"} de ${p.disciplina}${p.temas_texto ? ` · ${p.temas_texto.slice(0, 120)}` : ""}. Seguem os arquivos acima: ${arquivos}.${arquivado}${falhas}`;
   },
   entregaAtrasada: (p: P.Pedido) => `📎 Seu simulado de ${p.disciplina} ficou pronto, mas não consegui entregar na hora. Seguem os arquivos:`,
   entregaFalhouDefinitivo: (p: P.Pedido) => `❌ Não consegui entregar por aqui os arquivos do simulado de ${p.disciplina}, mesmo depois de várias tentativas. Ele está salvo em "Meus Simulados" no app — abra lá e use "Exportar PDF" ou "Exportar DOCX".`,

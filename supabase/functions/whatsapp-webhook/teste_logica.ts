@@ -516,7 +516,7 @@ Deno.test("selftest exige a frase de verificação e só expõe presença dos se
   const r = await handler(new Request("https://x/w?selftest=1&t=fraseVerificacaoTeste2026"), env);
   const j = await r.json();
   const s = JSON.stringify(j);
-  ok(r.status === 200 && j.versao === "B2.0" && j.secretsPresentes.WHATSAPP_TOKEN === true && j.secretsPresentes.WHATSAPP_APP_SECRET === true, "selftest com t certo → 200 com presença dos secrets");
+  ok(r.status === 200 && j.versao === "B2.1" && j.secretsPresentes.WHATSAPP_TOKEN === true && j.secretsPresentes.WHATSAPP_APP_SECRET === true, "selftest com t certo → 200 com presença dos secrets");
   ok(s.indexOf("TOKEN_TESTE") < 0 && s.indexOf("segredo-de-teste") < 0 && s.indexOf("service-teste") < 0 && s.indexOf("fraseVerificacao") < 0, "nenhum valor de secret aparece na saída");
   ok(j.tabelas.perfis.startsWith("ok") && j.tabelas.wa_mensagens.startsWith("ok") && j.tabelas.wa_conversas.startsWith("ok") && j.tabelas.wa_trabalhos.startsWith("ok") && j.operario && j.operario.disparoImediato === false && j.operario.repositorio === "Turco2025/Enem", "tabelas consultadas; operário sem disparo imediato (varredura)");
   ok(Array.isArray(j.secretsComEspacosNasPontas) && j.formatoOk.WHATSAPP_PHONE_NUMBER_ID_numerico === true && j.formatoOk.WHATSAPP_APP_SECRET_hex32 === false, "selftest aponta formato dos secrets (segredo de teste não é hex32)");
@@ -891,7 +891,7 @@ Deno.test("operário: fluxo completo — pegar (sessão + dono + aviso) → prog
   ok(novos.length === 5 && novos.slice(0, 4).every((m) => m.type === "document") && novos[4].type === "text", "4 documentos e depois o resumo");
   ok(novos.slice(0, 4).map((m) => m.document.id).join(",") === "media.5,media.2,media.3,media.4" && novos[0].document.filename === "de-novo.pdf" && novos[1].document.caption.includes("professor") && novos[2].document.caption.startsWith("Word · versão do aluno"), "ordem fixa: PDF aluno, PDF professor, Word aluno, Word professor — com legendas");
   const fim = novos[4].text.body;
-  ok(fim.startsWith("✅ Simulado pronto: 4 de 5 questões de Biologia") && fim.includes("Meus Simulados") && fim.includes("US$ 0.42") && fim.includes("1 questão não ficou pronta (nº 3): imagem obrigatória não gerada"), "resumo com custo e a questão que faltou");
+  ok(fim.startsWith("✅ Simulado pronto: 4 de 5 questões de Biologia") && fim.includes("Meus Simulados") && !/US\$|R\$|[Cc]usto/.test(fim) && fim.includes("1 questão não ficou pronta (nº 3): imagem obrigatória não gerada"), "resumo sem valores de custo (professor não vê) e com a questão que faltou");
   ok(t.progresso.entrega_faltam.length === 0 && Array.isArray(t.progresso.entrega_ids) && t.progresso.entrega_ids.length === 5 && t.progresso.entrega_ids.every((x: string) => x.startsWith("wamid.resp")) && Object.keys(t.progresso.entrega_mapa).length === 5 && t.progresso.reentregas === 0, "ids das 5 mensagens da entrega guardados, nada faltando, zero reentregas");
   ok((await operario("concluir", { trabalho_id: t.id, dono, resumo: {} })).status === 409 && enviosWa.length === antesDocs + 5, "concluir de novo → 409, nada reenviado");
   await envia("wamid.s2", "status");

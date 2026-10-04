@@ -49,8 +49,9 @@ duas Supabase Edge Functions próprias para gerar conteúdo com segurança:
   pegar um pedido (PATCH condicional `pendente → gerando`, com um `dono` que identifica a
   execução), o webhook emite uma sessão do professor pela Auth admin (`generate_link` +
   `verify`, sem senha), avisa "Comecei a gerar" e, ao concluir, envia **4 documentos** — PDF e
-  Word, versões do aluno e do professor — mais um resumo com o custo de IA; o simulado também
-  fica em "Meus Simulados". O robô renova um sinal de vida a cada minuto; sem sinal há 15 min,
+  Word, versões do aluno e do professor — mais um resumo **sem valores** (desde a B2.1 o custo de
+  IA fica só em `wa_trabalhos.progresso.resumo`, para o administrador; o professor não vê quanto
+  custou); o simulado também fica em "Meus Simulados". O robô renova um sinal de vida a cada minuto; sem sinal há 15 min,
   outra execução retoma o pedido. Status: `pendente → gerando → entregando → enviado`; `pronto`
   quando a Meta não aceitou a entrega (janela de 24 h fechada, inclusive pelo status "failed"
   assíncrono — a próxima mensagem do professor entrega, retomando da mensagem que faltou);
