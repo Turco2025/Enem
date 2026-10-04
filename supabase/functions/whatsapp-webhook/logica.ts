@@ -1,12 +1,15 @@
-// whatsapp-webhook — lógica (etapa A1). Separada do index.ts para poder ser
+// whatsapp-webhook — lógica (etapas A1 e B1). Separada do index.ts para poder ser
 // testada localmente sem abrir servidor.
 //
 // O que faz:
 //  GET  ?hub.mode=subscribe&hub.verify_token=...&hub.challenge=...  → verificação do webhook (Meta)
-//  GET  ?selftest=1                                                → diagnóstico (só nomes de secrets presentes, nunca valores)
+//  GET  ?selftest=1&t=<verify token>[&meta=1]                      → diagnóstico (só nomes de secrets presentes, nunca valores)
 //  POST (assinado com X-Hub-Signature-256)                         → mensagens recebidas:
 //        "Vincular conta 123456" → conclui o pareamento telefone ↔ conta do app
-//        outra mensagem de número vinculado → resposta provisória (pedidos entram na etapa B)
+//        número vinculado, qualquer mensagem → FORMULÁRIO POR PERGUNTAS (listas e botões): área,
+//          disciplina, temas, quantidade, dificuldade, recurso visual → resumo → "Sim" grava em
+//          wa_trabalhos (fila da etapa C). Estado da conversa em wa_conversas (expira em 1 h).
+//        CANCELAR / STATUS / AJUDA → comandos
 //        (mensagens repetidas pela Meta: 200 se já concluída, 500 se outra execução está
 //         processando agora ou se a anterior falhou — aí a Meta reentrega e processamos de novo)
 //        número não vinculado → instrução de como vincular
@@ -15,7 +18,9 @@
 // App Secret; sem ela, 401 e nada é processado. Cada mensagem é registrada em
 // wa_mensagens pelo id da Meta (chave primária) — repetições são ignoradas.
 
-export const VERSAO = "A1.9";
+export const VERSAO = "B1.0";
+
+import * as P from "./pedido.ts";
 
 // App da Meta ("Gerador Enem") — usado só para conferir a assinatura da WABA ao app.
 export const META_APP_ID = "1708104537155293";
@@ -29,6 +34,8 @@ export interface Env {
   SUPABASE_URL: string;
   SUPABASE_SERVICE_ROLE_KEY: string;
   GRAPH_VERSAO?: string;
+  WA_OPERARIO_URL?: string;      // etapa C: para onde avisar que há um pedido novo (vazio = fila apenas)
+  WA_OPERARIO_TOKEN?: string;    // etapa C: segredo enviado ao operário
 }
 
 export function lerEnv(): Env {
@@ -44,6 +51,8 @@ export function lerEnv(): Env {
     SUPABASE_URL: g("SUPABASE_URL"),
     SUPABASE_SERVICE_ROLE_KEY: g("SUPABASE_SERVICE_ROLE_KEY"),
     GRAPH_VERSAO: g("WHATSAPP_GRAPH_VERSAO") || "v25.0",
+    WA_OPERARIO_URL: g("WA_OPERARIO_URL"),
+    WA_OPERARIO_TOKEN: g("WA_OPERARIO_TOKEN"),
   };
 }
 
@@ -187,10 +196,11 @@ async function atualizarMensagem(env: Env, wamid: string, campos: Record<string,
   return false;
 }
 
-async function perfilPorTelefone(env: Env, telefone: string): Promise<{ user_id: string; whatsapp_nome: string | null; ilimitado: boolean } | null> {
-  const resp = await fetch(`${env.SUPABASE_URL}/rest/v1/perfis?select=user_id,whatsapp_nome,ilimitado&whatsapp=eq.${encodeURIComponent(telefone)}&limit=1`, { headers: cabecalhosDb(env) });
+export type Perfil = { user_id: string; whatsapp_nome: string | null; ilimitado: boolean; limite_diario_wa?: number | null };
+async function perfilPorTelefone(env: Env, telefone: string): Promise<Perfil | null> {
+  const resp = await fetch(`${env.SUPABASE_URL}/rest/v1/perfis?select=user_id,whatsapp_nome,ilimitado,limite_diario_wa&whatsapp=eq.${encodeURIComponent(telefone)}&limit=1`, { headers: cabecalhosDb(env) });
   if (!resp.ok) throw new Error(`perfis ${resp.status}`);
-  const arr = (await resp.json()) as { user_id: string; whatsapp_nome: string | null; ilimitado: boolean }[];
+  const arr = (await resp.json()) as Perfil[];
   return arr[0] ?? null;
 }
 
@@ -239,26 +249,27 @@ export function formaAlternativaBr(telefone: string): string | null {
 }
 const CODIGO_FORA_DA_LISTA = 131030;
 
-async function postarTexto(env: Env, para: string, corpo: string): Promise<{ status: number; detalhe: string; codigo: number; transitorio: boolean }> {
+// Envia um objeto de mensagem da Cloud API (texto, interativa, flow...). `objeto.to` é definido aqui.
+async function postarObjeto(env: Env, para: string, objeto: Record<string, unknown>): Promise<{ status: number; detalhe: string; codigo: number; transitorio: boolean }> {
   const url = `https://graph.facebook.com/${env.GRAPH_VERSAO}/${env.WHATSAPP_PHONE_NUMBER_ID}/messages`;
   const resp = await fetch(url, {
     method: "POST",
     headers: { authorization: `Bearer ${env.WHATSAPP_TOKEN}`, "content-type": "application/json" },
-    body: JSON.stringify({ messaging_product: "whatsapp", recipient_type: "individual", to: para, type: "text", text: { preview_url: false, body: corpo } }),
+    body: JSON.stringify({ messaging_product: "whatsapp", recipient_type: "individual", ...objeto, to: para }),
     signal: AbortSignal.timeout(TIMEOUT_GRAPH_MS),   // estoura → exceção → acao "erro" → 500 → Meta reentrega
   });
   const completo = await resp.text();
   return { status: resp.status, detalhe: completo.slice(0, 300), codigo: resp.ok ? 0 : codigoErroGraph(completo), transitorio: !resp.ok && envioTransitorio(resp.status, completo) };
 }
 
-export async function enviarTexto(env: Env, para: string, corpo: string): Promise<{ ok: boolean; transitorio: boolean; detalhe: string; paraUsado: string }> {
-  let r = await postarTexto(env, para, corpo);
+export async function enviarObjeto(env: Env, para: string, objeto: Record<string, unknown>): Promise<{ ok: boolean; transitorio: boolean; detalhe: string; paraUsado: string }> {
+  let r = await postarObjeto(env, para, objeto);
   let paraUsado = para;
   if (r.codigo === CODIGO_FORA_DA_LISTA) {
     const alt = formaAlternativaBr(para);
     if (alt) {
       console.log(`[wa] ${para} fora da lista de testes (#131030); tentando ${alt}`);
-      const r2 = await postarTexto(env, alt, corpo);
+      const r2 = await postarObjeto(env, alt, objeto);
       if (r2.status < 400 || r2.status >= 500) { r = r2; paraUsado = alt; }
       else console.log(`[wa] ${alt} também recusado: ${r2.status} código ${r2.codigo}`);
     }
@@ -266,6 +277,23 @@ export async function enviarTexto(env: Env, para: string, corpo: string): Promis
   const ok = r.status >= 200 && r.status < 300;
   if (!ok) console.error(`[wa] envio para ${paraUsado} falhou ${r.status} (código ${r.codigo}): ${r.detalhe}`);
   return { ok, transitorio: r.transitorio, detalhe: r.detalhe, paraUsado };
+}
+
+export function objetoTexto(corpo: string): Record<string, unknown> {
+  return { type: "text", text: { preview_url: false, body: corpo } };
+}
+export async function enviarTexto(env: Env, para: string, corpo: string): Promise<{ ok: boolean; transitorio: boolean; detalhe: string; paraUsado: string }> {
+  return await enviarObjeto(env, para, objetoTexto(corpo));
+}
+
+// Várias mensagens em sequência (ex.: aviso + pergunta). Para no primeiro envio que falhar.
+async function enviarSequencia(env: Env, para: string, objetos: Record<string, unknown>[]): Promise<{ ok: boolean; transitorio: boolean; detalhe: string; paraUsado: string }> {
+  let ultimo = { ok: true, transitorio: false, detalhe: "", paraUsado: para };
+  for (const o of objetos) {
+    ultimo = await enviarObjeto(env, para, o);
+    if (!ultimo.ok) break;
+  }
+  return ultimo;
 }
 
 async function marcarLida(env: Env, wamid: string) {
@@ -280,13 +308,90 @@ async function marcarLida(env: Env, wamid: string) {
 }
 
 // ---------------------------------------------------------------------------
+// Etapa B1 — banco: configuração, conversa guiada e fila de pedidos
+// ---------------------------------------------------------------------------
+async function lerConversa(env: Env, telefone: string): Promise<{ estado: Record<string, unknown>; user_id: string | null } | null> {
+  const r = await fetch(`${env.SUPABASE_URL}/rest/v1/wa_conversas?select=estado,user_id&telefone=eq.${encodeURIComponent(telefone)}&limit=1`, { headers: cabecalhosDb(env) });
+  if (!r.ok) throw new Error(`wa_conversas select ${r.status}`);
+  const arr = (await r.json()) as { estado: Record<string, unknown>; user_id: string | null }[];
+  return arr[0] ?? null;
+}
+async function gravarConversa(env: Env, telefone: string, userId: string | null, estado: Record<string, unknown>): Promise<void> {
+  const r = await fetch(`${env.SUPABASE_URL}/rest/v1/wa_conversas?on_conflict=telefone`, {
+    method: "POST", headers: cabecalhosDb(env, { prefer: "resolution=merge-duplicates,return=minimal" }),
+    body: JSON.stringify({ telefone, user_id: userId, estado, atualizado_em: new Date().toISOString() }),
+  });
+  if (!r.ok) throw new Error(`wa_conversas upsert ${r.status}: ${(await r.text()).slice(0, 200)}`);
+}
+
+export interface TrabalhoResumo { id: string; status: string; criado_em: string; parametros: Record<string, unknown>; erro?: string | null; concluido_em?: string | null }
+// Idempotente por mensagem: uma reentrega da Meta (depois de falha no envio) encontra o
+// trabalho já criado para o mesmo wamid e não cria outro.
+async function trabalhoDoWamid(env: Env, wamid: string): Promise<{ id: string; status: string; parametros: Record<string, unknown> } | null> {
+  const r = await fetch(`${env.SUPABASE_URL}/rest/v1/wa_trabalhos?select=id,status,parametros&parametros->>wamid_pedido=eq.${encodeURIComponent(wamid)}&limit=1`, { headers: cabecalhosDb(env) });
+  if (!r.ok) throw new Error(`wa_trabalhos por wamid ${r.status}`);
+  const arr = (await r.json()) as { id: string; status: string; parametros: Record<string, unknown> }[];
+  return arr[0] ?? null;
+}
+async function criarTrabalho(env: Env, userId: string, telefone: string, pedido: P.Pedido, wamid: string): Promise<string> {
+  const existente = await trabalhoDoWamid(env, wamid);
+  if (existente) return existente.id;
+  const r = await fetch(`${env.SUPABASE_URL}/rest/v1/wa_trabalhos`, {
+    method: "POST", headers: cabecalhosDb(env, { prefer: "return=representation" }),
+    body: JSON.stringify({ user_id: userId, telefone, parametros: { ...pedido, wamid_pedido: wamid }, status: "pendente" }),
+  });
+  if (!r.ok) throw new Error(`wa_trabalhos insert ${r.status}: ${(await r.text()).slice(0, 200)}`);
+  const arr = (await r.json()) as { id: string }[];
+  if (!arr[0]?.id) throw new Error("wa_trabalhos insert sem id");
+  return arr[0].id;
+}
+async function trabalhosDoUsuario(env: Env, userId: string, desdeIso: string | null, limite = 50): Promise<TrabalhoResumo[]> {
+  const desde = desdeIso ? `&criado_em=gte.${encodeURIComponent(desdeIso)}` : "";
+  const r = await fetch(`${env.SUPABASE_URL}/rest/v1/wa_trabalhos?select=id,status,criado_em,parametros,erro,concluido_em&user_id=eq.${encodeURIComponent(userId)}${desde}&order=criado_em.desc&limit=${limite}`, { headers: cabecalhosDb(env) });
+  if (!r.ok) throw new Error(`wa_trabalhos select ${r.status}`);
+  return (await r.json()) as TrabalhoResumo[];
+}
+// Cancela os pedidos ainda pendentes do usuário; devolve quantos foram cancelados.
+async function cancelarPendentes(env: Env, userId: string): Promise<number> {
+  const r = await fetch(`${env.SUPABASE_URL}/rest/v1/wa_trabalhos?user_id=eq.${encodeURIComponent(userId)}&status=eq.pendente`, {
+    method: "PATCH", headers: cabecalhosDb(env, { prefer: "return=representation" }),
+    body: JSON.stringify({ status: "cancelado", concluido_em: new Date().toISOString() }),
+  });
+  if (!r.ok) throw new Error(`wa_trabalhos cancelar ${r.status}`);
+  return ((await r.json()) as unknown[]).length;
+}
+// Questões já pedidas hoje (fuso de Brasília), sem contar canceladas e falhas.
+export function inicioDoDiaBrasilia(agora = new Date()): string {
+  const brt = new Date(agora.getTime() - 3 * 60 * 60 * 1000);
+  const ymd = brt.toISOString().slice(0, 10);
+  return `${ymd}T03:00:00.000Z`;      // 00:00 em Brasília (UTC-3, sem horário de verão)
+}
+async function questoesPedidasHoje(env: Env, userId: string): Promise<number> {
+  const lista = await trabalhosDoUsuario(env, userId, inicioDoDiaBrasilia(), 200);
+  return lista.filter((t) => t.status !== "cancelado" && t.status !== "falhou").reduce((n, t) => n + (Number(t.parametros?.quantidade) || 0), 0);
+}
+// Etapa C: avisa o operário que há pedido novo. Sem URL configurada, não faz nada
+// (o pedido fica "pendente" na fila). Falha aqui NÃO derruba o pedido: fica registrada.
+export const TIMEOUT_OPERARIO_MS = 8_000;
+async function acionarOperario(env: Env, trabalhoId: string): Promise<boolean> {
+  if (!env.WA_OPERARIO_URL) return false;
+  try {
+    const r = await fetch(env.WA_OPERARIO_URL, {
+      method: "POST", headers: { "content-type": "application/json", authorization: `Bearer ${env.WA_OPERARIO_TOKEN ?? ""}` },
+      body: JSON.stringify({ trabalho_id: trabalhoId }), signal: AbortSignal.timeout(TIMEOUT_OPERARIO_MS),
+    });
+    if (!r.ok) console.error(`[wa] operário respondeu ${r.status}`);
+    return r.ok;
+  } catch (e) { console.error("[wa] operário inacessível", e); return false; }
+}
+
+// ---------------------------------------------------------------------------
 // textos das respostas (etapa A1)
 // ---------------------------------------------------------------------------
 export const TEXTOS = {
   vinculoOk: (nome: string, emailMascarado: string) =>
     `Pronto${nome ? ", " + nome : ""}! Este número ficou vinculado à sua conta do Gerador ENEM${emailMascarado ? ` (${emailMascarado})` : ""}.\n\n` +
-    `Em breve você vai poder pedir simulados por aqui — por exemplo: "10 questões de Biologia sobre ciclo do carbono, 3 fáceis, 4 médias e 3 difíceis, com imagem". ` +
-    `Aviso quando essa parte estiver ativa.`,
+    `Para pedir um simulado, é só mandar qualquer mensagem (por exemplo "oi"): eu faço 6 perguntas rápidas — área, disciplina, temas, quantidade, nível e recurso visual — e você confirma.`,
   vinculoInvalido:
     `Não encontrei um código válido nessa mensagem. Os códigos valem 15 minutos.\n\n` +
     `No Gerador ENEM, entre na sua conta, vá em "Solicitar simulados pelo WhatsApp" → "Vincular meu WhatsApp" e envie o novo código, assim: Vincular conta 123456`,
@@ -295,23 +400,199 @@ export const TEXTOS = {
   naoVinculado:
     `Olá! Este número ainda não está ligado a uma conta do Gerador ENEM.\n\n` +
     `Para vincular: no site, entre na sua conta, vá em "Solicitar simulados pelo WhatsApp" → "Vincular meu WhatsApp" e envie aqui o código que aparecer, assim: Vincular conta 123456`,
-  aguardandoEtapaB: (texto: string) =>
-    `Recebi sua mensagem${texto ? ` ("${[...texto].slice(0, 80).join("")}${[...texto].length > 80 ? "…" : ""}")` : ""}. ✅ Seu número está vinculado.\n\n` +
-    `O pedido de simulados pelo WhatsApp está sendo construído e entra em seguida; aviso por aqui quando estiver ativo.`,
-  soTexto: `Por enquanto só entendo mensagens de texto.`,
+  soTexto: `Por enquanto só entendo mensagens de texto e as opções das listas e botões.`,
+  // etapa B1 — formulário por perguntas
+  descartado: `Pedido descartado. Quando quiser outro simulado, é só mandar uma mensagem.`,
+  jaRegistrando: `Já estou registrando esse pedido — aguarde a confirmação.`,
+  pedidoNaFila: (numero: string, minutos: number, operarioAtivo: boolean) =>
+    (operarioAtivo
+      ? `⏳ Pedido confirmado e na fila de geração. Tempo estimado: cerca de ${minutos} min; o PDF chega nesta conversa. Enquanto a geração não começar, CANCELAR desfaz o pedido.`
+      : `✅ Pedido confirmado e registrado na fila (nº ${numero}). A geração automática ainda está sendo ligada; assim que estiver ativa, o PDF chega nesta conversa. Enquanto estiver na fila, CANCELAR desfaz o pedido.`),
+  limiteDiario: (pedidasHoje: number, limite: number) => limite <= 0
+    ? `Sua conta está sem cota para pedidos pelo WhatsApp (limite diário 0). Fale com o administrador do Gerador ENEM.`
+    : `Hoje você já pediu ${pedidasHoje} questões pelo WhatsApp e o limite diário é ${limite}. Peça menos questões ou volte amanhã.`,
+  cancelado: (n: number) => n > 0 ? `Cancelei ${n === 1 ? "o pedido que estava na fila" : n + " pedidos que estavam na fila"}. Quando quiser outro, é só mandar uma mensagem.` : `Não havia pedido na fila para cancelar (pedidos já em geração não podem ser desfeitos). Quando quiser um simulado, é só mandar uma mensagem.`,
+  semPedidos: `Você ainda não fez nenhum pedido por aqui. Mande qualquer mensagem e eu faço as perguntas do simulado.`,
+  status: (t: TrabalhoResumo) => {
+    const p = t.parametros as unknown as P.Pedido;
+    const rot: Record<string, string> = { pendente: "na fila, aguardando o gerador", gerando: "gerando agora", enviado: "enviado ✅", falhou: "falhou ❌", cancelado: "cancelado" };
+    return `Último pedido (${new Date(t.criado_em).toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo" })}): ${p?.quantidade ?? "?"} questões de ${p?.disciplina ?? "?"} — ${rot[t.status] ?? t.status}${t.erro ? `\nMotivo: ${String(t.erro).slice(0, 200)}` : ""}`;
+  },
+  ajuda: `Para pedir um simulado, mande qualquer mensagem: eu faço 6 perguntas (área, disciplina, temas, quantidade, nível e recurso visual) e você confirma. Comandos: STATUS mostra o último pedido · CANCELAR descarta o formulário em andamento ou desfaz um pedido que ainda está na fila.`,
 };
 
 // ---------------------------------------------------------------------------
 // processamento de uma mensagem recebida
 // ---------------------------------------------------------------------------
-interface MsgMeta { from: string; id: string; type: string; text?: { body?: string }; timestamp?: string }
+interface MsgMeta { from: string; id: string; type: string; text?: { body?: string }; timestamp?: string; interactive?: { type?: string; nfm_reply?: { response_json?: string; name?: string }; list_reply?: { id?: string; title?: string }; button_reply?: { id?: string; title?: string } } }
+
+// Comandos de texto do professor (número vinculado).
+export function comandoDe(texto: string | null): "cancelar" | "status" | "ajuda" | null {
+  const t = String(texto ?? "").trim().normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[!.\s]+$/, "");
+  if (/^(cancelar|cancela|desistir|parar)$/.test(t)) return "cancelar";
+  if (/^(status|andamento|situacao|como esta)$/.test(t)) return "status";
+  if (/^(ajuda|help|comandos|\?)$/.test(t)) return "ajuda";
+  return null;
+}
+
+// Resultado da etapa B1 para uma mensagem de número vinculado: o que responder e como registrar.
+type Saida = { acao: string; mensagens: Record<string, unknown>[]; resumo: string };
+
+function estadoAtivo(e: unknown): e is P.EstadoGuiado {
+  const x = e as P.EstadoGuiado | null;
+  return !!x && typeof x.passo === "string" && !P.estadoExpirado(x);
+}
+// Guarda o estado da conversa junto com a última resposta: uma reentrega da Meta da mesma mensagem
+// (depois de falha no envio) repete a resposta em vez de avançar o formulário de novo.
+async function salvarEstado(env: Env, telefone: string, userId: string, estado: P.EstadoGuiado | null, wamid: string, mensagens: Record<string, unknown>[]): Promise<void> {
+  if (!estado) { await gravarConversa(env, telefone, userId, {}); return; }
+  await gravarConversa(env, telefone, userId, { ...estado, atualizado_em: new Date().toISOString(), ultimo_wamid: wamid, ultima_resposta: mensagens } as unknown as Record<string, unknown>);
+}
+// Encerra o formulário (depois do Sim, de um cancelamento...) guardando só a última resposta: uma
+// reentrega tardia da mesma mensagem repete a resposta em vez de cancelar a fila ou abrir outro formulário.
+async function encerrarConversa(env: Env, telefone: string, userId: string, wamid: string, mensagens: Record<string, unknown>[]): Promise<void> {
+  await gravarConversa(env, telefone, userId, { encerrado_em: new Date().toISOString(), ultimo_wamid: wamid, ultima_resposta: mensagens });
+}
+// Reserva o "Sim": só quem conseguir mudar o estado de "confirmar" para "registrando" grava o pedido
+// (dois "Sim" simultâneos → um só trabalho). Devolve false se outra execução já reservou.
+async function reservarConfirmacao(env: Env, telefone: string, estado: P.EstadoGuiado, wamid: string): Promise<boolean> {
+  const agora = new Date().toISOString();
+  const r = await fetch(`${env.SUPABASE_URL}/rest/v1/wa_conversas?telefone=eq.${encodeURIComponent(telefone)}&estado->>passo=eq.confirmar`, {
+    method: "PATCH", headers: cabecalhosDb(env, { prefer: "return=representation" }),
+    body: JSON.stringify({ estado: { ...estado, passo: "registrando", ultimo_wamid: wamid, atualizado_em: agora }, atualizado_em: agora }),
+  });
+  if (!r.ok) throw new Error(`wa_conversas reservar ${r.status}`);
+  return ((await r.json()) as unknown[]).length === 1;
+}
+
+async function tratarPedido(env: Env, msg: MsgMeta, telefone: string, texto: string | null, perfil: Perfil): Promise<Saida> {
+  const userId = perfil.user_id;
+  const conversa = await lerConversa(env, telefone);
+  // o estado só vale para a conta dona dele (o telefone pode ter sido vinculado a outra conta no meio)
+  const bruto = conversa && (!conversa.user_id || conversa.user_id === userId) ? conversa.estado : null;
+  const estado = estadoAtivo(bruto) ? bruto : null;
+
+  // 0) reentrega da MESMA mensagem já respondida (formulário encerrado ou em andamento): repete a resposta
+  const memoria = bruto as { ultimo_wamid?: string; ultima_resposta?: Record<string, unknown>[]; passo?: string } | null;
+  if (memoria?.ultimo_wamid === msg.id && Array.isArray(memoria.ultima_resposta) && memoria.ultima_resposta.length && memoria.passo !== "registrando") {
+    return { acao: `reentrega_${memoria.passo ?? "encerrado"}`, mensagens: memoria.ultima_resposta, resumo: "reentrega: repete a última resposta" };
+  }
+
+  // 1) comandos
+  const cmd = msg.type === "text" ? comandoDe(texto) : null;
+  if (cmd === "cancelar") {
+    if (estado) {   // formulário em andamento: CANCELAR descarta só o rascunho (os pedidos da fila ficam)
+      const msgs = [objetoTexto(TEXTOS.descartado)];
+      await encerrarConversa(env, telefone, userId, msg.id, msgs);
+      return { acao: "pedido_descartado", mensagens: msgs, resumo: TEXTOS.descartado };
+    }
+    const n = await cancelarPendentes(env, userId);
+    const msgs = [objetoTexto(TEXTOS.cancelado(n))];
+    await encerrarConversa(env, telefone, userId, msg.id, msgs);
+    return { acao: n > 0 ? "pedido_cancelado" : "cancelar_sem_pedido", mensagens: msgs, resumo: TEXTOS.cancelado(n) };
+  }
+  if (cmd === "status") {
+    const lista = await trabalhosDoUsuario(env, userId, null, 1);
+    const t = lista[0] ? TEXTOS.status(lista[0]) : TEXTOS.semPedidos;
+    return { acao: "status", mensagens: [objetoTexto(t)], resumo: t };
+  }
+  if (cmd === "ajuda") return { acao: "ajuda", mensagens: [objetoTexto(TEXTOS.ajuda)], resumo: TEXTOS.ajuda };
+
+  const resposta = P.respostaDoProfessor(msg);
+  if (resposta === null) return { acao: "so_texto", mensagens: [objetoTexto(TEXTOS.soTexto)], resumo: TEXTOS.soTexto };
+
+  // 2) reentrega de um "Sim" que já virou pedido (o envio da confirmação falhou): repete a confirmação,
+  //    limpa o rascunho e, se o operário ainda não foi avisado, avisa de novo
+  const jaCriado = await trabalhoDoWamid(env, msg.id);
+  if (jaCriado) {
+    const pedido = jaCriado.parametros as unknown as P.Pedido;
+    const acionado = jaCriado.status === "pendente" ? await acionarOperario(env, jaCriado.id) : true;
+    const t = TEXTOS.pedidoNaFila(jaCriado.id.slice(0, 8), P.minutosEstimados(pedido), acionado);
+    const msgs = [objetoTexto(t)];
+    await encerrarConversa(env, telefone, userId, msg.id, msgs);
+    return { acao: acionado ? "pedido_criado" : "pedido_na_fila", mensagens: msgs, resumo: t };
+  }
+
+  // 3) "registrando": um Sim está sendo (ou foi) gravado por outra execução
+  if (estado?.passo === "registrando") {
+    const mesmoSim = estado.ultimo_wamid === msg.id;   // reentrega do próprio Sim depois de um erro no meio da gravação
+    const travado = Date.now() - new Date(estado.atualizado_em ?? estado.iniciado_em).getTime() > TRAVADA_APOS_MS;
+    if (!mesmoSim && !travado) return { acao: "pedido_em_registro", mensagens: [objetoTexto(TEXTOS.jaRegistrando)], resumo: TEXTOS.jaRegistrando };
+    if (estado.ultimo_wamid && estado.ultimo_wamid !== msg.id) {
+      const feito = await trabalhoDoWamid(env, estado.ultimo_wamid);
+      if (feito) { const t = TEXTOS.pedidoNaFila(feito.id.slice(0, 8), P.minutosEstimados(feito.parametros as unknown as P.Pedido), feito.status !== "pendente" || !!env.WA_OPERARIO_URL); const msgs = [objetoTexto(t)]; await encerrarConversa(env, telefone, userId, msg.id, msgs); return { acao: "pedido_na_fila", mensagens: msgs, resumo: t }; }
+    }
+    if (mesmoSim) {   // a reserva é nossa: grava direto, sem reservar de novo
+      const v = P.validarPedido(P.camposDoGuiado(estado.dados));
+      if (v.ok) return await gravarEResponder(env, msg, telefone, perfil, estado, v.pedido);
+    }
+    estado.passo = "confirmar";   // execução anterior morreu: volta a aceitar o Sim
+    await gravarConversa(env, telefone, userId, estado as unknown as Record<string, unknown>);
+  }
+
+  // 4) formulário em andamento
+  if (estado) {
+    if (estado.passo === "confirmar" && P.ehSim(resposta)) {
+      const v = P.validarPedido(P.camposDoGuiado(estado.dados));
+      if (v.ok) {
+        if (!(await reservarConfirmacao(env, telefone, estado, msg.id))) {   // outro "Sim" chegou junto e já está gravando
+          return { acao: "pedido_em_registro", mensagens: [objetoTexto(TEXTOS.jaRegistrando)], resumo: TEXTOS.jaRegistrando };
+        }
+        return await gravarEResponder(env, msg, telefone, perfil, estado, v.pedido);
+      }
+    }
+    const tr = P.avancarGuiado(estado, resposta);
+    if (tr.tipo === "cancelado") { const msgs = [objetoTexto(TEXTOS.descartado)]; await encerrarConversa(env, telefone, userId, msg.id, msgs); return { acao: "pedido_descartado", mensagens: msgs, resumo: TEXTOS.descartado }; }
+    if (tr.tipo === "confirmado") {   // só acontece se a validação acima falhou e a máquina refez; por segurança, recomeça
+      const ini = P.iniciarGuiado(); await salvarEstado(env, telefone, userId, ini.estado, msg.id, [ini.mensagem]);
+      return { acao: "guiado_area", mensagens: [ini.mensagem], resumo: "formulário reiniciado" };
+    }
+    const msgs = tr.tipo === "repetir" ? [objetoTexto(tr.aviso), tr.mensagem] : [tr.mensagem];
+    await salvarEstado(env, telefone, userId, tr.estado, msg.id, msgs);
+    return { acao: `guiado_${tr.estado.passo}`, mensagens: msgs, resumo: `formulário: ${tr.estado.passo}` };
+  }
+
+  // 5) mensagem nova (qualquer coisa): começa o formulário
+  const ini = P.iniciarGuiado();
+  await salvarEstado(env, telefone, userId, ini.estado, msg.id, [ini.mensagem]);
+  return { acao: "guiado_iniciado", mensagens: [ini.mensagem], resumo: "formulário iniciado (1/6)" };
+}
+
+// Com a reserva em mãos: grava o pedido e encerra o formulário; no limite diário, volta à confirmação com os botões.
+async function gravarEResponder(env: Env, msg: MsgMeta, telefone: string, perfil: Perfil, estado: P.EstadoGuiado, pedido: P.Pedido): Promise<Saida> {
+  const saida = await registrarPedido(env, msg, telefone, perfil, pedido);
+  if (saida.acao === "limite_diario") {
+    const msgs = [...saida.mensagens, P.perguntaDoPasso("confirmar", estado.dados)];
+    await salvarEstado(env, telefone, perfil.user_id, { ...estado, passo: "confirmar" }, msg.id, msgs);
+    return { ...saida, mensagens: msgs };
+  }
+  await encerrarConversa(env, telefone, perfil.user_id, msg.id, saida.mensagens);
+  return saida;
+}
+
+async function registrarPedido(env: Env, msg: MsgMeta, telefone: string, perfil: Perfil, pedido: P.Pedido): Promise<Saida> {
+  if (!perfil.ilimitado) {
+    const limite = perfil.limite_diario_wa == null ? 30 : Math.max(0, Number(perfil.limite_diario_wa) || 0);   // 0 = bloqueado
+    const hoje = await questoesPedidasHoje(env, perfil.user_id);
+    if (hoje + pedido.quantidade > limite) {
+      const t = TEXTOS.limiteDiario(hoje, limite);
+      return { acao: "limite_diario", mensagens: [objetoTexto(t)], resumo: t };
+    }
+  }
+  const id = await criarTrabalho(env, perfil.user_id, telefone, pedido, msg.id);
+  const acionado = await acionarOperario(env, id);
+  const texto = TEXTOS.pedidoNaFila(id.slice(0, 8), P.minutosEstimados(pedido), acionado);
+  return { acao: acionado ? "pedido_criado" : "pedido_na_fila", mensagens: [objetoTexto(texto)], resumo: texto };
+}
 
 export async function processarMensagem(env: Env, msg: MsgMeta, nomePerfil: string, payload: unknown): Promise<string> {
   const telefone = String(msg.from || "").replace(/\D/g, "");
   const texto = msg.type === "text" ? String(msg.text?.body ?? "") : null;
   if (!telefone || !msg.id) return "ignorado_sem_origem";
 
-  const registro = await registrarMensagem(env, { wamid: msg.id, telefone, tipo: msg.type, texto, payload });
+  // no registro, respostas interativas (formulário, listas, botões) ficam legíveis em wa_mensagens.texto
+  const textoRegistro = texto ?? (msg.type === "interactive" ? JSON.stringify(msg.interactive ?? {}).slice(0, 2000) : null);
+  const registro = await registrarMensagem(env, { wamid: msg.id, telefone, tipo: msg.type, texto: textoRegistro, payload });
   if (registro === "duplicada") return "duplicada";
   if (registro === "em_andamento") return "duplicada_em_andamento";   // outra execução cuida; handler devolve 500 para a Meta tentar depois
 
@@ -320,6 +601,7 @@ export async function processarMensagem(env: Env, msg: MsgMeta, nomePerfil: stri
 
   let acao = "ignorado";
   let resposta = "";
+  let mensagens: Record<string, unknown>[] = [];
   let userId: string | null = null;
   try {
     const perfil = await perfilPorTelefone(env, telefone);
@@ -334,14 +616,15 @@ export async function processarMensagem(env: Env, msg: MsgMeta, nomePerfil: stri
         if (r) { acao = "vinculo_ok"; userId = r.vinculado_user_id; resposta = TEXTOS.vinculoOk(nomePerfil, mascararEmail(r.vinculado_email)); }
         else { acao = "vinculo_invalido"; resposta = TEXTOS.vinculoInvalido; }
       }
+      mensagens = [objetoTexto(resposta)];
     } else if (!perfil) {
-      acao = "nao_vinculado"; resposta = TEXTOS.naoVinculado;
-    } else if (texto === null) {
-      acao = "so_texto"; resposta = TEXTOS.soTexto;
+      acao = "nao_vinculado"; resposta = TEXTOS.naoVinculado; mensagens = [objetoTexto(resposta)];
     } else {
-      acao = "aguardando_etapa_B"; resposta = TEXTOS.aguardandoEtapaB(texto);
+      // etapa B1: número vinculado → formulário por perguntas, confirmação, fila, comandos
+      const saida = await tratarPedido(env, msg, telefone, texto, { ...perfil, whatsapp_nome: perfil.whatsapp_nome || nomePerfil || null });
+      acao = saida.acao; resposta = saida.resumo; mensagens = saida.mensagens;
     }
-    const envio = await enviarTexto(env, telefone, resposta);
+    const envio = await enviarSequencia(env, telefone, mensagens);
     if (!envio.ok) acao += envio.transitorio ? "_envio_falhou" : "_envio_recusado";   // falhou → 500 e reentrega; recusado → fica registrado, sem reentrega
     await atualizarMensagem(env, msg.id, { acao, resposta: envio.ok ? resposta : `${resposta}\n\n[envio: ${envio.detalhe.slice(0, 200)}]`, user_id: userId });
   } catch (e) {
@@ -400,7 +683,7 @@ async function selftest(env: Env, meta = false): Promise<Response> {
     } catch (e) { tabelas[t] = "erro: " + String(e).slice(0, 80); }
   }
   const assinaturaWaba = meta ? await garantirAssinaturaWaba(env) : undefined;
-  return json({ funcao: "whatsapp-webhook", versao: VERSAO, phoneNumberIdConfigurado: env.WHATSAPP_PHONE_NUMBER_ID, graph: env.GRAPH_VERSAO, secretsPresentes: presentes, secretsComEspacosNasPontas: brutosComEspacos, formatoOk, tabelas, assinaturaWaba });
+  return json({ funcao: "whatsapp-webhook", versao: VERSAO, phoneNumberIdConfigurado: env.WHATSAPP_PHONE_NUMBER_ID, graph: env.GRAPH_VERSAO, secretsPresentes: presentes, secretsComEspacosNasPontas: brutosComEspacos, formatoOk, tabelas, assinaturaWaba, operarioConfigurado: !!env.WA_OPERARIO_URL });
 }
 
 // ---------------------------------------------------------------------------

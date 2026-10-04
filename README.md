@@ -25,10 +25,24 @@ duas Supabase Edge Functions próprias para gerar conteúdo com segurança:
   (`gpt-image-2.5-flare`, fixo no código desde a v33) para gerar a ilustração usada nas
   questões do tipo "imagem".
 - **`whatsapp-webhook`** — recebe as mensagens do WhatsApp (Meta Cloud API) enviadas ao
-  número oficial do Gerador ENEM. Nesta fase faz o **pareamento**: o professor clica em
+  número oficial do Gerador ENEM. Faz o **pareamento** (etapa A1: o professor clica em
   "Solicitar simulados pelo WhatsApp → Vincular meu WhatsApp" no app, recebe um código de
   6 dígitos e o envia pelo WhatsApp; o webhook confere a assinatura da Meta, valida o código
-  e liga o telefone à conta. Pedir simulados pela conversa é a próxima fase.
+  e liga o telefone à conta) e, desde a **B1.0**, recebe o **pedido de simulado por um
+  formulário de 6 perguntas** com listas e botões do WhatsApp (área, disciplina, temas
+  separados por vírgula, quantidade de 1 a 20, dificuldade — fácil, médio, difícil ou mista —
+  e recurso visual), mostra o resumo, pede "Sim" e grava o pedido na fila `wa_trabalhos`
+  (status `pendente`). Os parâmetros são os mesmos do painel de lote do app (seção 4). O
+  estado da conversa fica em `wa_conversas` e expira após 1 h sem mensagem; reentregas da
+  Meta repetem a resposta em vez de avançar o formulário; dois "Sim" simultâneos geram um
+  pedido só. Comandos: STATUS, CANCELAR (descarta o formulário em andamento ou desfaz um
+  pedido ainda na fila) e AJUDA. Limite diário por perfil (`perfis.limite_diario_wa`, 30 por
+  padrão; a conta do dono é ilimitada). A geração do simulado e a entrega do PDF (etapa C,
+  o "operário") ainda não existem: enquanto `WA_OPERARIO_URL` estiver vazio, a resposta
+  avisa que o pedido ficou na fila. Lógica em `logica.ts` + `pedido.ts`; testes sem rede em
+  `teste_logica.ts` (`deno test -A --no-check teste_logica.ts`). Opções futuras já
+  estudadas: formulário em tela única (WhatsApp Flow — exige empresa verificada na Meta) e
+  pedido por frase livre interpretada pelo Claude.
 
 As chaves de API (`ANTHROPIC_API_KEY` e `OPENAI_API_KEY`) e as credenciais do WhatsApp
 (`WHATSAPP_TOKEN`, `WHATSAPP_APP_SECRET`, `WHATSAPP_VERIFY_TOKEN`, `WHATSAPP_PHONE_NUMBER_ID`,
@@ -48,7 +62,7 @@ nm/                                   → núcleo da notação matemática (JS c
 supabase/functions/generate-question/ → Edge Function que gera as questões (Claude) + notação (notacao_quimica.ts, notacao_matematica.ts)
 supabase/functions/review-math-question/ → revisor de matemática (contas com lastro nos livros de referência)
 supabase/functions/generate-image/    → Edge Function que gera as imagens (GPT Image)
-supabase/functions/whatsapp-webhook/  → Edge Function do WhatsApp (pareamento) + testes Deno
+supabase/functions/whatsapp-webhook/  → Edge Function do WhatsApp (pareamento + pedido por formulário) + testes Deno
 supabase/migrations/                  → migrações do banco (tabelas perfis e wa_*, RLS)
 tests/                                → testes automatizados (Playwright) do app
 ```
