@@ -37,18 +37,44 @@ duas Supabase Edge Functions próprias para gerar conteúdo com segurança:
   Meta repetem a resposta em vez de avançar o formulário; dois "Sim" simultâneos geram um
   pedido só. Comandos: STATUS, CANCELAR (descarta o formulário em andamento ou desfaz um
   pedido ainda na fila) e AJUDA. Limite diário por perfil (`perfis.limite_diario_wa`, 30 por
-  padrão; a conta do dono é ilimitada). A geração do simulado e a entrega do PDF (etapa C,
-  o "operário") ainda não existem: enquanto `WA_OPERARIO_URL` estiver vazio, a resposta
-  avisa que o pedido ficou na fila. Lógica em `logica.ts` + `pedido.ts`; testes sem rede em
-  `teste_logica.ts` (`deno test -A --no-check teste_logica.ts`). Opções futuras já
-  estudadas: formulário em tela única (WhatsApp Flow — exige empresa verificada na Meta) e
-  pedido por frase livre interpretada pelo Claude.
+  padrão; a conta do dono é ilimitada). Desde a **B2.0** (etapa C), o pedido é executado pelo
+  **operário** — um robô no GitHub Actions (`robo/operario.mjs`, workflow
+  `.github/workflows/wa-operario.yml`) que abre o próprio `index.html` deste repositório
+  num Chromium sem tela e chama a entrada de automação do app (`window.enemAutomacao`,
+  v18.35): mesma geração, mesmo PDF e mesmo DOCX dos botões "Exportar". O webhook atende o
+  robô em `POST ?operario=1` (ações `pegar`, `progresso`, `entregar`, `concluir`, `falhou`,
+  `entregas_pendentes`; código em `operario.ts`), autenticado pelo **token OIDC que o próprio
+  GitHub emite** para a execução (confere assinatura, repositório `Turco2025/Enem` — nome e id —,
+  branch `main`, o próprio workflow e o tipo de evento; nenhum segredo guardado no GitHub). Ao
+  pegar um pedido (PATCH condicional `pendente → gerando`, com um `dono` que identifica a
+  execução), o webhook emite uma sessão do professor pela Auth admin (`generate_link` +
+  `verify`, sem senha), avisa "Comecei a gerar" e, ao concluir, envia **4 documentos** — PDF e
+  Word, versões do aluno e do professor — mais um resumo com o custo de IA; o simulado também
+  fica em "Meus Simulados". O robô renova um sinal de vida a cada minuto; sem sinal há 15 min,
+  outra execução retoma o pedido. Status: `pendente → gerando → entregando → enviado`; `pronto`
+  quando a Meta não aceitou a entrega (janela de 24 h fechada, inclusive pelo status "failed"
+  assíncrono — a próxima mensagem do professor entrega, retomando da mensagem que faltou);
+  `falhou` depois de 3 tentativas (com 10 min entre elas), com aviso em linguagem simples. O
+  robô roda na hora do "Sim" se o secret `WA_GITHUB_TOKEN` (token fino do GitHub com
+  *Contents: read/write* no repositório) estiver no Supabase; sem ele, a varredura do cron (a
+  cada 10 min) pega a fila — e `robo/fila.mjs` pergunta antes se há trabalho, para não instalar
+  o Chromium à toa. Lógica em `logica.ts` + `pedido.ts` + `operario.ts`; testes sem rede em
+  `teste_logica.ts` (`deno test -A --no-check teste_logica.ts`, 42 testes). Ensaio do robô sem
+  gastar IA: `node robo/teste_local.mjs` (backend simulado, questão real arquivada como
+  fixture, confere PDF/DOCX nas duas versões). Opções futuras já estudadas:
+  formulário em tela única (WhatsApp Flow — exige empresa verificada na Meta) e pedido por
+  frase livre interpretada pelo Claude.
 
 As chaves de API (`ANTHROPIC_API_KEY` e `OPENAI_API_KEY`) e as credenciais do WhatsApp
 (`WHATSAPP_TOKEN`, `WHATSAPP_APP_SECRET`, `WHATSAPP_VERIFY_TOKEN`, `WHATSAPP_PHONE_NUMBER_ID`,
 `WHATSAPP_WABA_ID`) ficam guardadas só nos **secrets**
 do projeto Supabase que hospeda essas funções — nunca aparecem no navegador, neste
-repositório, ou em qualquer arquivo do projeto.
+repositório, ou em qualquer arquivo do projeto. Os do operário são opcionais:
+`WA_GITHUB_TOKEN` (disparo imediato da execução no GitHub), `WA_OPERARIO_REPO` (padrão
+`Turco2025/Enem`), `WA_OPERARIO_REPO_ID` (id numérico do repositório; padrão 1334234286) e
+`WA_OPERARIO_TOKEN` (segredo compartilhado para rodar o robô fora do GitHub Actions, com
+`OPERARIO_TOKEN=... node robo/operario.mjs`). O GitHub não guarda
+segredo nenhum: o robô se identifica pelo token OIDC da própria execução.
 
 ```
 index.html                            → app final, pronto para uso (gerado por src/combine.py)
@@ -62,9 +88,11 @@ nm/                                   → núcleo da notação matemática (JS c
 supabase/functions/generate-question/ → Edge Function que gera as questões (Claude) + notação (notacao_quimica.ts, notacao_matematica.ts)
 supabase/functions/review-math-question/ → revisor de matemática (contas com lastro nos livros de referência)
 supabase/functions/generate-image/    → Edge Function que gera as imagens (GPT Image)
-supabase/functions/whatsapp-webhook/  → Edge Function do WhatsApp (pareamento + pedido por formulário) + testes Deno
+supabase/functions/whatsapp-webhook/  → Edge Function do WhatsApp (pareamento + pedido por formulário + operário) + testes Deno
 supabase/migrations/                  → migrações do banco (tabelas perfis e wa_*, RLS)
-tests/                                → testes automatizados (Playwright) do app
+robo/                                 → operário do WhatsApp (Playwright): operario.mjs, comum.mjs, fila.mjs, teste_local.mjs, libs_locais/ (CDN para o ensaio)
+.github/workflows/wa-operario.yml     → execução do operário no GitHub Actions (dispatch na hora + varredura a cada 10 min)
+tests/                                → testes automatizados (Playwright) do app; tests/fixtures/wa_operario/ (questão real para o ensaio do robô)
 ```
 
 ## Caixa "Solicitar simulados pelo WhatsApp" (v15)

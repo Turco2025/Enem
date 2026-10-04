@@ -1,12 +1,14 @@
 // Testes locais da lógica do webhook (sem rede): assinatura, verificação,
-// dedupe, pareamento, bloqueio, reprocessamento, respostas e, na etapa B1, o pedido
-// por frase livre (regras + Claude falso), confirmação, correção, fila e comandos.
+// dedupe, pareamento, bloqueio, reprocessamento, respostas; na etapa B1, o formulário
+// por perguntas, confirmação, fila e comandos; na etapa C, o atendimento ao robô
+// (OIDC do GitHub falso, sessão do professor, fila, mídia, entrega, janela de 24 h).
 // Roda com: deno test -A --no-check teste_logica.ts
 import {
   handler, assinaturaHmacSha256, extrairCodigoVinculo, mascararEmail, decidirReentrega, envioTransitorio, formaAlternativaBr,
-  TEXTOS, MAX_TENTATIVAS_CODIGO, TRAVADA_APOS_MS, REPROCESSAR_ATE_MS, comandoDe, inicioDoDiaBrasilia, type Env,
+  TEXTOS, MAX_TENTATIVAS_CODIGO, TRAVADA_APOS_MS, REPROCESSAR_ATE_MS, comandoDe, inicioDoDiaBrasilia, resumoDaGeracao, motivoAmigavel, type Env,
 } from "./logica.ts";
 import * as P from "./pedido.ts";
+import * as O from "./operario.ts";
 
 const env: Env = {
   WHATSAPP_TOKEN: "TOKEN_TESTE",
@@ -31,16 +33,49 @@ let graphDemoraMs = 0;           // simula Graph API lenta (para testar simultan
 let dbDemoraMs = 0;              // simula banco lento na reserva do "Sim"
 let wabaAssinada = false;        // simula a assinatura WABA→app na Meta
 let listaTestes: string[] | null = null;   // se definida, só esses números são aceitos pela Graph (#131030 para os demais)
+let graphJanelaFechada = false;  // etapa C: simula #131047 (janela de 24 h fechada) no envio de mensagens
+let midiasSubidas: { nome: string; tipo: string; bytes: number }[] = [];   // etapa C: uploads em /media
+let dispatches: any[] = [];      // etapa C: chamadas a api.github.com/.../dispatches
+let authFalha = false;           // etapa C: simula Auth admin indisponível
+let jwksFora = false;            // etapa C: simula o JWKS do GitHub indisponível
+let graphFalhaApos: number | null = null;   // etapa C: a Graph aceita N envios e recusa (transitório) o seguinte
+let enviosOkSeguidos = 0;
 
-function resetar() { banco.mensagens.clear(); banco.perfis.clear(); banco.vinculos.length = 0; banco.conversas.clear(); banco.trabalhos.length = 0; chamadas.length = 0; enviosWa.length = 0; graphFalha = false; contagemFora = false; graphDemoraMs = 0; listaTestes = null; dbDemoraMs = 0; }
+function resetar() { banco.mensagens.clear(); banco.perfis.clear(); banco.vinculos.length = 0; banco.conversas.clear(); banco.trabalhos.length = 0; chamadas.length = 0; enviosWa.length = 0; graphFalha = false; contagemFora = false; graphDemoraMs = 0; listaTestes = null; dbDemoraMs = 0; graphJanelaFechada = false; midiasSubidas = []; dispatches = []; authFalha = false; jwksFora = false; graphFalhaApos = null; enviosOkSeguidos = 0; O.limparCacheJwks(); }
 const param = (url: string, k: string) => { const v = new URL(url).searchParams.get(k); return v === null ? null : decodeURIComponent(v); };
+
+// ---- OIDC do GitHub falso: par de chaves RSA gerado aqui; o JWKS "público" sai pelo fetch falso ----
+const parChaves = await crypto.subtle.generateKey({ name: "RSASSA-PKCS1-v1_5", modulusLength: 2048, publicExponent: new Uint8Array([1, 0, 1]), hash: "SHA-256" }, true, ["sign", "verify"]);
+const jwkPublica = await crypto.subtle.exportKey("jwk", parChaves.publicKey);
+const chavesJwks = [{ kty: "RSA", kid: "kid-teste", use: "sig", alg: "RS256", n: jwkPublica.n, e: jwkPublica.e }];
+const parChavesIntruso = await crypto.subtle.generateKey({ name: "RSASSA-PKCS1-v1_5", modulusLength: 2048, publicExponent: new Uint8Array([1, 0, 1]), hash: "SHA-256" }, true, ["sign", "verify"]);
+async function tokenOidc(sobrescreve: Record<string, unknown> = {}, chave: CryptoKey = parChaves.privateKey, kid = "kid-teste"): Promise<string> {
+  const agora = Math.floor(Date.now() / 1000);
+  const claims = { iss: O.EMISSOR_GITHUB, aud: O.AUDIENCIA_OIDC, exp: agora + 300, iat: agora, nbf: agora - 10, sub: "repo:Turco2025/Enem:ref:refs/heads/main", repository: "Turco2025/Enem", repository_id: O.REPO_ID_PADRAO, repository_owner: "Turco2025", ref: "refs/heads/main", event_name: "repository_dispatch", workflow_ref: "Turco2025/Enem/.github/workflows/wa-operario.yml@refs/heads/main", ...sobrescreve };
+  const enc = (o: unknown) => O.bytesParaBase64Url(new TextEncoder().encode(JSON.stringify(o)));
+  const cab = enc({ alg: "RS256", typ: "JWT", kid });
+  const dados = `${cab}.${enc(claims)}`;
+  const ass = await crypto.subtle.sign("RSASSA-PKCS1-v1_5", chave, new TextEncoder().encode(dados));
+  return `${dados}.${O.bytesParaBase64Url(new Uint8Array(ass))}`;
+}
 
 globalThis.fetch = (async (entrada: string | URL | Request, init?: RequestInit) => {
   const url = typeof entrada === "string" ? entrada : entrada instanceof URL ? entrada.toString() : entrada.url;
   const metodo = init?.method ?? "GET";
-  const corpo: any = init?.body ? JSON.parse(String(init.body)) : null;
+  const corpo: any = typeof init?.body === "string" ? JSON.parse(init.body) : null;
   chamadas.push({ url, metodo, corpo });
   const j = (o: unknown, status = 200, headers: Record<string, string> = {}) => new Response(JSON.stringify(o), { status, headers: { "content-type": "application/json", ...headers } });
+
+  // etapa C — JWKS do GitHub, Auth admin do Supabase, dispatch do GitHub
+  if (url === O.JWKS_GITHUB) return jwksFora ? new Response("indisponível", { status: 503 }) : j({ keys: chavesJwks });
+  if (url.startsWith("https://api.github.com/repos/")) { dispatches.push({ url, corpo, auth: (init?.headers as any)?.authorization }); return new Response(null, { status: 204 }); }
+  if (url.startsWith(env.SUPABASE_URL + "/auth/v1/")) {
+    if (!(init?.headers as any)?.authorization?.includes("service-teste")) return j({ msg: "sem chave de serviço" }, 401);
+    if (authFalha) return j({ msg: "indisponível" }, 503);
+    if (/\/auth\/v1\/admin\/users\//.test(url)) return j({ id: url.split("/").pop(), email: "professor.turco@gmail.com" });
+    if (url.endsWith("/auth/v1/admin/generate_link")) return corpo?.type === "magiclink" && corpo?.email ? j({ hashed_token: "hash-teste-" + corpo.email, verification_type: "magiclink" }) : j({ msg: "pedido inválido" }, 400);
+    if (url.endsWith("/auth/v1/verify")) return corpo?.type === "magiclink" && String(corpo?.token_hash).startsWith("hash-teste-") ? j({ access_token: "ACESSO_TESTE", refresh_token: "REFRESH_TESTE", expires_in: 3600, user: { id: "u1" } }) : j({ msg: "token inválido" }, 401);
+  }
 
   if (url.startsWith("https://graph.facebook.com/")) {
     if (!(init?.headers as any)?.authorization?.includes("TOKEN_TESTE")) return j({ error: "sem token" }, 401);
@@ -48,13 +83,22 @@ globalThis.fetch = (async (entrada: string | URL | Request, init?: RequestInit) 
       if (metodo === "POST") { wabaAssinada = true; return j({ success: true }); }
       return j({ data: wabaAssinada ? [{ whatsapp_business_api_data: { id: "1708104537155293", name: "Gerador Enem" } }] : [] });
     }
+    if (url.endsWith("/media") && init?.body instanceof FormData) {
+      const f = init.body.get("file") as File | null;
+      if (!f || !f.size) return j({ error: { message: "arquivo ausente", code: 100 } }, 400);
+      midiasSubidas.push({ nome: f.name, tipo: String(init.body.get("type")), bytes: f.size });
+      return j({ id: "media." + midiasSubidas.length });
+    }
     if (corpo?.status === "read") return j({ success: true });   // confirmação de leitura: não conta como resposta
     if (graphDemoraMs) await new Promise((r) => setTimeout(r, graphDemoraMs));
+    if (graphJanelaFechada) return j({ error: { message: "(#131047) Re-engagement message", code: 131047 } }, 400);
     if (graphFalha === "permanente") return j({ error: { message: "(#131030) Recipient phone number not in allowed list", code: 131030 } }, 400);
     if (graphFalha === "transitorio") return j({ error: { message: "(#130429) Rate limit hit", code: 130429 } }, 400);
     if (listaTestes && !listaTestes.includes(corpo?.to)) return j({ error: { message: "(#131030) Recipient phone number not in allowed list", type: "OAuthException", code: 131030, error_data: { messaging_product: "whatsapp", details: "O número de telemóvel do destinatário não está na lista de permissões: Adiciona o número de telemóvel do destinatário à lista de destinatários no painel de aplicações da Meta e tenta novamente. Consulta https://developers.facebook.com/docs/whatsapp/cloud-api/guides/send-messages para mais informações." }, fbtrace_id: "AbCdEfGhIjKlMnOpQrStUvWxYz0123456789" } }, 400);
+    if (graphFalhaApos !== null && enviosOkSeguidos >= graphFalhaApos) return j({ error: { message: "(#130429) Rate limit hit", code: 130429 } }, 400);
+    enviosOkSeguidos++;
     enviosWa.push(corpo);
-    return j({ messages: [{ id: "wamid.resposta" }] });
+    return j({ messages: [{ id: "wamid.resp" + enviosWa.length }] });
   }
   if (url.startsWith(env.SUPABASE_URL + "/rest/v1/wa_mensagens")) {
     if (metodo === "POST") {
@@ -111,7 +155,7 @@ globalThis.fetch = (async (entrada: string | URL | Request, init?: RequestInit) 
     }
     return j([{ vinculado_user_id: v.user_id, vinculado_email: "professor.turco@gmail.com" }]);
   }
-  if (/\/rest\/v1\/(wa_vinculos|wa_conversas|wa_trabalhos)/.test(url) && metodo === "HEAD") return new Response(null, { status: 200, headers: { "content-range": "0-0/0" } });
+  if (/\/rest\/v1\/(wa_vinculos|wa_conversas)/.test(url) && metodo === "HEAD") return new Response(null, { status: 200, headers: { "content-range": "0-0/0" } });
   if (url.startsWith(env.SUPABASE_URL + "/rest/v1/wa_conversas")) {
     if (metodo === "POST") { banco.conversas.set(corpo.telefone, corpo); return new Response(null, { status: 201 }); }
     const t = param(url, "telefone")!.replace("eq.", "");
@@ -125,18 +169,51 @@ globalThis.fetch = (async (entrada: string | URL | Request, init?: RequestInit) 
     const c = banco.conversas.get(t); return j(c ? [{ estado: c.estado, user_id: c.user_id ?? null }] : []);
   }
   if (url.startsWith(env.SUPABASE_URL + "/rest/v1/wa_trabalhos")) {
-    if (metodo === "POST") { const t = { id: crypto.randomUUID(), criado_em: new Date().toISOString(), erro: null, concluido_em: null, ...corpo }; banco.trabalhos.push(t); return j([t], 201); }
-    const uid = param(url, "user_id")?.replace("eq.", "");
-    if (metodo === "PATCH") {
-      const st = param(url, "status")?.replace("eq.", "");
-      const alvo = banco.trabalhos.filter((t) => t.user_id === uid && (!st || t.status === st));
-      alvo.forEach((t) => Object.assign(t, corpo)); return j(alvo);
-    }
-    const desde = param(url, "criado_em")?.replace("gte.", "");
-    const wamid = param(url, "parametros->>wamid_pedido")?.replace("eq.", "");
-    const lim = Number(param(url, "limit") || 50);
-    const lista = banco.trabalhos.filter((t) => (wamid ? t.parametros?.wamid_pedido === wamid : t.user_id === uid) && (!desde || t.criado_em >= desde)).sort((a, b) => b.criado_em < a.criado_em ? -1 : 1).slice(0, lim);
-    return j(wamid ? lista.map((t) => ({ id: t.id, status: t.status, parametros: t.parametros })) : lista);
+    if (metodo === "POST") { const t = { id: crypto.randomUUID(), criado_em: new Date().toISOString(), erro: null, concluido_em: null, iniciado_em: null, progresso: {}, documentos: null, simulado_id: null, ...corpo }; banco.trabalhos.push(t); return j([t], 201); }
+    // filtros PostgREST usados pelo código: col=eq.|in.()|lt.|gte.|like.|is.null, caminhos json (a->>b) e or=(x,and(y,z))
+    const sp = new URL(url).searchParams;
+    const valor = (t: any, col: string) => { const m = /^(\w+)->>?(\w+)$/.exec(col); return m ? (t[m[1]] ?? {})[m[2]] : t[col]; };
+    const testa = (t: any, col: string, op: string, v: string): boolean => {
+      if (op === "not") { const i = v.indexOf("."); return !testa(t, col, v.slice(0, i), v.slice(i + 1)); }
+      const x = valor(t, col);
+      if (op === "cs") { const alvo = JSON.parse(v); return Array.isArray(x) && (Array.isArray(alvo) ? alvo : [alvo]).every((a) => x.includes(a)); }
+      if (op === "eq") return x != null && String(x) === v;
+      if (op === "in") return v.replace(/^\(|\)$/g, "").split(",").includes(String(x));
+      if (op === "lt") return x != null && String(x) < v;
+      if (op === "gte") return x != null && String(x) >= v;
+      if (op === "like") return typeof x === "string" && x.startsWith(v.replace(/\*$/, ""));
+      if (op === "is") return v === "null" ? x == null : String(x) === v;
+      throw new Error("operador não simulado: " + op);
+    };
+    const casaOr = (t: any, expr: string): boolean => {   // "(a.eq.1,and(b.eq.2,c.lt.3))"
+      const dentro = expr.replace(/^\(|\)$/g, "");
+      const partes: string[] = []; let nivel = 0, atual = "";
+      for (const ch of dentro) { if (ch === "(") nivel++; if (ch === ")") nivel--; if (ch === "," && nivel === 0) { partes.push(atual); atual = ""; } else atual += ch; }
+      partes.push(atual);
+      return partes.some((p) => {
+        if (p.startsWith("and(")) return p.slice(4, -1).split(",").every((c) => { const [col, op, ...v] = c.split("."); return testa(t, col, op, v.join(".")); });
+        const [col, op, ...v] = p.split("."); return testa(t, col, op, v.join("."));
+      });
+    };
+    const casa = (t: any) => {
+      for (const [k, raw] of sp.entries()) {
+        if (["select", "order", "limit"].includes(k)) continue;
+        const v = decodeURIComponent(raw);
+        if (k === "or") { if (!casaOr(t, v)) return false; continue; }
+        const i = v.indexOf("."); const op = v.slice(0, i), val = v.slice(i + 1);
+        if (!testa(t, k, op, val)) return false;
+      }
+      return true;
+    };
+    const ordem = sp.get("order") || "criado_em.desc";
+    const [ocol, odir] = ordem.split(".");
+    const lim = Number(sp.get("limit") || 50);
+    const alvo = banco.trabalhos.filter(casa).sort((a, b) => (a[ocol] < b[ocol] ? -1 : a[ocol] > b[ocol] ? 1 : 0) * (odir === "desc" ? -1 : 1));
+    if (metodo === "HEAD") return new Response(null, { status: 200, headers: { "content-range": `0-0/${alvo.length}` } });
+    if (metodo === "PATCH") { alvo.forEach((t) => Object.assign(t, corpo)); return j(alvo); }
+    const sel = (sp.get("select") || "*").split(",");
+    const proj = (t: any) => sel.includes("*") ? t : Object.fromEntries(sel.map((c) => [c, t[c]]));
+    return j(alvo.slice(0, lim).map(proj));
   }
   return j({ erro: "rota não simulada: " + url }, 500);
 }) as typeof fetch;
@@ -439,9 +516,9 @@ Deno.test("selftest exige a frase de verificação e só expõe presença dos se
   const r = await handler(new Request("https://x/w?selftest=1&t=fraseVerificacaoTeste2026"), env);
   const j = await r.json();
   const s = JSON.stringify(j);
-  ok(r.status === 200 && j.versao === "B1.0" && j.secretsPresentes.WHATSAPP_TOKEN === true && j.secretsPresentes.WHATSAPP_APP_SECRET === true, "selftest com t certo → 200 com presença dos secrets");
+  ok(r.status === 200 && j.versao === "B2.0" && j.secretsPresentes.WHATSAPP_TOKEN === true && j.secretsPresentes.WHATSAPP_APP_SECRET === true, "selftest com t certo → 200 com presença dos secrets");
   ok(s.indexOf("TOKEN_TESTE") < 0 && s.indexOf("segredo-de-teste") < 0 && s.indexOf("service-teste") < 0 && s.indexOf("fraseVerificacao") < 0, "nenhum valor de secret aparece na saída");
-  ok(j.tabelas.perfis.startsWith("ok") && j.tabelas.wa_mensagens.startsWith("ok") && j.tabelas.wa_conversas.startsWith("ok") && j.tabelas.wa_trabalhos.startsWith("ok") && j.operarioConfigurado === false, "tabelas consultadas; operário não configurado");
+  ok(j.tabelas.perfis.startsWith("ok") && j.tabelas.wa_mensagens.startsWith("ok") && j.tabelas.wa_conversas.startsWith("ok") && j.tabelas.wa_trabalhos.startsWith("ok") && j.operario && j.operario.disparoImediato === false && j.operario.repositorio === "Turco2025/Enem", "tabelas consultadas; operário sem disparo imediato (varredura)");
   ok(Array.isArray(j.secretsComEspacosNasPontas) && j.formatoOk.WHATSAPP_PHONE_NUMBER_ID_numerico === true && j.formatoOk.WHATSAPP_APP_SECRET_hex32 === false, "selftest aponta formato dos secrets (segredo de teste não é hex32)");
 });
 
@@ -526,7 +603,7 @@ Deno.test("formulário completo: 'oi' → 1/6 … 6/6 → resumo com botões →
   ok(banco.mensagens.get("wamid.a8").acao === "pedido_na_fila" && banco.trabalhos.length === 1, "Sim → 1 pedido pendente");
   const p = banco.trabalhos[0].parametros;
   ok(p.area === "natureza" && p.disciplina === "Biologia" && p.quantidade === 10 && p.nivel === "Mista" && p.contagem["Fácil"] === 4 && p.contagem["Médio"] === 3 && p.recurso === "imagem" && p.origem === "guiado" && p.temas.length === 3 && p.temas_texto === "fotossíntese, respiração celular, ciclo do carbono" && p.wamid_pedido === "wamid.a8", "parâmetros = os do painel de lote do app");
-  ok(ultimo().text.body.includes("registrado na fila") && !ultimo().text.body.includes("Tempo estimado"), "sem operário: avisa fila, não promete geração");
+  ok(ultimo().text.body.includes("na fila") && ultimo().text.body.includes("em até 10 min") && !ultimo().text.body.includes("começa agora") && dispatches.length === 0, "sem token do GitHub: avisa a varredura de 10 min, não dispara nada");
   ok(!banco.conversas.get("556296116652").estado.passo && banco.conversas.get("556296116652").estado.encerrado_em, "formulário encerrado depois do Sim");
   await envia("wamid.a9", "quero outro");
   ok(ultimo().interactive.body.text.includes("1/6"), "nova mensagem → começa outro formulário");
@@ -621,7 +698,7 @@ Deno.test("reentregas da Meta: mesma mensagem repete a resposta (não avança); 
   ok(banco.trabalhos.length === 1 && banco.mensagens.get("wamid.g7").acao === "pedido_na_fila_envio_falhou", "Sim gravou o pedido; envio falhou");
   graphFalha = false;
   await toca("wamid.g7", botao("conf:sim"));
-  ok(banco.trabalhos.length === 1 && banco.mensagens.get("wamid.g7").acao === "reentrega_encerrado" && ultimo().text.body.includes("registrado na fila") && !banco.conversas.get("556296116652").estado.passo, "reentrega do Sim repete a confirmação, sem segundo trabalho");
+  ok(banco.trabalhos.length === 1 && banco.mensagens.get("wamid.g7").acao === "reentrega_encerrado" && ultimo().text.body.includes("confirmado e na fila") && !banco.conversas.get("556296116652").estado.passo, "reentrega do Sim repete a confirmação, sem segundo trabalho");
   // dois Sim ao mesmo tempo
   resetar(); vincula();
   await envia("wamid.h0", "oi"); await toca("wamid.h1", lr("area:natureza")); await toca("wamid.h2", lr("disc:quimica")); await envia("wamid.h3", "ácidos"); await envia("wamid.h4", "3"); await toca("wamid.h5", lr("dif:facil")); await toca("wamid.h6", lr("rec:nenhum"));
@@ -699,6 +776,288 @@ Deno.test("pedido.ts: validação, temas, apelidos de disciplina, Mista e resumo
   ok(P.minutosEstimados((P.validarPedido({ disciplina: "Biologia", temas: "fotossíntese", quantidade: "10", dificuldade: "mista", recurso: "imagem" }) as any).pedido) === 17, "estimativa: 10 com imagem → 17 min");
   const conf: any = P.perguntaDoPasso("confirmar", { area: "natureza", disciplina: "Biologia", temas: Array.from({ length: 40 }, (_, i) => "tema bem comprido número " + i).join(", "), quantidade: "20", dificuldade: "Mista", recurso: "imagem" });
   ok(conf.interactive.body.text.length <= 1024, "corpo da confirmação nunca passa de 1024 caracteres");
+});
+
+
+// ============================================================================
+// Etapa C — operário (robô): OIDC, fila, sessão, entrega
+// ============================================================================
+const URL_OP = "https://x/functions/v1/whatsapp-webhook?operario=1";
+async function operario(acao: string, corpo: Record<string, unknown> = {}, token?: string, ambiente: Env = env) {
+  const t = token ?? await tokenOidc();
+  const r = await handler(new Request(URL_OP, { method: "POST", headers: { authorization: `Bearer ${t}`, "content-type": "application/json" }, body: JSON.stringify({ acao, ...corpo }) }), ambiente);
+  return { status: r.status, json: await r.json() };
+}
+async function entregarArquivo(trabalhoId: string, dono: string, rotulo: string, nome: string, bytes = 1200, token?: string) {
+  const fd = new FormData();
+  fd.append("acao", "entregar"); fd.append("trabalho_id", trabalhoId); fd.append("dono", dono); fd.append("rotulo", rotulo); fd.append("nome", nome);
+  fd.append("arquivo", new Blob([new Uint8Array(bytes).fill(65)], { type: "application/octet-stream" }), nome);
+  const r = await handler(new Request(URL_OP, { method: "POST", headers: { authorization: `Bearer ${token ?? await tokenOidc()}` }, body: fd }), env);
+  return { status: r.status, json: await r.json() };
+}
+// Pedido na fila pelo caminho real (formulário + Sim), 5 questões de Biologia com imagem.
+async function pedidoNaFila(sufixo = "a") {
+  await envia(`wamid.${sufixo}1`, "oi"); await toca(`wamid.${sufixo}2`, lr("area:natureza")); await toca(`wamid.${sufixo}3`, lr("disc:biologia"));
+  await envia(`wamid.${sufixo}4`, "fotossíntese, respiração celular"); await envia(`wamid.${sufixo}5`, "5"); await toca(`wamid.${sufixo}6`, lr("dif:mista")); await toca(`wamid.${sufixo}7`, lr("rec:imagem"));
+  await toca(`wamid.${sufixo}8`, botao("conf:sim"));
+  return banco.trabalhos[banco.trabalhos.length - 1];
+}
+// pega + 4 arquivos; devolve o dono
+async function pegaEEntregaTudo(t: any, nomes = ["a.pdf", "p.pdf", "a.docx", "p.docx"]) {
+  const r = await operario("pegar", { trabalho_id: t.id });
+  const dono = r.json.dono as string;
+  for (const [i, rot] of ["pdf_aluno", "pdf_professor", "docx_aluno", "docx_professor"].entries()) await entregarArquivo(t.id, dono, rot, nomes[i]);
+  return dono;
+}
+const docsEnviados = () => enviosWa.filter((m) => m.type === "document");
+const envelhece = (t: any, ms: number) => { t.progresso.atualizado_em = new Date(Date.now() - ms).toISOString(); };
+
+Deno.test("operário: só entra com token OIDC válido do repositório/branch/workflow (ou segredo compartilhado longo)", async () => {
+  resetar(); vincula();
+  ok((await handler(new Request(URL_OP, { method: "POST", body: "{}" }), env)).status === 401, "sem Authorization → 401");
+  ok((await operario("pegar", {}, "abc.def")).status === 401, "token que não é JWT nem segredo → 401");
+  ok((await operario("pegar", {}, await tokenOidc({ repository: "outro/Repo", sub: "repo:outro/Repo:ref:refs/heads/main" }))).status === 401, "OIDC de outro repositório → 401");
+  ok((await operario("pegar", {}, await tokenOidc({ repository_id: "999" }))).status === 401, "mesmo nome, id de repositório diferente (renomeado/recriado) → 401");
+  ok((await operario("pegar", {}, await tokenOidc({ ref: "refs/heads/teste" }))).status === 401, "OIDC de outra branch → 401");
+  ok((await operario("pegar", {}, await tokenOidc({ workflow_ref: "Turco2025/Enem/.github/workflows/outro.yml@refs/heads/main" }))).status === 401, "outro workflow do mesmo repositório → 401");
+  ok((await operario("pegar", {}, await tokenOidc({ event_name: "pull_request" }))).status === 401, "evento pull_request → 401");
+  ok((await operario("pegar", {}, await tokenOidc({ aud: "outra-audiencia" }))).status === 401, "audiência errada → 401");
+  ok((await operario("pegar", {}, await tokenOidc({ exp: Math.floor(Date.now() / 1000) - 5 }))).status === 401, "token expirado → 401");
+  ok((await operario("pegar", {}, await tokenOidc({}, parChavesIntruso.privateKey))).status === 401, "assinatura de outra chave (mesmo kid) → 401");
+  ok((await operario("pegar", {}, await tokenOidc({}, parChaves.privateKey, "kid-desconhecido"))).status === 401, "kid desconhecido no JWKS → 401");
+  const okVazio = await operario("pegar");
+  ok(okVazio.status === 200 && okVazio.json.trabalho === null && okVazio.json.motivo === "fila vazia", "token válido com fila vazia → trabalho null");
+  ok((await operario("pegar", {}, await tokenOidc({ aud: [O.AUDIENCIA_OIDC, "x"] }))).status === 200, "aud em lista também vale");
+  jwksFora = true; O.limparCacheJwks();
+  ok((await operario("pegar")).status === 503, "JWKS do GitHub fora do ar → 503 (robô tenta de novo), não 401");
+  jwksFora = false;
+  const envTok: Env = { ...env, WA_OPERARIO_TOKEN: "segredo-compartilhado-bem-longo-123456" };
+  ok((await operario("pegar", {}, "segredo-compartilhado-bem-longo-123456", envTok)).status === 200, "segredo compartilhado configurado é aceito");
+  ok((await operario("pegar", {}, "segredo-compartilhado-bem-longo-123456")).status === 401, "mesmo segredo sem estar configurado → 401");
+  const envCurto: Env = { ...env, WA_OPERARIO_TOKEN: "curto" };
+  ok((await operario("pegar", {}, "curto", envCurto)).status === 401, "segredo curto demais nunca é aceito");
+  ok((await operario("acao_inventada", { trabalho_id: crypto.randomUUID(), dono: crypto.randomUUID() })).status === 400, "ação desconhecida → 400");
+  ok((await operario("progresso", { trabalho_id: "nao-e-uuid" })).status === 400, "trabalho_id inválido → 400");
+  ok((await operario("progresso", { trabalho_id: crypto.randomUUID() })).status === 400, "sem dono → 400");
+  const nulo = await handler(new Request(URL_OP, { method: "POST", headers: { authorization: `Bearer ${await tokenOidc()}`, "content-type": "application/json" }, body: "null" }), env);
+  ok(nulo.status === 400, "corpo JSON nulo → 400 (não derruba a função)");
+  const f = await operario("fila");
+  ok(f.status === 200 && f.json.pendentes === 0 && f.json.prontos === 0 && f.json.avisos === 0, "fila: contagens (vazia)");
+});
+
+Deno.test("operário: fluxo completo — pegar (sessão + dono + aviso) → progresso → entregar ×4 → concluir (documentos + resumo) → enviado", async () => {
+  resetar(); vincula();
+  const t = await pedidoNaFila();
+  ok(t.status === "pendente" && enviosWa.length >= 8, "pedido pendente depois do Sim");
+  ok((await operario("fila")).json.pendentes === 1, "fila: 1 pendente");
+  const antes = enviosWa.length;
+  const r = await operario("pegar");
+  const dono = r.json.dono;
+  ok(r.status === 200 && r.json.trabalho?.id === t.id && r.json.trabalho.tentativa === 1 && r.json.trabalho.parametros.quantidade === 5 && r.json.sessao?.access_token === "ACESSO_TESTE" && r.json.sessao.refresh_token === "REFRESH_TESTE" && /^[0-9a-f-]{36}$/.test(dono), "pegar devolve o pedido, a tentativa, o dono e a sessão do professor");
+  ok(t.status === "gerando" && t.iniciado_em && t.progresso.tentativas === 1 && t.progresso.dono === dono && t.progresso.atualizado_em, "pedido passou a gerando com dono e sinal de vida");
+  const authChamadas = chamadas.filter((c) => c.url.includes("/auth/v1/")).map((c) => c.url.split("/auth/v1/")[1].split("?")[0]);
+  ok(authChamadas[0].startsWith("admin/users/u1") && authChamadas[1] === "admin/generate_link" && authChamadas[2] === "verify", "sessão: e-mail do usuário → generate_link (magiclink) → verify (token_hash)");
+  ok(!JSON.stringify(r.json).includes("professor.turco"), "nenhum e-mail sai na resposta ao robô");
+  ok(enviosWa.length === antes + 1 && ultimo().text.body.startsWith("🛠️ Comecei a gerar seu simulado de Biologia (5 questões") && ultimo().text.body.includes("fotossíntese"), "professor avisado: começou a gerar");
+  // outro robô tentando o mesmo pedido / fila vazia
+  const r2 = await operario("pegar", { trabalho_id: t.id });
+  ok(r2.status === 200 && r2.json.trabalho === null && /gerando/.test(r2.json.motivo), "mesmo pedido de novo → null (já está gerando)");
+  ok((await operario("pegar")).json.trabalho === null, "fila vazia para o segundo robô");
+  // progresso: só o dono
+  const outro = crypto.randomUUID();
+  ok((await operario("progresso", { trabalho_id: t.id, dono: outro, estado: { prontas: 9 } })).status === 409 && t.progresso.prontas === undefined, "progresso com outro dono → 409, nada gravado");
+  const pr = await operario("progresso", { trabalho_id: t.id, dono, estado: { fase: "gerando", total: 5, prontas: 2, gerando: 3, erros: 0, imagensPendentes: 1, lixo: "x".repeat(500), outro: { a: 1 } } });
+  ok(pr.status === 200 && t.progresso.total === 5 && t.progresso.prontas === 2 && t.progresso.lixo === undefined && t.progresso.outro === undefined && t.progresso.dono === dono, "progresso gravado só com os campos conhecidos (dono preservado)");
+  await envia("wamid.s1", "status");
+  ok(ultimo().text.body.includes("gerando agora (2 de 5 prontas)"), "STATUS mostra o andamento");
+  // entrega dos 4 arquivos
+  ok((await entregarArquivo(t.id, outro, "pdf_aluno", "x.pdf")).status === 409 && midiasSubidas.length === 0, "entregar com outro dono → 409 e nada sobe para a Meta");
+  const e1 = await entregarArquivo(t.id, dono, "pdf_aluno", "Simulado_ENEM_Biologia_fotossintese_aluno.pdf", 3000);
+  ok(e1.status === 200 && e1.json.media_id === "media.1" && midiasSubidas[0].tipo === "application/pdf" && midiasSubidas[0].nome.endsWith("_aluno.pdf") && midiasSubidas[0].bytes === 3000, "PDF do aluno subiu para a Meta como application/pdf");
+  const e2 = await entregarArquivo(t.id, dono, "pdf_professor", "../..\\Simulado:ENEM?professor.pdf");
+  ok(e2.status === 200 && (midiasSubidas[1].nome === "Simulado ENEM professor.pdf" || midiasSubidas[1].nome === "SimuladoENEMprofessor.pdf"), "nome do arquivo saneado (sem caminho nem caracteres proibidos)");
+  const e3 = await entregarArquivo(t.id, dono, "docx_aluno", "Simulado_ENEM_Biologia_aluno.docx");
+  const e4 = await entregarArquivo(t.id, dono, "docx_professor", "Simulado_ENEM_Biologia_professor.docx");
+  ok(e3.status === 200 && e4.status === 200 && midiasSubidas[2].tipo === O.MIMES_ACEITOS.docx && t.documentos.length === 4, "DOCX subiram com o MIME do Word; 4 documentos anexados ao pedido");
+  ok((await entregarArquivo(t.id, dono, "pdf_aluno", "de-novo.pdf")).status === 200 && t.documentos.length === 4 && t.documentos.find((d: any) => d.rotulo === "pdf_aluno").media_id === "media.5", "reentrega do mesmo rótulo substitui, não duplica");
+  ok((await entregarArquivo(t.id, dono, "zip_tudo", "x.zip")).status === 400, "rótulo desconhecido → 400");
+  ok((await entregarArquivo(t.id, dono, "pdf_aluno", "vazio.pdf", 0)).status === 400, "arquivo vazio → 400");
+  // concluir
+  ok((await operario("concluir", { trabalho_id: t.id, dono: outro, resumo: {} })).status === 409, "concluir com outro dono → 409");
+  const antesDocs = enviosWa.length;
+  const c = await operario("concluir", { trabalho_id: t.id, dono, resumo: { total: 5, prontas: 4, falhas: [{ numero: 3, motivo: "imagem obrigatória não gerada" }], custo: { textoUSD: 0.371, imagensUSD: 0.052 }, simuladoId: "b7b74277-d554-461b-97cb-96e7dfc24562" } });
+  ok(c.status === 200 && c.json.status === "enviado" && t.status === "enviado" && t.concluido_em && t.simulado_id === "b7b74277-d554-461b-97cb-96e7dfc24562", "concluir → enviado, com simulado_id");
+  const novos = enviosWa.slice(antesDocs);
+  ok(novos.length === 5 && novos.slice(0, 4).every((m) => m.type === "document") && novos[4].type === "text", "4 documentos e depois o resumo");
+  ok(novos.slice(0, 4).map((m) => m.document.id).join(",") === "media.5,media.2,media.3,media.4" && novos[0].document.filename === "de-novo.pdf" && novos[1].document.caption.includes("professor") && novos[2].document.caption.startsWith("Word · versão do aluno"), "ordem fixa: PDF aluno, PDF professor, Word aluno, Word professor — com legendas");
+  const fim = novos[4].text.body;
+  ok(fim.startsWith("✅ Simulado pronto: 4 de 5 questões de Biologia") && fim.includes("Meus Simulados") && fim.includes("US$ 0.42") && fim.includes("1 questão não ficou pronta (nº 3): imagem obrigatória não gerada"), "resumo com custo e a questão que faltou");
+  ok(t.progresso.entrega_faltam.length === 0 && Array.isArray(t.progresso.entrega_ids) && t.progresso.entrega_ids.length === 5 && t.progresso.entrega_ids.every((x: string) => x.startsWith("wamid.resp")) && Object.keys(t.progresso.entrega_mapa).length === 5 && t.progresso.reentregas === 0, "ids das 5 mensagens da entrega guardados, nada faltando, zero reentregas");
+  ok((await operario("concluir", { trabalho_id: t.id, dono, resumo: {} })).status === 409 && enviosWa.length === antesDocs + 5, "concluir de novo → 409, nada reenviado");
+  await envia("wamid.s2", "status");
+  ok(ultimo().text.body.includes("enviado ✅"), "STATUS: enviado");
+});
+
+Deno.test("operário: janela de 24 h fechada → 'pronto' e a próxima mensagem do professor entrega (retomando de onde parou); falha transitória → varredura entrega; status 'failed' assíncrono reabre", async () => {
+  resetar(); vincula();
+  const t = await pedidoNaFila("b");
+  const dono = await pegaEEntregaTudo(t);
+  graphJanelaFechada = true;
+  const c = await operario("concluir", { trabalho_id: t.id, dono, resumo: { total: 5, prontas: 5, falhas: [], custo: { textoUSD: 0.4 } } });
+  ok(c.status === 200 && c.json.status === "pronto" && t.status === "pronto" && t.progresso.entrega_codigo === 131047 && t.progresso.entrega_faltam.length === 5 && t.progresso.entrega_ids.length === 0, "janela fechada → pedido fica 'pronto' com o código da Meta, as 5 mensagens ainda faltando");
+  const vj = await operario("entregas_pendentes");
+  ok(vj.status === 200 && vj.json.entregues === 0 && t.status === "pronto" && (await operario("fila")).json.prontos === 0, "a varredura NÃO insiste em janela fechada (só o professor reabre) e a fila não conta esse pronto como trabalho");
+  graphJanelaFechada = false;
+  const antes = enviosWa.length;
+  await envia("wamid.b9", "oi");
+  const novos = enviosWa.slice(antes);
+  ok(t.status === "enviado" && novos[0].type === "text" && novos[0].text.body.startsWith("📎 Seu simulado de Biologia ficou pronto") && novos.slice(1, 5).every((m) => m.type === "document") && novos[5].text.body.startsWith("✅ Simulado pronto: 5 de 5") && !novos[5].text.body.includes("Meus Simulados"), "mensagem do professor → aviso + 4 documentos + resumo (sem 'Meus Simulados', pois não houve simuladoId); status enviado");
+  ok(novos[6]?.interactive?.body?.text?.includes("1/6") && banco.mensagens.get("wamid.b9").acao === "guiado_iniciado" && banco.mensagens.get("wamid.b9").resposta.startsWith("[entregou 1 simulado(s) pronto(s)]"), "e o 'oi' ainda começa o formulário normalmente");
+  // falha transitória na 3ª mensagem → pronto com 2 entregues; a varredura retoma da 3ª (sem repetir as 2 primeiras)
+  resetar(); vincula();
+  const t2 = await pedidoNaFila("c");
+  const dono2 = await pegaEEntregaTudo(t2);
+  enviosOkSeguidos = 0; graphFalhaApos = 2;
+  const c2 = await operario("concluir", { trabalho_id: t2.id, dono: dono2, resumo: { total: 5, prontas: 5, falhas: [], simuladoId: "b7b74277-d554-461b-97cb-96e7dfc24562" } });
+  ok(c2.json.status === "pronto" && t2.status === "pronto" && JSON.stringify(t2.progresso.entrega_faltam) === "[2,3,4]" && t2.progresso.entrega_ids.length === 2, "falha transitória na 3ª mensagem → pronto, faltam as mensagens 3 a 5, ids das 2 primeiras gravados");
+  graphFalhaApos = null;
+  ok((await operario("fila")).json.prontos === 1, "fila conta esse pronto (falha transitória é acionável)");
+  const antes2 = docsEnviados().length;
+  const v = await operario("entregas_pendentes");
+  ok(v.json.entregues === 1 && t2.status === "enviado" && docsEnviados().length === antes2 + 2 && t2.progresso.entrega_faltam.length === 0 && t2.progresso.entrega_ids.length === 5 && t2.progresso.reentregas === 1 && !enviosWa.slice(-3)[0].text, "varredura retoma da 3ª mensagem: 2 documentos + resumo, sem reenviar os 2 primeiros nem aviso de atraso no meio; 1 reentrega contada");
+  // status "failed" assíncrono da Meta para a 4ª mensagem → volta a pronto a partir dela
+  const idFalhou = t2.progresso.entrega_ids[3];
+  await postAssinado({ object: "whatsapp_business_account", entry: [{ id: "935766732459650", changes: [{ value: { messaging_product: "whatsapp", metadata: {}, statuses: [{ id: idFalhou, status: "failed", recipient_id: "556296116652", errors: [{ code: 131047, title: "Re-engagement message" }] }] }, field: "messages" }] }] });
+  ok(t2.status === "pronto" && JSON.stringify(t2.progresso.entrega_faltam) === "[3]" && t2.progresso.entrega_codigo === 131047, "status failed → pedido volta a 'pronto' só com a 4ª mensagem faltando");
+  // status failed de uma mensagem anterior chegando fora de ordem também entra na lista
+  const idFalhou2 = t2.progresso.entrega_ids[0];
+  await postAssinado({ object: "whatsapp_business_account", entry: [{ id: "935766732459650", changes: [{ value: { messaging_product: "whatsapp", metadata: {}, statuses: [{ id: idFalhou2, status: "failed", recipient_id: "556296116652", errors: [{ code: 131047, title: "Re-engagement message" }] }] }, field: "messages" }] }] });
+  ok(JSON.stringify(t2.progresso.entrega_faltam) === "[0,3]", "segundo status failed (fora de ordem) → faltam a 1ª e a 4ª");
+  const antes3 = enviosWa.length;
+  await envia("wamid.c9", "status");
+  ok(t2.status === "enviado" && enviosWa.slice(antes3, antes3 + 3).map((m) => m.type).join(",") === "document,document,text" && enviosWa[antes3].document.id === t2.documentos.find((d: any) => d.rotulo === "pdf_aluno").media_id && enviosWa[antes3 + 1].document.id === t2.documentos.find((d: any) => d.rotulo === "docx_professor").media_id && enviosWa[antes3 + 2].text.body.includes("enviado ✅"), "próxima mensagem do professor: só a 1ª e a 4ª (documentos), sem repetir o resumo nem aviso de atraso; depois a resposta ao STATUS");
+  // status failed DURANTE a entrega (pedido 'entregando') → 500 para a Meta reentregar depois
+  t2.status = "entregando";
+  const rst = await postAssinado({ object: "whatsapp_business_account", entry: [{ id: "935766732459650", changes: [{ value: { messaging_product: "whatsapp", metadata: {}, statuses: [{ id: t2.progresso.entrega_ids[1], status: "failed", recipient_id: "556296116652", errors: [{ code: 131047, title: "x" }] }] }, field: "messages" }] }] });
+  ok(rst.status === 500 && t2.status === "entregando", "status failed com a entrega em andamento → 500 (a Meta reentrega o status mais tarde)");
+  t2.status = "enviado";
+  // reentregas em excesso → falhou com aviso para exportar pelo app
+  resetar(); vincula();
+  const t4 = await pedidoNaFila("i");
+  const dono4 = await pegaEEntregaTudo(t4);
+  enviosOkSeguidos = 0; graphFalhaApos = 0;
+  await operario("concluir", { trabalho_id: t4.id, dono: dono4, resumo: { total: 5, prontas: 5, falhas: [] } });
+  for (let k = 0; k < 3; k++) await operario("entregas_pendentes");
+  ok(t4.status === "pronto" && t4.progresso.reentregas === 3, "3 reentregas sem sucesso: ainda pronto");
+  graphFalhaApos = null;
+  const antes4 = enviosWa.length;
+  await operario("entregas_pendentes");
+  ok(t4.status === "falhou" && t4.erro.startsWith("entrega não concluída após 3 reentregas") && enviosWa.length === antes4 + 1 && ultimo().text.body.includes("Meus Simulados"), "4ª reentrega excede o limite → falhou e avisa para exportar pelo app");
+  // entregando travado (função morreu) → varredura destrava e entrega
+  resetar(); vincula();
+  const t3 = await pedidoNaFila("d");
+  const dono3 = await pegaEEntregaTudo(t3);
+  await operario("concluir", { trabalho_id: t3.id, dono: dono3, resumo: { total: 5, prontas: 5, falhas: [] } });
+  t3.status = "entregando"; t3.progresso.entregando_em = new Date(Date.now() - O.ENTREGANDO_TRAVADO_MS - 1000).toISOString(); t3.progresso.entregues = 0; t3.progresso.entrega_ids = [];
+  const v3 = await operario("entregas_pendentes");
+  ok(v3.json.destravados === 1 && v3.json.entregues === 1 && t3.status === "enviado", "'entregando' parado há > 5 min volta a pronto e é entregue pela varredura");
+});
+
+Deno.test("operário: falha → volta à fila (só depois de 10 min) até 3 tentativas, depois 'falhou' com aviso amigável; definitivo falha na hora; sem sinal de vida é retomado", async () => {
+  resetar(); vincula();
+  const t = await pedidoNaFila("d");
+  const r1 = await operario("pegar");
+  const antes = enviosWa.length;
+  ok((await operario("falhou", { trabalho_id: t.id, dono: crypto.randomUUID(), motivo: "x" })).status === 409, "falhou com outro dono → 409");
+  const f1 = await operario("falhou", { trabalho_id: t.id, dono: r1.json.dono, motivo: "Chromium caiu   no meio\n da geração" });
+  ok(f1.json.status === "pendente" && t.status === "pendente" && t.iniciado_em === null && t.erro === "Chromium caiu no meio da geração" && t.progresso.dono === null && t.progresso.tentar_apos && enviosWa.length === antes, "1ª falha: volta à fila com espera, erro guardado, dono limpo, professor não avisado");
+  ok((await operario("pegar")).json.trabalho === null, "varredura logo em seguida NÃO repega o pedido que acabou de falhar");
+  t.progresso.tentar_apos = new Date(Date.now() - 1000).toISOString();
+  const p2 = await operario("pegar");
+  ok(p2.json.trabalho?.id === t.id && p2.json.trabalho.tentativa === 2 && enviosWa.length === antes, "passada a espera: 2ª tentativa, sem repetir o 'Comecei a gerar'");
+  await operario("falhou", { trabalho_id: t.id, dono: p2.json.dono, motivo: "erro 2" });
+  t.progresso.tentar_apos = new Date(Date.now() - 1000).toISOString();
+  const p3 = await operario("pegar");
+  ok(p3.json.trabalho.tentativa === 3, "3ª tentativa");
+  const f3 = await operario("falhou", { trabalho_id: t.id, dono: p3.json.dono, motivo: "tempo esgotado após 40 min (gerando 3/5)" });
+  ok(f3.json.status === "falhou" && t.status === "falhou" && ultimo().text.body.startsWith("❌ Não consegui gerar o simulado de Biologia (5 questões): a geração demorou demais e foi interrompida") && ultimo().text.body.includes('Mande "oi"'), "3ª falha: falhou + aviso em linguagem de gente");
+  ok((await operario("falhou", { trabalho_id: t.id, dono: p3.json.dono, motivo: "x" })).status === 409, "falhou de novo → 409");
+  await envia("wamid.st", "status");
+  ok(ultimo().text.body.includes("falhou ❌") && ultimo().text.body.includes("Motivo: a geração demorou demais"), "STATUS mostra o motivo amigável");
+  // definitivo na primeira
+  const t2 = await pedidoNaFila("e");
+  const pe = await operario("pegar");
+  const fd = await operario("falhou", { trabalho_id: t2.id, dono: pe.json.dono, motivo: "área inválida: quimica", definitivo: true });
+  ok(fd.json.status === "falhou" && t2.status === "falhou" && ultimo().text.body.includes("os parâmetros do pedido não foram aceitos"), "definitivo: falha e avisa na hora, sem jargão");
+  // sem sinal de vida: gerando há > 15 min sem progresso → outro robô retoma; na 3ª vez desiste e avisa
+  const t3 = await pedidoNaFila("f");
+  const p31 = await operario("pegar");
+  ok((await operario("pegar", { trabalho_id: t3.id })).json.trabalho === null, "gerando com sinal recente não é retomado");
+  envelhece(t3, O.TRABALHO_TRAVADO_MS + 60_000);
+  ok((await operario("progresso", { trabalho_id: t3.id, dono: p31.json.dono, estado: { prontas: 1 } })).status === 200, "o dono original ainda renova o sinal se voltar antes de alguém retomar");
+  envelhece(t3, O.TRABALHO_TRAVADO_MS + 60_000);
+  const re = await operario("pegar", { trabalho_id: t3.id });
+  ok(re.json.trabalho?.id === t3.id && re.json.trabalho.tentativa === 2 && t3.status === "gerando" && re.json.dono !== p31.json.dono, "sem sinal há > 15 min → retomado por outro dono (tentativa 2)");
+  ok((await operario("progresso", { trabalho_id: t3.id, dono: p31.json.dono, estado: { prontas: 2 } })).status === 409 && (await operario("falhou", { trabalho_id: t3.id, dono: p31.json.dono, motivo: "x" })).status === 409, "o robô antigo perdeu o pedido: progresso e falhou → 409 (não derruba o novo dono)");
+  envelhece(t3, O.TRABALHO_TRAVADO_MS + 60_000); t3.progresso.tentativas = 3;
+  const antes3 = enviosWa.length;
+  const re3 = await operario("pegar", { trabalho_id: t3.id });
+  ok(re3.json.trabalho === null && /esgotou/.test(re3.json.motivo) && t3.status === "falhou" && t3.erro.startsWith("desistiu após 3 tentativas"), "3 tentativas esgotadas → falhou");
+  ok(re3.json.falhasAvisadas === 1 && enviosWa.length === antes3 + 1 && ultimo().text.body.startsWith("❌ Não consegui gerar") && t3.progresso.avisado === "sim", "o mesmo pegar já avisa o professor da desistência");
+  ok((await operario("pegar")).json.falhasAvisadas === 0, "não avisa de novo");
+  // aviso cujo envio falhou é repetido depois de 10 min; a fila conta avisos pendentes
+  t3.progresso.avisado = "falhou_envio"; t3.progresso.avisado_em = new Date(Date.now() - 11 * 60_000).toISOString();
+  ok((await operario("fila")).json.avisos === 1, "fila conta a desistência ainda não avisada");
+  ok((await operario("pegar")).json.falhasAvisadas === 1 && t3.progresso.avisado === "sim", "aviso repetido depois de 10 min");
+  // Auth indisponível: devolve o pedido à fila sem gastar tentativa, com espera; na 3ª vez desiste e avisa
+  const t4 = await pedidoNaFila("g");
+  authFalha = true;
+  const pa = await operario("pegar");
+  ok(pa.status === 503 && t4.status === "pendente" && t4.progresso.tentativas === 0 && t4.progresso.falhas_sessao === 1 && t4.progresso.dono === null && t4.progresso.tentar_apos && t4.erro.startsWith("sessão do professor indisponível"), "sem sessão → 503, pedido volta à fila com espera e a tentativa de geração não conta");
+  ok((await operario("pegar")).json.trabalho === null && (await operario("fila")).json.pendentes === 0, "em espera, o pedido não trava a fila (não é repegado nem contado)");
+  t4.progresso.tentar_apos = new Date(Date.now() - 1000).toISOString();
+  authFalha = false;
+  const pb = await operario("pegar");
+  ok(pb.json.trabalho?.id === t4.id && pb.json.trabalho.tentativa === 1 && ultimo().text.body.startsWith("🛠️ Comecei"), "passada a espera, pega normalmente como 1ª tentativa, com o aviso");
+  await operario("falhou", { trabalho_id: t4.id, dono: pb.json.dono, motivo: "x", definitivo: true });
+  const t6 = await pedidoNaFila("j");
+  authFalha = true;
+  for (let k = 0; k < 2; k++) { await operario("pegar"); t6.progresso.tentar_apos = new Date(Date.now() - 1000).toISOString(); }
+  const antes6 = enviosWa.length;
+  const pz = await operario("pegar");
+  ok(pz.status === 200 && pz.json.trabalho === null && t6.status === "falhou" && t6.progresso.falhas_sessao === 3 && enviosWa.length === antes6 + 1 && ultimo().text.body.includes("não consegui acessar sua conta"), "3ª falha de sessão seguida → falhou com aviso compreensível");
+  authFalha = false;
+  // aviso "Comecei" falhando (Graph fora) não derruba o pegar
+  const t5 = await pedidoNaFila("h");
+  graphFalha = "transitorio";
+  const pc = await operario("pegar");
+  graphFalha = false;
+  ok(pc.status === 200 && pc.json.trabalho?.id === t5.id && t5.status === "gerando", "aviso inicial recusado pela Meta não impede o pegar");
+});
+
+Deno.test("operário: com WA_GITHUB_TOKEN o Sim dispara a execução na hora (repository_dispatch) e o texto diz 'começa agora'", async () => {
+  resetar(); vincula();
+  const envGh: Env = { ...env, WA_GITHUB_TOKEN: "github_pat_teste" };
+  const sg = (texto: string, w: string) => postAssinado(payloadMeta(texto, w), env.WHATSAPP_APP_SECRET, envGh);
+  const tg = (w: string, inter: any) => postAssinado(payloadMeta("", w, "556296116652", "Maziad", "interactive", "556296116652", inter), env.WHATSAPP_APP_SECRET, envGh);
+  await sg("oi", "wamid.h1"); await tg("wamid.h2", lr("area:matematica")); await tg("wamid.h3", lr("disc:matematica")); await sg("funções", "wamid.h4"); await sg("3", "wamid.h5"); await tg("wamid.h6", lr("dif:facil")); await tg("wamid.h7", lr("rec:nenhum")); await tg("wamid.h8", botao("conf:sim"));
+  const t = banco.trabalhos[0];
+  ok(dispatches.length === 1 && dispatches[0].url === "https://api.github.com/repos/Turco2025/Enem/dispatches" && dispatches[0].corpo.event_type === "wa-pedido" && dispatches[0].corpo.client_payload.trabalho_id === t.id && dispatches[0].auth === "Bearer github_pat_teste", "repository_dispatch com o id do pedido");
+  ok(banco.mensagens.get("wamid.h8").acao === "pedido_criado" && ultimo().text.body.includes("começa agora") && ultimo().text.body.includes("PDF e Word"), "texto: começa agora");
+  const s = await handler(new Request("https://x/w?selftest=1&t=fraseVerificacaoTeste2026"), envGh);
+  ok((await s.json()).operario.disparoImediato === true, "selftest: disparo imediato ligado");
+});
+
+Deno.test("operario.ts/logica.ts: sanitização de progresso e resumo, motivo amigável, nome de arquivo, rótulos", () => {
+  const r = resumoDaGeracao({ total: 5, prontas: 7, falhas: [{ numero: 2, motivo: "m".repeat(400) }, { numero: 0, motivo: "x" }, "lixo"], custo: { textoUSD: "0.10", imagensUSD: 0.2 }, simuladoId: "------------------------------------" });
+  ok(r.total === 5 && r.prontas === 7 && r.falhas.length === 1 && r.falhas[0].motivo.length === 300 && r.custoUSD === 0.3 && r.simuladoId === null, "resumoDaGeracao limita e descarta o que não serve (36 hífens não é uuid)");
+  ok(resumoDaGeracao(r).custoUSD === 0.3 && resumoDaGeracao(r).falhas.length === 1, "resumoDaGeracao é idempotente sobre o formato gravado");
+  ok(JSON.stringify(O.sanitizaProgresso({ total: 3.7, prontas: -1, fase: "f".repeat(80), x: 1 })) === JSON.stringify({ total: 3, prontas: 0, fase: "f".repeat(40) }), "sanitizaProgresso");
+  ok(O.nomeArquivoSeguro("C:\\\\pasta\\\\Simulado_ENEM_Biologia_aluno.PDF", "pdf") === "Simulado_ENEM_Biologia_aluno.pdf" && O.nomeArquivoSeguro("", "docx") === "Simulado_ENEM.docx", "nomeArquivoSeguro");
+  ok(O.descricaoRotulo("docx_professor").startsWith("Word · versão do professor") && O.ORDEM_ENTREGA.length === 4, "rótulos");
+  ok(O.pareceJwt("eyJa.bbb.ccc") && !O.pareceJwt("segredo") && O.decodificarJwt("a.b") === null, "pareceJwt/decodificarJwt");
+  ok(O.bytesParaBase64Url(O.base64UrlParaBytes("SGVsbG8_d29ybGQ")) === "SGVsbG8_d29ybGQ", "base64url ida e volta");
+  ok(motivoAmigavel('entregar pdf_aluno: HTTP 502 a Meta recusou a mídia {"error":1}') === "houve uma falha técnica na entrega dos arquivos" && motivoAmigavel("nenhuma questão ficou pronta: Erro HTTP 546 ao gerar a questão.") === "nenhuma questão ficou pronta (Erro HTTP 546 ao gerar a questão.)" && motivoAmigavel("quantidade inválida: 0") === "os parâmetros do pedido não foram aceitos pelo aplicativo", "motivoAmigavel");
 });
 
 Deno.test("resumo", () => { console.log(`\n>>> ${total} verificações passaram`); });

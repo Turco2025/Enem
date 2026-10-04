@@ -3,3 +3,4 @@ _lockjunk/
 _lockjunk2/
 tests/saida/
 __pycache__/
+robo/node_modules/

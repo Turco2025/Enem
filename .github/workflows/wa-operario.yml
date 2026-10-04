@@ -1,0 +1,87 @@
+# Operário do WhatsApp (etapa C): gera o simulado pedido pelo WhatsApp e devolve PDF/DOCX.
+#
+# Como roda:
+#   • repository_dispatch "wa-pedido" — disparado pelo webhook na hora do "Sim" (precisa do
+#     secret WA_GITHUB_TOKEN no Supabase; sem ele, só a varredura abaixo);
+#   • schedule a cada 10 min — varre a fila (pendentes, travados) e entrega o que ficou pronto.
+#     Antes de instalar o Chromium, robo/fila.mjs pergunta ao webhook se há trabalho; com a fila
+#     vazia a execução termina em segundos;
+#   • workflow_dispatch — para rodar à mão pela aba Actions (opcionalmente com o id do pedido).
+# Autenticação no webhook: token OIDC emitido pelo GitHub para esta execução (permissions:
+# id-token: write). Nenhum segredo fica guardado no repositório nem no GitHub.
+# O repositório é público, logo estes registros são públicos: o robô só imprime números e fases.
+
+name: WhatsApp — operário (gera e entrega simulados)
+
+on:
+  repository_dispatch:
+    types: [wa-pedido]
+  schedule:
+    - cron: "*/10 * * * *"
+  workflow_dispatch:
+    inputs:
+      trabalho_id:
+        description: "id do pedido (vazio = varre a fila)"
+        required: false
+        default: ""
+
+permissions:
+  id-token: write
+  contents: read
+
+concurrency:
+  group: wa-operario-${{ github.event.client_payload.trabalho_id || inputs.trabalho_id || 'varredura' }}
+  cancel-in-progress: false
+
+env:
+  WEBHOOK_URL: https://gkceyrkdmnhgqimmrsre.supabase.co/functions/v1/whatsapp-webhook
+  TRABALHO_ID: ${{ github.event.client_payload.trabalho_id || inputs.trabalho_id }}
+
+jobs:
+  gerar:
+    runs-on: ubuntu-latest
+    timeout-minutes: 100
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Há trabalho na fila?
+        id: fila
+        run: node robo/fila.mjs
+
+      - name: Dependências do robô
+        if: steps.fila.outputs.vazia != 'true'
+        working-directory: robo
+        run: npm ci --no-audit --no-fund
+
+      - name: Chromium do Playwright (cache)
+        if: steps.fila.outputs.vazia != 'true'
+        id: pw-cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('robo/package-lock.json') }}
+
+      - name: Instalar Chromium
+        if: steps.fila.outputs.vazia != 'true'
+        working-directory: robo
+        run: |
+          if [ "${{ steps.pw-cache.outputs.cache-hit }}" = "true" ]; then
+            npx playwright install-deps chromium
+          else
+            npx playwright install --with-deps chromium
+          fi
+
+      - name: Gerar e entregar
+        if: steps.fila.outputs.vazia != 'true'
+        working-directory: robo
+        env:
+          MAX_PEDIDOS: "3"
+          LIMITE_MINUTOS: "40"
+          ORCAMENTO_MINUTOS: "95"
+        run: node operario.mjs

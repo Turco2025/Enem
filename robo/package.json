@@ -1,0 +1,14 @@
+{
+  "name": "enem-wa-operario",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Operário do WhatsApp do Gerador ENEM: gera o simulado no próprio app (Chromium sem tela) e entrega PDF/DOCX pelo webhook.",
+  "type": "module",
+  "scripts": {
+    "operario": "node operario.mjs",
+    "teste": "node teste_local.mjs"
+  },
+  "dependencies": {
+    "playwright": "1.56.0"
+  }
+}

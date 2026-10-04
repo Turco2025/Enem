@@ -8467,3 +8467,223 @@ document.addEventListener("DOMContentLoaded", () => { calibraBarraDaRaiz(); init
 // As fontes podem chegar depois do init; remedir então, senão a barra ficaria
 // calibrada para a fonte de fallback.
 if(document.fonts && document.fonts.ready) document.fonts.ready.then(calibraBarraDaRaiz).catch(() => {});
+
+
+/* ======================================================================================
+   v18.35 — ENTRADA DE AUTOMAÇÃO (operário do WhatsApp, etapa C — 04/10/2026)
+
+   O pedido feito pelo WhatsApp (formulário de 6 perguntas, etapa B1) fica na fila
+   `wa_trabalhos`. Quem o executa é um robô (robo/operario.mjs, rodando no GitHub
+   Actions) que abre ESTE aplicativo num Chromium sem tela e chama a entrada abaixo.
+   Nada da geração é reescrito: a entrada só faz, em código, o que o professor faz
+   na tela — escolhe área e disciplina, ajusta a quantidade, preenche o lote (tema,
+   níveis, recurso), clica em "Aplicar" e em "Gerar simulado" — e, no fim, monta os
+   mesmos PDF e DOCX dos botões "Exportar". O simulado é arquivado em "Meus
+   Simulados" como qualquer outro (generateAll → salvarSimuladoAtual).
+
+   Nenhuma mudança visual: o objeto `window.enemAutomacao` só existe para o robô.
+   A sessão do professor chega pronta (tokens emitidos pelo webhook, no servidor):
+   o aplicativo nunca vê senha.
+
+   Contrato (usado pelo robô):
+     await enemAutomacao.pronto()                       → espera init() terminar
+     await enemAutomacao.entrarComSessao({ access_token, refresh_token })
+                                                        → { user_id, email }
+     await enemAutomacao.gerar(parametros)              → { simuladoId, total, prontas,
+                                                            falhas[], arquivos[], custo }
+     enemAutomacao.estado()                             → progresso para o robô relatar
+   parametros = { area, disciplina, quantidade, temas_texto, contagem, recurso }
+   (os mesmos gravados em wa_trabalhos.parametros por supabase/functions/whatsapp-webhook).
+   ====================================================================================== */
+const AUTOMACAO_VERSAO = "18.35";
+let automacaoPronta = false;
+let automacaoFase = "carregando";   // carregando | pronto | configurando | gerando | exportando | concluido | erro
+let automacaoErro = "";
+const _automacaoEsperas = [];
+document.addEventListener("DOMContentLoaded", () => {
+  // Registrado DEPOIS do listener que chama init(): os dois são síncronos e disparam
+  // na ordem de registro, então aqui init() já terminou e supabaseClient existe.
+  automacaoPronta = true;
+  automacaoFase = "pronto";
+  _automacaoEsperas.splice(0).forEach(r => r());
+});
+
+function automacaoSlug(s, max){
+  const t = String(s || "").normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[^A-Za-z0-9]+/g, "_").replace(/^_+|_+$/g, "");
+  return (t || "simulado").slice(0, max || 40).replace(/_+$/g, "");
+}
+
+function automacaoBase64(buf){
+  const bytes = new Uint8Array(buf);
+  let bin = "";
+  const passo = 0x8000;
+  for(let i = 0; i < bytes.length; i += passo){
+    bin += String.fromCharCode.apply(null, bytes.subarray(i, i + passo));
+  }
+  return btoa(bin);
+}
+
+// Contagem válida: três níveis, inteiros ≥ 0, soma = total. Senão, divisão igual.
+function automacaoContagem(contagem, total){
+  const nomes = NIVEIS_LOTE.map(n => n.nome);
+  const saida = {};
+  let soma = 0, ok = contagem && typeof contagem === "object";
+  nomes.forEach(n => {
+    const v = ok ? Number(contagem[n]) : NaN;
+    if(!Number.isInteger(v) || v < 0) ok = false;
+    saida[n] = ok ? v : 0;
+    soma += ok ? v : 0;
+  });
+  if(!ok || soma !== total) return contagemIgual(total);
+  return saida;
+}
+
+function automacaoValidaParametros(p){
+  if(!p || typeof p !== "object") throw new Error("parâmetros ausentes");
+  if(!AREA_META[p.area]) throw new Error("área inválida: " + String(p.area));
+  const disciplinas = AREA_META[p.area].disciplinas;
+  if(!disciplinas.includes(p.disciplina)) throw new Error("disciplina inválida para a área: " + String(p.disciplina));
+  const qtd = Number(p.quantidade);
+  if(!Number.isInteger(qtd) || qtd < 1 || qtd > 20) throw new Error("quantidade inválida: " + String(p.quantidade));
+  const recursos = ["nenhum", "imagem", "grafico", "tabela"];
+  const recurso = recursos.includes(p.recurso) ? p.recurso : "nenhum";
+  // Vários temas vão um por linha: é assim que a caixa do lote separa itens que contêm vírgula
+  // ("Era Vargas, Estado Novo" é UM tema). Com um só, vai o texto como veio.
+  const lista = Array.isArray(p.temas) ? p.temas.map((t) => String(t || "").replace(/\s+/g, " ").trim()).filter(Boolean) : [];
+  const temas = (lista.length >= 2 ? lista.join("\n") : String(p.temas_texto || lista[0] || "")).trim().slice(0, 600);
+  return { area: p.area, disciplina: p.disciplina, quantidade: qtd, recurso, temas, contagem: automacaoContagem(p.contagem, qtd) };
+}
+
+window.enemAutomacao = {
+  versao: AUTOMACAO_VERSAO,
+
+  pronto(){
+    if(automacaoPronta) return Promise.resolve();
+    return new Promise(r => _automacaoEsperas.push(r));
+  },
+
+  // Progresso para o robô (e para o STATUS no WhatsApp): só números e fase.
+  estado(){
+    const qs = state.questions || [];
+    const conta = s => qs.filter(q => q.status === s).length;
+    return {
+      fase: automacaoFase,
+      erro: automacaoErro || "",
+      total: qs.length,
+      prontas: conta("done"),
+      gerando: conta("generating") + conta("validating") + conta("imagem"),
+      erros: conta("error"),
+      imagensPendentes: imagePromisesEmAndamento.length,
+      logado: !!currentUser,
+    };
+  },
+
+  async entrarComSessao(sessao){
+    await this.pronto();
+    if(!sessao || !sessao.access_token || !sessao.refresh_token) throw new Error("sessão incompleta");
+    const { data, error } = await supabaseClient.auth.setSession({ access_token: sessao.access_token, refresh_token: sessao.refresh_token });
+    if(error) throw new Error("setSession: " + (error.message || String(error)));
+    // onAuthStateChange preenche currentUser; se demorar, usa o que setSession devolveu.
+    for(let i = 0; i < 50 && !currentUser; i++) await new Promise(r => setTimeout(r, 100));
+    if(!currentUser && data && data.session){
+      currentSession = data.session;
+      currentUser = data.session.user;
+      atualizaHeaderAuth();
+    }
+    if(!currentUser) throw new Error("sessão não ficou ativa no aplicativo");
+    return { user_id: currentUser.id, email: currentUser.email || "" };
+  },
+
+  // Encerra SÓ a sessão deste robô no servidor (scope "local" = esta sessão; o professor continua
+  // logado no navegador dele). Chamado pelo robô ao terminar, com ou sem sucesso.
+  async encerrarSessao(){
+    try{ if(supabaseClient && currentUser) await supabaseClient.auth.signOut({ scope: "local" }); }catch(e){ /* melhor esforço */ }
+    return !currentUser;
+  },
+
+  async gerar(parametros){
+    await this.pronto();
+    if(!currentUser) throw new Error("entre com a sessão antes de gerar (entrarComSessao)");
+    if(geracaoEmCurso()) throw new Error("já existe uma geração em curso nesta página");
+    const p = automacaoValidaParametros(parametros);
+    automacaoErro = "";
+    automacaoFase = "configurando";
+
+    // 1. Área, disciplina e quantidade — exatamente o que os cliques fazem.
+    selectArea(p.area);
+    state.disciplina = p.disciplina;
+    renderDisciplinaChips();
+    renderQuestionBlocks();
+    sincronizaContadoresLote();
+    setQty(p.quantidade);
+
+    // 2. Painel do lote: tema, níveis, recurso, sem orientações; depois "Aplicar".
+    document.getElementById("loteTema").value = p.temas;
+    document.getElementById("loteOrientacoes").value = "";
+    loteContadores = { ...p.contagem };
+    atualizaResumoLote();
+    document.querySelectorAll("#loteRecursoRow .res-opt").forEach(x => x.classList.toggle("sel", x.dataset.r === p.recurso));
+    aplicarLoteATodas();
+    if(somaContadores() !== state.questions.length) throw new Error("contadores do lote não fecharam com a quantidade");
+    const confere = state.questions.every(q => q.recurso === p.recurso);
+    if(!confere) throw new Error("o recurso do lote não foi aplicado às questões");
+
+    // 3. Gerar — o mesmo caminho do botão (iniciarGeracao → generateAll), sem os
+    //    avisos de tela que pedem um segundo clique.
+    simuladoAbertoId = null;
+    confirmaOrientacoesEm = 0;
+    confirmaDisciplinaEm = 0;
+    automacaoFase = "gerando";
+    try{
+      await generateAll();
+    }catch(err){
+      automacaoFase = "erro";
+      automacaoErro = (err && err.message) || String(err);
+      throw err;
+    }
+    const total = state.questions.length;
+    const prontas = state.questions.filter(q => q.status === "done");
+    const falhas = state.questions.map((q, i) => ({ numero: i + 1, motivo: q.status === "done" ? "" : String(q.errorMsg || q.status || "não gerada").slice(0, 300) })).filter(f => f.motivo);
+    if(!prontas.length){
+      automacaoFase = "erro";
+      automacaoErro = "nenhuma questão ficou pronta" + (falhas[0] ? ": " + falhas[0].motivo : "");
+      throw new Error(automacaoErro);
+    }
+
+    // 4. Exportar — os mesmos documentos dos botões "Exportar PDF"/"Exportar DOCX",
+    //    nas duas versões (aluno e professor), entregues como bytes em base64.
+    //    Antes, a mesma trava dos botões (nenhuma imagem ainda carregando) e a decodificação
+    //    de todas as imagens: o PDF/DOCX só embute a figura já decodificada pelo navegador.
+    automacaoFase = "exportando";
+    for(let i = 0; i < 600 && document.getElementById("resultsPanel").querySelector(".visual-image-loading"); i++) await new Promise(r => setTimeout(r, 100));
+    await Promise.all(Array.from(document.querySelectorAll("#resultsPanel img")).map(img => (img.decode ? img.decode() : Promise.resolve()).catch(() => {})));
+    await loadScriptOnce(CDN_URLS.jspdf);
+    await loadScriptOnce(CDN_URLS.docx);
+    const doneQuestions = state.questions.map((q, idx) => ({ q, idx })).filter(o => o.q.status === "done");
+    const base = "Simulado_ENEM_" + automacaoSlug(p.disciplina, 30) + (p.temas ? "_" + automacaoSlug(itensDoTemaDoLote(p.temas).slice(0, 3).join("_"), 40) : "");
+    const arquivos = [];
+    for(const professor of [false, true]){
+      const rotulo = professor ? "professor" : "aluno";
+      const built = enemBuildPdfDoc(doneQuestions, professor);
+      arquivos.push({ rotulo: "pdf_" + rotulo, nome: base + "_" + rotulo + ".pdf", mime: "application/pdf", base64: automacaoBase64(built.doc.output("arraybuffer")) });
+    }
+    const { Document, Packer } = window.docx;
+    for(const professor of [false, true]){
+      const rotulo = professor ? "professor" : "aluno";
+      const docEnem = new Document({ evenAndOddHeaderAndFooters: true, sections: enemDocxSections(doneQuestions, professor) });
+      const blob = await Packer.toBlob(docEnem);
+      arquivos.push({ rotulo: "docx_" + rotulo, nome: base + "_" + rotulo + ".docx", mime: "application/vnd.openxmlformats-officedocument.wordprocessingml.document", base64: automacaoBase64(await blob.arrayBuffer()) });
+    }
+    automacaoFase = "concluido";
+    const u = state.uso || {}, ui = state.usoImagem || {};
+    return {
+      versao: AUTOMACAO_VERSAO,
+      simuladoId: simuladoAbertoId || null,
+      total,
+      prontas: prontas.length,
+      falhas,
+      arquivos,
+      custo: { textoUSD: Number(u.custoUSD) || 0, imagensUSD: Number(ui.custoUSD) || 0, imagens: Number(ui.imagens) || 0, chamadas: Number(u.chamadas) || 0 },
+    };
+  },
+};

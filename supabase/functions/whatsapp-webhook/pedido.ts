@@ -32,8 +32,11 @@ export const RECURSOS = ["nenhum", "imagem", "grafico", "tabela"] as const;
 export type Recurso = typeof RECURSOS[number];
 export const RECURSO_ROTULO: Record<Recurso, string> = { nenhum: "Sem recurso visual", imagem: "Com imagem", grafico: "Com gráfico", tabela: "Com tabela" };
 
+// Faixa dos acentos combinantes (U+0300–U+036F) montada por código: sem sequências \uXXXX no fonte, que a
+// publicação inline da função converte em caracteres literais (o código publicado deixaria de ser igual ao do repositório).
+export const ACENTOS = new RegExp("[" + String.fromCharCode(0x300) + "-" + String.fromCharCode(0x36f) + "]", "g");
 export function slug(s: string): string {
-  return String(s ?? "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_|_$/g, "");
+  return String(s ?? "").normalize("NFD").replace(ACENTOS, "").toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_|_$/g, "");
 }
 export function areaValida(id: unknown): id is string { return typeof id === "string" && Object.hasOwn(AREAS, id); }
 export function areaDaDisciplina(disciplina: string): string | null {
