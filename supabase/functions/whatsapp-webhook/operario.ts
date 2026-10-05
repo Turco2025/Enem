@@ -351,6 +351,13 @@ export async function trabalhosProntos(env: EnvOperario, userId: string): Promis
   if (!r.ok) throw new Error(`wa_trabalhos prontos ${r.status}`);
   return (await r.json()) as Trabalho[];
 }
+// B2.3 — a mesma lista, pelo telefone: pode ser lida antes de o perfil chegar (em paralelo com as
+// outras leituras da mensagem). Quem usa filtra pelo user_id do perfil, para manter a regra de dono.
+export async function trabalhosProntosDoTelefone(env: EnvOperario, telefone: string): Promise<Trabalho[]> {
+  const r = await fetch(`${env.SUPABASE_URL}/rest/v1/wa_trabalhos?select=${COLUNAS}&telefone=eq.${encodeURIComponent(telefone)}&status=eq.pronto&order=criado_em.asc&limit=3`, { headers: cabecalhosDb(env) });
+  if (!r.ok) throw new Error(`wa_trabalhos prontos ${r.status}`);
+  return (await r.json()) as Trabalho[];
+}
 
 // ---------------------------------------------------------------------------
 // Mídia da Cloud API

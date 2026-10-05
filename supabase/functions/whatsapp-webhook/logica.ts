@@ -26,7 +26,7 @@
 // do robô exigem um token OIDC válido do repositório/branch configurados (ou o segredo
 // compartilhado opcional WA_OPERARIO_TOKEN).
 
-export const VERSAO = "B2.2";
+export const VERSAO = "B2.3";
 
 import * as P from "./pedido.ts";
 import * as O from "./operario.ts";
@@ -517,9 +517,9 @@ async function reservarConfirmacao(env: Env, telefone: string, estado: P.EstadoG
   return ((await r.json()) as unknown[]).length === 1;
 }
 
-async function tratarPedido(env: Env, msg: MsgMeta, telefone: string, texto: string | null, perfil: Perfil): Promise<Saida> {
+async function tratarPedido(env: Env, msg: MsgMeta, telefone: string, texto: string | null, perfil: Perfil, pre: PreCarga = {}): Promise<Saida> {
   const userId = perfil.user_id;
-  const conversa = await lerConversa(env, telefone);
+  const conversa = pre.conversa !== undefined ? pre.conversa : await lerConversa(env, telefone);
   // o estado só vale para a conta dona dele (o telefone pode ter sido vinculado a outra conta no meio)
   const bruto = conversa && (!conversa.user_id || conversa.user_id === userId) ? conversa.estado : null;
   const estado = estadoAtivo(bruto) ? bruto : null;
@@ -555,7 +555,7 @@ async function tratarPedido(env: Env, msg: MsgMeta, telefone: string, texto: str
 
   // 2) reentrega de um "Sim" que já virou pedido (o envio da confirmação falhou): repete a confirmação,
   //    limpa o rascunho e, se o operário ainda não foi avisado, avisa de novo
-  const jaCriado = await trabalhoDoWamid(env, msg.id);
+  const jaCriado = pre.jaCriado !== undefined ? pre.jaCriado : await trabalhoDoWamid(env, msg.id);
   if (jaCriado) {
     const pedido = jaCriado.parametros as unknown as P.Pedido;
     const acionado = jaCriado.status === "pendente" ? await acionarOperario(env, jaCriado.id) : disparoImediato(env);
@@ -734,9 +734,11 @@ async function entregarTrabalho(env: Env, t0: O.Trabalho, atrasada: boolean, don
 }
 // Pedidos "pronto" do usuário (gerados, não entregues): tenta entregar agora. Chamado quando
 // chega QUALQUER mensagem do número vinculado — a mensagem reabre a janela de 24 h.
-async function entregarPendentes(env: Env, userId: string): Promise<number> {
+async function entregarPendentes(env: Env, userId: string, prontosPre?: O.Trabalho[]): Promise<number> {
   let n = 0;
-  for (const t of await O.trabalhosProntos(env, userId)) {
+  // B2.3: a lista pode vir pré-carregada (lida pelo telefone, em paralelo); só valem os pedidos desta conta
+  const prontos = prontosPre ? prontosPre.filter((t) => t.user_id === userId) : await O.trabalhosProntos(env, userId);
+  for (const t of prontos) {
     try { if ((await entregarTrabalho(env, t, true)) === "enviado") n++; } catch (e) { console.error("[wa] entrega pendente", t.id, e); }
   }
   return n;
@@ -925,6 +927,27 @@ export async function tratarOperario(req: Request, env: Env): Promise<Response> 
   }
 }
 
+// B2.3 — PRÉ-CARGA. A função roda perto da Meta (EUA) e o banco fica em São Paulo: cada ida e
+// volta custa ~0,6 s. As leituras que não dependem umas das outras (perfil, estado da conversa,
+// pedido já criado para este wamid, simulados prontos) saem em paralelo com o registro da
+// mensagem — cinco idas e voltas viram uma. `undefined` = não pré-carregado (a leitura falhou):
+// quem usa lê na hora, como antes, e o erro aparece no mesmo lugar de sempre.
+interface PreCarga {
+  conversa?: Awaited<ReturnType<typeof lerConversa>>;
+  jaCriado?: Awaited<ReturnType<typeof trabalhoDoWamid>>;
+  prontos?: O.Trabalho[];
+}
+const valorOuNada = <T>(r: PromiseSettledResult<T>): T | undefined => (r.status === "fulfilled" ? r.value : undefined);
+
+// Trabalho que não precisa segurar a resposta à Meta: no Edge Runtime do Supabase segue em segundo
+// plano (waitUntil); fora dele (testes), devolve a promessa para ser aguardada.
+function emSegundoPlano(p: Promise<unknown>): Promise<unknown> | undefined {
+  const seguro = p.catch((e) => console.error("[wa] segundo plano", e));
+  const rt = (globalThis as unknown as { EdgeRuntime?: { waitUntil?: (p: Promise<unknown>) => void } }).EdgeRuntime;
+  if (rt?.waitUntil) { rt.waitUntil(seguro); return undefined; }
+  return seguro;
+}
+
 export async function processarMensagem(env: Env, msg: MsgMeta, nomePerfil: string, payload: unknown): Promise<string> {
   const telefone = String(msg.from || "").replace(/\D/g, "");
   const texto = msg.type === "text" ? String(msg.text?.body ?? "") : null;
@@ -932,9 +955,18 @@ export async function processarMensagem(env: Env, msg: MsgMeta, nomePerfil: stri
 
   // no registro, respostas interativas (formulário, listas, botões) ficam legíveis em wa_mensagens.texto
   const textoRegistro = texto ?? (msg.type === "interactive" ? JSON.stringify(msg.interactive ?? {}).slice(0, 2000) : null);
-  const registro = await registrarMensagem(env, { wamid: msg.id, telefone, tipo: msg.type, texto: textoRegistro, payload });
+  const [registroR, perfilR, conversaR, jaCriadoR, prontosR] = await Promise.allSettled([
+    registrarMensagem(env, { wamid: msg.id, telefone, tipo: msg.type, texto: textoRegistro, payload }),
+    perfilPorTelefone(env, telefone),
+    lerConversa(env, telefone),
+    trabalhoDoWamid(env, msg.id),
+    O.trabalhosProntosDoTelefone(env, telefone),
+  ]);
+  if (registroR.status === "rejected") throw registroR.reason;   // sem registro não se responde (mesma regra de antes)
+  const registro = registroR.value;
   if (registro === "duplicada") return "duplicada";
   if (registro === "em_andamento") return "duplicada_em_andamento";   // outra execução cuida; handler devolve 500 para a Meta tentar depois
+  const pre: PreCarga = { conversa: valorOuNada(conversaR), jaCriado: valorOuNada(jaCriadoR), prontos: valorOuNada(prontosR) };
 
   const lida = marcarLida(env, msg.id);
   (globalThis as any).EdgeRuntime?.waitUntil?.(lida); // termina em segundo plano, se o runtime oferecer
@@ -944,7 +976,7 @@ export async function processarMensagem(env: Env, msg: MsgMeta, nomePerfil: stri
   let mensagens: Record<string, unknown>[] = [];
   let userId: string | null = null;
   try {
-    const perfil = await perfilPorTelefone(env, telefone);
+    const perfil = perfilR.status === "fulfilled" ? perfilR.value : await perfilPorTelefone(env, telefone);
     userId = perfil?.user_id ?? null;
 
     const codigo = texto !== null ? extrairCodigoVinculo(texto) : null;
@@ -962,14 +994,17 @@ export async function processarMensagem(env: Env, msg: MsgMeta, nomePerfil: stri
     } else {
       // etapa C: simulados prontos que não puderam ser entregues (janela de 24 h fechada) saem agora —
       // esta mensagem do professor reabriu a janela. Independente da resposta abaixo.
-      const entregues = await entregarPendentes(env, perfil.user_id).catch((e) => { console.error("[wa] entregas pendentes", e); return 0; });
+      const entregues = await entregarPendentes(env, perfil.user_id, pre.prontos).catch((e) => { console.error("[wa] entregas pendentes", e); return 0; });
       // etapa B1: número vinculado → formulário por perguntas, confirmação, fila, comandos
-      const saida = await tratarPedido(env, msg, telefone, texto, { ...perfil, whatsapp_nome: perfil.whatsapp_nome || nomePerfil || null });
+      const saida = await tratarPedido(env, msg, telefone, texto, { ...perfil, whatsapp_nome: perfil.whatsapp_nome || nomePerfil || null }, pre);
       acao = saida.acao; resposta = (entregues ? `[entregou ${entregues} simulado(s) pronto(s)] ` : "") + saida.resumo; mensagens = saida.mensagens;
     }
     const envio = await enviarSequencia(env, telefone, mensagens);
     if (!envio.ok) acao += envio.transitorio ? "_envio_falhou" : "_envio_recusado";   // falhou → 500 e reentrega; recusado → fica registrado, sem reentrega
-    await atualizarMensagem(env, msg.id, { acao, resposta: envio.ok ? resposta : `${resposta}\n\n[envio: ${envio.detalhe.slice(0, 200)}]`, user_id: userId });
+    const marcacao = atualizarMensagem(env, msg.id, { acao, resposta: envio.ok ? resposta : `${resposta}\n\n[envio: ${envio.detalhe.slice(0, 200)}]`, user_id: userId });
+    // B2.3: com a resposta já enviada, a marcação "processada" não precisa segurar o 200 para a Meta.
+    // Quando o envio falhou, a marcação fica síncrona: é ela que faz a reentrega da Meta reprocessar.
+    if (envio.ok) { const fim = emSegundoPlano(marcacao); if (fim) await fim; } else await marcacao;
   } catch (e) {
     console.error("[wa] erro ao processar", msg.id, e);
     await atualizarMensagem(env, msg.id, { acao: "erro", resposta: String(e).slice(0, 500), user_id: userId });

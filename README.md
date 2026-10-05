@@ -59,11 +59,17 @@ duas Supabase Edge Functions próprias para gerar conteúdo com segurança:
   quando a Meta não aceitou a entrega (janela de 24 h fechada, inclusive pelo status "failed"
   assíncrono — a próxima mensagem do professor entrega, retomando da mensagem que faltou);
   `falhou` depois de 3 tentativas (com 10 min entre elas), com aviso em linguagem simples. O
+  **B2.3 (desempenho)**: a função roda perto da Meta (EUA) e o banco fica em São Paulo (~0,6 s por
+  ida e volta), então as leituras independentes de cada mensagem (perfil, estado da conversa,
+  pedido já criado para o wamid, simulados prontos) saem em paralelo com o registro da mensagem, e
+  a marcação "processada" termina em segundo plano (`EdgeRuntime.waitUntil`) depois de a resposta
+  sair — a ordem "grava o estado → envia a pergunta" é mantida; resposta típica cai de ~5 s para
+  ~2 s de processamento. O
   robô roda na hora do "Sim" se o secret `WA_GITHUB_TOKEN` (token fino do GitHub com
   *Contents: read/write* no repositório) estiver no Supabase; sem ele, a varredura do cron (a
   cada 10 min) pega a fila — e `robo/fila.mjs` pergunta antes se há trabalho, para não instalar
   o Chromium à toa. Lógica em `logica.ts` + `pedido.ts` + `operario.ts`; testes sem rede em
-  `teste_logica.ts` (`deno test -A --no-check teste_logica.ts`, 42 testes). Ensaio do robô sem
+  `teste_logica.ts` (`deno test -A --no-check teste_logica.ts`, 44 testes). Ensaio do robô sem
   gastar IA: `node robo/teste_local.mjs` (backend simulado, questão real arquivada como
   fixture, confere PDF/DOCX nas duas versões). Opções futuras já estudadas:
   formulário em tela única (WhatsApp Flow — exige empresa verificada na Meta) e pedido por

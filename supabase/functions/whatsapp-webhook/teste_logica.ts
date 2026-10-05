@@ -25,12 +25,13 @@ const DONO = "52e6a6ea-b394-4958-8294-06ff2f5091de";
 
 // ---- banco falso em memória + registro das chamadas ------------------------
 const banco = { mensagens: new Map<string, any>(), perfis: new Map<string, any>(), vinculos: [] as any[], conversas: new Map<string, any>(), trabalhos: [] as any[] };
-const chamadas: { url: string; metodo: string; corpo: any }[] = [];
+const chamadas: { url: string; metodo: string; corpo: any; t: number }[] = [];
 const enviosWa: any[] = [];
 let graphFalha: false | "permanente" | "transitorio" = false;   // simula Graph API recusando o envio
 let contagemFora = false;        // simula PostgREST falhando na contagem de tentativas
 let graphDemoraMs = 0;           // simula Graph API lenta (para testar simultaneidade)
 let dbDemoraMs = 0;              // simula banco lento na reserva do "Sim"
+let insertDemoraMs = 0;          // B2.3: simula banco lento no registro da mensagem (para provar a pré-carga em paralelo)
 let wabaAssinada = false;        // simula a assinatura WABA→app na Meta
 let listaTestes: string[] | null = null;   // se definida, só esses números são aceitos pela Graph (#131030 para os demais)
 let graphJanelaFechada = false;  // etapa C: simula #131047 (janela de 24 h fechada) no envio de mensagens
@@ -41,7 +42,7 @@ let jwksFora = false;            // etapa C: simula o JWKS do GitHub indisponív
 let graphFalhaApos: number | null = null;   // etapa C: a Graph aceita N envios e recusa (transitório) o seguinte
 let enviosOkSeguidos = 0;
 
-function resetar() { banco.mensagens.clear(); banco.perfis.clear(); banco.vinculos.length = 0; banco.conversas.clear(); banco.trabalhos.length = 0; chamadas.length = 0; enviosWa.length = 0; graphFalha = false; contagemFora = false; graphDemoraMs = 0; listaTestes = null; dbDemoraMs = 0; graphJanelaFechada = false; midiasSubidas = []; dispatches = []; authFalha = false; jwksFora = false; graphFalhaApos = null; enviosOkSeguidos = 0; O.limparCacheJwks(); }
+function resetar() { banco.mensagens.clear(); banco.perfis.clear(); banco.vinculos.length = 0; banco.conversas.clear(); banco.trabalhos.length = 0; chamadas.length = 0; enviosWa.length = 0; graphFalha = false; contagemFora = false; graphDemoraMs = 0; listaTestes = null; dbDemoraMs = 0; insertDemoraMs = 0; graphJanelaFechada = false; midiasSubidas = []; dispatches = []; authFalha = false; jwksFora = false; graphFalhaApos = null; enviosOkSeguidos = 0; O.limparCacheJwks(); }
 const param = (url: string, k: string) => { const v = new URL(url).searchParams.get(k); return v === null ? null : decodeURIComponent(v); };
 
 // ---- OIDC do GitHub falso: par de chaves RSA gerado aqui; o JWKS "público" sai pelo fetch falso ----
@@ -63,7 +64,7 @@ globalThis.fetch = (async (entrada: string | URL | Request, init?: RequestInit) 
   const url = typeof entrada === "string" ? entrada : entrada instanceof URL ? entrada.toString() : entrada.url;
   const metodo = init?.method ?? "GET";
   const corpo: any = typeof init?.body === "string" ? JSON.parse(init.body) : null;
-  chamadas.push({ url, metodo, corpo });
+  chamadas.push({ url, metodo, corpo, t: performance.now() });
   const j = (o: unknown, status = 200, headers: Record<string, string> = {}) => new Response(JSON.stringify(o), { status, headers: { "content-type": "application/json", ...headers } });
 
   // etapa C — JWKS do GitHub, Auth admin do Supabase, dispatch do GitHub
@@ -102,6 +103,7 @@ globalThis.fetch = (async (entrada: string | URL | Request, init?: RequestInit) 
   }
   if (url.startsWith(env.SUPABASE_URL + "/rest/v1/wa_mensagens")) {
     if (metodo === "POST") {
+      if (insertDemoraMs) await new Promise((r) => setTimeout(r, insertDemoraMs));
       if (banco.mensagens.has(corpo.wamid)) return j([]);
       const agora = new Date().toISOString();
       banco.mensagens.set(corpo.wamid, { ...corpo, acao: null, recebido_em: agora, reservado_em: agora }); return j([corpo], 201);
@@ -516,7 +518,7 @@ Deno.test("selftest exige a frase de verificação e só expõe presença dos se
   const r = await handler(new Request("https://x/w?selftest=1&t=fraseVerificacaoTeste2026"), env);
   const j = await r.json();
   const s = JSON.stringify(j);
-  ok(r.status === 200 && j.versao === "B2.2" && j.secretsPresentes.WHATSAPP_TOKEN === true && j.secretsPresentes.WHATSAPP_APP_SECRET === true, "selftest com t certo → 200 com presença dos secrets");
+  ok(r.status === 200 && j.versao === "B2.3" && j.secretsPresentes.WHATSAPP_TOKEN === true && j.secretsPresentes.WHATSAPP_APP_SECRET === true, "selftest com t certo → 200 com presença dos secrets");
   ok(s.indexOf("TOKEN_TESTE") < 0 && s.indexOf("segredo-de-teste") < 0 && s.indexOf("service-teste") < 0 && s.indexOf("fraseVerificacao") < 0, "nenhum valor de secret aparece na saída");
   ok(j.tabelas.perfis.startsWith("ok") && j.tabelas.wa_mensagens.startsWith("ok") && j.tabelas.wa_conversas.startsWith("ok") && j.tabelas.wa_trabalhos.startsWith("ok") && j.operario && j.operario.disparoImediato === false && j.operario.repositorio === "Turco2025/Enem", "tabelas consultadas; operário sem disparo imediato (varredura)");
   ok(Array.isArray(j.secretsComEspacosNasPontas) && j.formatoOk.WHATSAPP_PHONE_NUMBER_ID_numerico === true && j.formatoOk.WHATSAPP_APP_SECRET_hex32 === false, "selftest aponta formato dos secrets (segredo de teste não é hex32)");
@@ -773,6 +775,29 @@ Deno.test("B2.2: recurso Misto no formulário; formulário que estava no meio qu
   // normalização do recurso misto e dos sinônimos
   ok(P.normalizaRecurso("misto") === "misto" && P.normalizaRecurso("Recurso misto") === "misto" && P.normalizaRecurso("em rodízio") === "misto" && P.normalizaRecurso("vídeo") === null, "normalizaRecurso aceita misto e sinônimos");
   ok(P.proximoFaltante({}) === "area" && P.proximoFaltante({ area: "x", disciplina: "y" }) === "quantidade" && P.proximoFaltante({ area: "x", disciplina: "y", quantidade: "3", temas: "t", recurso: "nenhum", dificuldade: "Fácil" }) === "confirmar", "proximoFaltante segue a ordem nova");
+});
+
+Deno.test("B2.3: leituras em paralelo com o registro (perfil, conversa, pedido do wamid, prontos) sem mudar a resposta; prontos pré-carregados respeitam o dono", async () => {
+  resetar(); vincula();
+  await envia("wamid.p0", "oi"); await toca("wamid.p1", lr("area:natureza")); await toca("wamid.p2", lr("disc:biologia"));
+  insertDemoraMs = 60;
+  const antes = chamadas.length;
+  await envia("wamid.p3", "4");
+  insertDemoraMs = 0;
+  const desta = chamadas.slice(antes);
+  const ins = desta.find((c) => c.metodo === "POST" && c.url.includes("/rest/v1/wa_mensagens"))!;
+  const leituras = ["/rest/v1/perfis", "/rest/v1/wa_conversas?select", "parametros->>wamid_pedido=eq.", "status=eq.pronto"].map((marca) => desta.find((c) => c.metodo === "GET" && c.url.includes(marca)));
+  ok(leituras.every((c) => c && c.t - ins.t < 40), `as 4 leituras começam junto com o registro (não esperam os 60 ms do insert): ${leituras.map((c) => c ? Math.round(c.t - ins.t) : "?").join(", ")} ms`);
+  const grava = desta.find((c) => c.metodo === "POST" && c.url.includes("/rest/v1/wa_conversas"))!;
+  const envioMeta = desta.find((c) => c.metodo === "POST" && c.url.includes("graph.facebook.com") && c.corpo?.type === "text")!;
+  const marca = desta.find((c) => c.metodo === "PATCH" && c.url.includes("/rest/v1/wa_mensagens") && c.corpo?.acao)!;
+  ok(ins.t + 55 <= grava.t && grava.t <= envioMeta.t && envioMeta.t <= marca.t, "ordem preservada: registro → grava estado → envia → marca processada");
+  ok(ultimo().type === "text" && ultimo().text.body.includes("4/6") && banco.conversas.get("556296116652").estado.passo === "temas" && banco.conversas.get("556296116652").estado.dados.quantidade === "4" && banco.mensagens.get("wamid.p3").acao === "guiado_temas", "resposta e estado iguais aos de antes");
+  // prontos pré-carregados pelo telefone: um 'pronto' de OUTRA conta no mesmo telefone não é entregue
+  resetar(); vincula();
+  banco.trabalhos.push({ id: "t-outro", user_id: "u-outra-conta", telefone: "556296116652", status: "pronto", criado_em: new Date().toISOString(), parametros: { disciplina: "Física", quantidade: 2, recurso: "nenhum", temas_texto: "ondas" }, documentos: [{ rotulo: "pdf_aluno", media_id: "m1", nome: "a.pdf", mime: "application/pdf", bytes: 10, em: new Date().toISOString() }], progresso: { resumo: { total: 2, prontas: 2, falhas: [], custoUSD: 0.1, simuladoId: null } }, erro: null });
+  await envia("wamid.p9", "oi");
+  ok(banco.trabalhos[0].status === "pronto" && enviosWa.every((e: any) => e.type !== "document") && ultimo().interactive?.body?.text.includes("1/6"), "pronto de outra conta fica como está; a conversa segue normal");
 });
 
 Deno.test("estado de outra conta no mesmo telefone é ignorado", async () => {
