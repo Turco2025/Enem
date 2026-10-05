@@ -7,7 +7,7 @@
 //  POST (assinado com X-Hub-Signature-256)                         → mensagens recebidas:
 //        "Vincular conta 123456" → conclui o pareamento telefone ↔ conta do app
 //        número vinculado, qualquer mensagem → FORMULÁRIO POR PERGUNTAS (listas e botões): área,
-//          disciplina, temas, quantidade, dificuldade, recurso visual → resumo → "Sim" grava em
+//          disciplina, quantidade, temas, recurso visual, dificuldade → resumo → "Sim" grava em
 //          wa_trabalhos (fila da etapa C). Estado da conversa em wa_conversas (expira em 1 h).
 //        CANCELAR / STATUS / AJUDA → comandos
 //        (mensagens repetidas pela Meta: 200 se já concluída, 500 se outra execução está
@@ -26,7 +26,7 @@
 // do robô exigem um token OIDC válido do repositório/branch configurados (ou o segredo
 // compartilhado opcional WA_OPERARIO_TOKEN).
 
-export const VERSAO = "B2.1";
+export const VERSAO = "B2.2";
 
 import * as P from "./pedido.ts";
 import * as O from "./operario.ts";
@@ -408,7 +408,7 @@ const disparoImediato = (env: Env) => !!env.WA_GITHUB_TOKEN;
 export const TEXTOS = {
   vinculoOk: (nome: string, emailMascarado: string) =>
     `Pronto${nome ? ", " + nome : ""}! Este número ficou vinculado à sua conta do Gerador ENEM${emailMascarado ? ` (${emailMascarado})` : ""}.\n\n` +
-    `Para pedir um simulado, é só mandar qualquer mensagem (por exemplo "oi"): eu faço 6 perguntas rápidas — área, disciplina, temas, quantidade, nível e recurso visual — e você confirma.`,
+    `Para pedir um simulado, é só mandar qualquer mensagem (por exemplo "oi"): eu faço 6 perguntas rápidas — área, disciplina, quantidade, temas, recurso visual e nível — e você confirma.`,
   vinculoInvalido:
     `Não encontrei um código válido nessa mensagem. Os códigos valem 15 minutos.\n\n` +
     `No Gerador ENEM, entre na sua conta, vá em "Solicitar simulados pelo WhatsApp" → "Vincular meu WhatsApp" e envie o novo código, assim: Vincular conta 123456`,
@@ -454,7 +454,7 @@ export const TEXTOS = {
     const motivo = t.status === "falhou" && t.erro ? `\nMotivo: ${motivoAmigavel(String(t.erro))}` : "";
     return `Último pedido (${new Date(t.criado_em).toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo" })}): ${p?.quantidade ?? "?"} questões de ${p?.disciplina ?? "?"} — ${rot[t.status] ?? t.status}${motivo}`;
   },
-  ajuda: `Para pedir um simulado, mande qualquer mensagem: eu faço 6 perguntas (área, disciplina, temas, quantidade, nível e recurso visual) e você confirma. O simulado chega aqui em PDF e Word. Comandos: STATUS mostra o último pedido · CANCELAR descarta o formulário em andamento ou desfaz um pedido que ainda está na fila.`,
+  ajuda: `Para pedir um simulado, mande qualquer mensagem: eu faço 6 perguntas (área, disciplina, quantidade, temas, recurso visual e nível) e você confirma. O simulado chega aqui em PDF e Word. Comandos: STATUS mostra o último pedido · CANCELAR descarta o formulário em andamento ou desfaz um pedido que ainda está na fila.`,
 };
 
 // Resumo que o robô manda ao concluir (sanitizado em resumoDaGeracao).

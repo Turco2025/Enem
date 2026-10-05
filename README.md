@@ -29,9 +29,11 @@ duas Supabase Edge Functions próprias para gerar conteúdo com segurança:
   "Solicitar simulados pelo WhatsApp → Vincular meu WhatsApp" no app, recebe um código de
   6 dígitos e o envia pelo WhatsApp; o webhook confere a assinatura da Meta, valida o código
   e liga o telefone à conta) e, desde a **B1.0**, recebe o **pedido de simulado por um
-  formulário de 6 perguntas** com listas e botões do WhatsApp (área, disciplina, temas
-  separados por vírgula, quantidade de 1 a 20, dificuldade — fácil, médio, difícil ou mista —
-  e recurso visual), mostra o resumo, pede "Sim" e grava o pedido na fila `wa_trabalhos`
+  formulário de 6 perguntas** com listas e botões do WhatsApp (desde a **B2.2**, nesta ordem:
+  área, disciplina, quantidade de 1 a 20, temas separados por vírgula, recurso visual — sem
+  recurso, imagem, gráfico, tabela ou **misto**, que dá sem recurso, imagem, tabela e gráfico em
+  rodízio, um por questão — e dificuldade — fácil, médio, difícil ou misto; a próxima pergunta é sempre o
+  primeiro campo que falta), mostra o resumo, pede "Sim" e grava o pedido na fila `wa_trabalhos`
   (status `pendente`). Os parâmetros são os mesmos do painel de lote do app (seção 4). O
   estado da conversa fica em `wa_conversas` e expira após 1 h sem mensagem; reentregas da
   Meta repetem a resposta em vez de avançar o formulário; dois "Sim" simultâneos geram um
@@ -41,7 +43,8 @@ duas Supabase Edge Functions próprias para gerar conteúdo com segurança:
   **operário** — um robô no GitHub Actions (`robo/operario.mjs`, workflow
   `.github/workflows/wa-operario.yml`) que abre o próprio `index.html` deste repositório
   num Chromium sem tela e chama a entrada de automação do app (`window.enemAutomacao`,
-  v18.35): mesma geração, mesmo PDF e mesmo DOCX dos botões "Exportar". O webhook atende o
+  v18.36 — a 18.36 aceita o recurso "misto", aplicando o lote sem recurso e dando a cada questão, em
+  rodízio, sem recurso, imagem, tabela e gráfico): mesma geração, mesmo PDF e mesmo DOCX dos botões "Exportar". O webhook atende o
   robô em `POST ?operario=1` (ações `pegar`, `progresso`, `entregar`, `concluir`, `falhou`,
   `entregas_pendentes`; código em `operario.ts`), autenticado pelo **token OIDC que o próprio
   GitHub emite** para a execução (confere assinatura, repositório `Turco2025/Enem` — nome e id —,

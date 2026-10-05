@@ -28,9 +28,9 @@ export const DISCIPLINAS: string[] = Object.values(AREAS).flatMap((a) => a.disci
 
 export const NIVEIS = ["Fácil", "Médio", "Difícil"] as const;
 export type Nivel = typeof NIVEIS[number];
-export const RECURSOS = ["nenhum", "imagem", "grafico", "tabela"] as const;
+export const RECURSOS = ["nenhum", "imagem", "grafico", "tabela", "misto"] as const;
 export type Recurso = typeof RECURSOS[number];
-export const RECURSO_ROTULO: Record<Recurso, string> = { nenhum: "Sem recurso visual", imagem: "Com imagem", grafico: "Com gráfico", tabela: "Com tabela" };
+export const RECURSO_ROTULO: Record<Recurso, string> = { nenhum: "Sem recurso visual", imagem: "Com imagem", grafico: "Com gráfico", tabela: "Com tabela", misto: "Recurso misto (sem recurso, imagem, tabela e gráfico em rodízio)" };
 
 // Faixa dos acentos combinantes (U+0300–U+036F) montada por código: sem sequências \uXXXX no fonte, que a
 // publicação inline da função converte em caracteres literais (o código publicado deixaria de ser igual ao do repositório).
@@ -137,6 +137,7 @@ export function normalizaRecurso(v: unknown): Recurso | null {
   if (["imagem", "com_imagem", "imagens", "com_imagens", "figura", "ilustracao"].includes(r)) return "imagem";
   if (["grafico", "com_grafico", "graficos", "com_graficos"].includes(r)) return "grafico";
   if (["tabela", "com_tabela", "tabelas", "com_tabelas"].includes(r)) return "tabela";
+  if (["misto", "mista", "mistos", "mistas", "recurso_misto", "variado", "variados", "rodizio", "em_rodizio", "todos", "todos_os_recursos"].includes(r)) return "misto";
   return null;
 }
 export function normalizaContagem(c: unknown): Record<Nivel, number> | null {
@@ -189,7 +190,7 @@ export function validarPedido(c: Campos, frase?: string): Validacao {
   const nivel = c.dificuldade ? normalizaNivel(c.dificuldade) : null;
   if (c.dificuldade && !nivel) erros.push(`não entendi o nível "${String(c.dificuldade).slice(0, 30)}" (fácil, médio, difícil ou mista)`);
   const recurso = c.recurso ? normalizaRecurso(c.recurso) : null;
-  if (c.recurso && !recurso) erros.push(`não entendi o recurso "${String(c.recurso).slice(0, 30)}" (sem recurso, imagem, gráfico ou tabela)`);
+  if (c.recurso && !recurso) erros.push(`não entendi o recurso "${String(c.recurso).slice(0, 30)}" (sem recurso, imagem, gráfico, tabela ou misto)`);
   if (erros.length || faltam.length || !disciplina || !recurso || !Number.isInteger(q) || (!nivel && !contagemDada)) return { ok: false, erros, faltam };
   let contagem: Record<Nivel, number>;
   let nivelFinal: Pedido["nivel"];
@@ -220,7 +221,7 @@ export function resumoPedido(p: Pedido): string {
 
 // Estimativa de espera (minutos) para o texto da resposta — conservadora.
 export function minutosEstimados(p: Pedido): number {
-  const porQuestao = p.recurso === "imagem" ? 1.6 : p.recurso === "nenhum" ? 1.0 : 1.2;
+  const porQuestao = p.recurso === "imagem" ? 1.6 : p.recurso === "misto" ? 1.3 : p.recurso === "nenhum" ? 1.0 : 1.2;
   return Math.max(2, Math.ceil(p.quantidade * porQuestao) + 1);
 }
 
@@ -248,8 +249,15 @@ export function estadoExpirado(e: { iniciado_em?: string; atualizado_em?: string
 // ---------------------------------------------------------------------------
 // FORMULÁRIO POR PERGUNTAS (listas e botões do WhatsApp) — a versão publicada.
 // Uma pergunta por vez; estado em wa_conversas.estado: { passo, dados, iniciado_em, atualizado_em }.
+// Ordem (B2.2): 1 área · 2 disciplina · 3 quantidade · 4 temas · 5 recurso visual · 6 dificuldade.
+// O próximo passo é sempre o primeiro campo que ainda falta (ORDEM_PASSOS): um formulário que
+// estava no meio quando a ordem mudou continua de onde parou, sem pular pergunta.
 // ---------------------------------------------------------------------------
-export type Passo = "area" | "disciplina" | "temas" | "quantidade" | "dificuldade" | "recurso" | "confirmar" | "registrando";
+export type Passo = "area" | "disciplina" | "quantidade" | "temas" | "recurso" | "dificuldade" | "confirmar" | "registrando";
+export const ORDEM_PASSOS: Passo[] = ["area", "disciplina", "quantidade", "temas", "recurso", "dificuldade"];
+export function proximoFaltante(d: Record<string, string>): Passo {
+  return ORDEM_PASSOS.find((p) => !String(d[p] ?? "").trim()) ?? "confirmar";
+}
 export interface EstadoGuiado { passo: Passo; dados: Record<string, string>; iniciado_em: string; atualizado_em?: string; ultimo_wamid?: string; ultima_resposta?: Record<string, unknown>[] }
 export const TOTAL_PERGUNTAS = 6;
 
@@ -278,13 +286,14 @@ export function perguntaDoPasso(passo: Passo, dados: Record<string, string>): Ms
       return lista(`2/${TOTAL_PERGUNTAS} — Qual disciplina?`, "Escolher disciplina", areaValida(dados.area) ? AREA_ROTULO_CURTO[dados.area] : "Disciplinas",
         a.disciplinas.map((d) => ({ id: `disc:${slug(d)}`, title: d })));
     }
-    case "temas": return texto(`3/${TOTAL_PERGUNTAS} — Quais temas? Escreva todos numa mensagem só, separados por vírgula (um tema por questão, em rodízio).\n\nEx.: fotossíntese, respiração celular, ciclo do carbono`);
-    case "quantidade": return texto(`4/${TOTAL_PERGUNTAS} — Quantas questões? Responda só o número (${MIN_QUESTOES} a ${MAX_QUESTOES}).`);
-    case "dificuldade": return lista(`5/${TOTAL_PERGUNTAS} — Nível de dificuldade?`, "Escolher nível", "Dificuldade", [
-      { id: "dif:facil", title: "Fácil" }, { id: "dif:medio", title: "Médio" }, { id: "dif:dificil", title: "Difícil" }, { id: "dif:mista", title: "Mista", description: "Fáceis, médias e difíceis em partes iguais" },
-    ]);
-    case "recurso": return lista(`6/${TOTAL_PERGUNTAS} — Recurso visual?`, "Escolher recurso", "Recurso visual", [
+    case "quantidade": return texto(`3/${TOTAL_PERGUNTAS} — Quantas questões? Responda só o número (${MIN_QUESTOES} a ${MAX_QUESTOES}).`);
+    case "temas": return texto(`4/${TOTAL_PERGUNTAS} — Quais temas? Escreva todos numa mensagem só, separados por vírgula (um tema por questão, em rodízio).\n\nEx.: fotossíntese, respiração celular, ciclo do carbono`);
+    case "recurso": return lista(`5/${TOTAL_PERGUNTAS} — As questões terão recurso visual?`, "Escolher recurso", "Recurso visual", [
       { id: "rec:nenhum", title: "Sem recurso" }, { id: "rec:imagem", title: "Com imagem" }, { id: "rec:grafico", title: "Com gráfico" }, { id: "rec:tabela", title: "Com tabela" },
+      { id: "rec:misto", title: "Misto", description: "Sem recurso, imagem, tabela e gráfico em rodízio" },
+    ]);
+    case "dificuldade": return lista(`6/${TOTAL_PERGUNTAS} — Nível de dificuldade?`, "Escolher nível", "Dificuldade", [
+      { id: "dif:facil", title: "Fácil" }, { id: "dif:medio", title: "Médio" }, { id: "dif:dificil", title: "Difícil" }, { id: "dif:mista", title: "Misto", description: "Fáceis, médias e difíceis em partes iguais" },
     ]);
     case "confirmar":
     case "registrando": {
@@ -318,32 +327,32 @@ export function avancarGuiado(estado: EstadoGuiado, resposta: string): Transicao
       const id = r.replace(/^area:/, "");
       const area = areaValida(id) ? id : Object.keys(AREAS).find((k) => slug(AREA_ROTULO_CURTO[k]) === slug(r) || slug(AREAS[k].label) === slug(r));
       if (!area) return repetir("Não entendi a área — toque em \"Escolher área\" e escolha na lista.");
-      d.area = area; return proximo("disciplina");
+      d.area = area; return proximo(proximoFaltante(d));
     }
     case "disciplina": {
       const disc = disciplinaPorNome(r.replace(/^disc:/, ""));
       if (!disc || !areaValida(d.area) || !AREAS[d.area].disciplinas.includes(disc)) return repetir("Escolha uma disciplina da lista.");
-      d.disciplina = disc; return proximo("temas");
+      d.disciplina = disc; return proximo(proximoFaltante(d));
     }
     case "temas": {
       if (/^(area|disc|dif|rec|conf):/.test(r)) return repetir("Agora preciso dos temas, em texto.");   // toque num botão/lista antigo não é tema
       if (!itensDosTemas(r).length) return repetir("Preciso de pelo menos um tema (com 2 letras ou mais).");
-      d.temas = r.slice(0, MAX_TEXTO_TEMAS); return proximo("quantidade");
+      d.temas = r.slice(0, MAX_TEXTO_TEMAS); return proximo(proximoFaltante(d));
     }
     case "quantidade": {
       const n = /^\d{1,2}$/.test(r) ? Number(r) : NaN;
       if (!Number.isInteger(n) || n < MIN_QUESTOES || n > MAX_QUESTOES) return repetir(`Responda só um número de ${MIN_QUESTOES} a ${MAX_QUESTOES}.`);
-      d.quantidade = String(n); return proximo("dificuldade");
+      d.quantidade = String(n); return proximo(proximoFaltante(d));
     }
     case "dificuldade": {
       const v = normalizaNivel(r.replace(/^dif:/, ""));
       if (!v) return repetir("Escolha o nível na lista.");
-      d.dificuldade = v; return proximo("recurso");
+      d.dificuldade = v; return proximo(proximoFaltante(d));
     }
     case "recurso": {
       const v = normalizaRecurso(r.replace(/^rec:/, ""));
       if (!v) return repetir("Escolha o recurso na lista.");
-      d.recurso = v; return proximo("confirmar");
+      d.recurso = v; return proximo(proximoFaltante(d));
     }
     case "confirmar":
     case "registrando": {

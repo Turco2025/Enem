@@ -29,6 +29,15 @@ const semImagem = structuredClone(fixture.sem_imagem.data);
 const comImagem = structuredClone(fixture.com_imagem.data);
 const imagemDataUrl = comImagem.visual.imagemDataUrl;
 delete comImagem.visual.imagemDataUrl;   // o backend real devolve o prompt; a imagem vem de generate-image
+// Gráfico e tabela de ensaio (recurso "misto", v18.36): a mesma questão sem imagem, com o visual que o
+// backend devolveria para cada recurso (o app exige labels/datasets e colunas/linhas, respectivamente).
+const comGrafico = structuredClone(semImagem);
+comGrafico.recurso = "grafico";
+comGrafico.visual = { tipo: "grafico", chartType: "bar", titulo: "Consumo de oxigênio (mL/min) por temperatura", labels: ["10 °C", "20 °C", "30 °C"], datasets: [{ label: "Consumo", data: [12, 25, 48] }], descricao: "Gráfico de barras do consumo de oxigênio em três temperaturas.", fonte: "Dados hipotéticos para o ensaio." };
+const comTabela = structuredClone(semImagem);
+comTabela.recurso = "tabela";
+comTabela.visual = { tipo: "tabela", titulo: "Concentração de gases (%)", colunas: ["Gás", "Ar inspirado", "Ar expirado"], linhas: [["O₂", "21", "16"], ["CO₂", "0,04", "4"], ["N₂", "78", "78"]], descricao: "Tabela com a composição do ar inspirado e expirado.", fonte: "Dados hipotéticos para o ensaio." };
+const questaoPara = (recurso) => recurso === "imagem" ? comImagem : recurso === "grafico" ? comGrafico : recurso === "tabela" ? comTabela : semImagem;
 
 const LIB_URLS = {
   "https://cdnjs.cloudflare.com/ajax/libs/jspdf/4.2.1/jspdf.umd.min.js": "jspdf.umd.min.js",
@@ -72,7 +81,7 @@ async function instalarMocks(context) {
       if (corpo.planejarRecortes) { chamadasPlanejar++; return json({ recortes: [], uso: { chamadas: 1, entradaNova: 100, cacheEscrito: 0, cacheLido: 0, saida: 50, custoUSD: 0.001 } }); }
       chamadasQuestao++;
       await new Promise((r) => setTimeout(r, 150));
-      const q = structuredClone(corpo.recurso === "imagem" ? comImagem : semImagem);
+      const q = structuredClone(questaoPara(corpo.recurso));
       q.tema = `${corpo.tema || q.tema} (${chamadasQuestao})`;   // temas distintos, como numa leva real
       return json({ question: q, uso: { chamadas: 3, entradaNova: 2000, cacheEscrito: 0, cacheLido: 25000, saida: 1800, buscasWeb: 0, custoUSD: 0.02 }, fontesDiag: { estado: "ok", doBanco: true } });
     }
@@ -116,7 +125,8 @@ async function cenario(browser, urlApp, nome, parametros, esperado) {
     confere(r.arquivos.length === 4 && ["pdf_aluno", "pdf_professor", "docx_aluno", "docx_professor"].every((k) => r.arquivos.some((a) => a.rotulo === k)), "4 arquivos: PDF/Word × aluno/professor");
     const estadoApp = await page.evaluate(() => ({ area: state.area, disciplina: state.disciplina, qty: state.qty, recursos: state.questions.map((q) => q.recurso), niveis: state.questions.map((q) => q.dificuldade), temas: state.questions.map((q) => q.tema), fase: enemAutomacao.estado().fase }));
     confere(estadoApp.area === parametros.area && estadoApp.disciplina === parametros.disciplina && estadoApp.qty === parametros.quantidade, "área, disciplina e quantidade aplicadas no app");
-    confere(estadoApp.recursos.every((x) => x === parametros.recurso), `recurso "${parametros.recurso}" em todas as questões`);
+    if (esperado.recursos) confere(estadoApp.recursos.join() === esperado.recursos.join(), `recurso misto em rodízio: ${estadoApp.recursos.join(", ")}`);
+    else confere(estadoApp.recursos.every((x) => x === parametros.recurso), `recurso "${parametros.recurso}" em todas as questões`);
     const contagem = { "Fácil": 0, "Médio": 0, "Difícil": 0 };
     estadoApp.niveis.forEach((n) => { contagem[n] = (contagem[n] || 0) + 1; });
     const esperada = esperado.contagem || parametros.contagem;
@@ -133,7 +143,7 @@ async function cenario(browser, urlApp, nome, parametros, esperado) {
       } else {
         const nomes = await listaDocx(a.bytes);
         confere(a.bytes.subarray(0, 2).toString() === "PK" && nomes.includes("word/document.xml") && nomes.includes("[Content_Types].xml"), `${a.rotulo}: é DOCX válido (${Math.round(a.bytes.length / 1024)} KB, ${nomes.length} partes)`);
-        if (parametros.recurso === "imagem") confere(nomes.some((n) => /^word\/media\//.test(n)), `${a.rotulo}: contém as imagens`);
+        if (parametros.recurso === "imagem" || parametros.recurso === "misto") confere(nomes.some((n) => /^word\/media\//.test(n)), `${a.rotulo}: contém as imagens`);
       }
     }
     if (esperado.professorMaior) {
@@ -163,6 +173,9 @@ try {
   // contagem inconsistente → o app divide igualmente (2 fáceis, 1 média, 1 difícil… para 4: 2/1/1)
   await cenario(browser, app.url, "matematica_contagem_invalida", { area: "matematica", disciplina: "Matemática", quantidade: 4, temas_texto: "", contagem: { "Fácil": 9 }, recurso: "nenhum", nivel: "Mista" },
     { imagens: 0, minPaginas: { pdf_aluno: 1, pdf_professor: 2 }, professorMaior: true, contagem: { "Fácil": 2, "Médio": 1, "Difícil": 1 } });
+  // recurso "misto" (v18.36): rodízio de quatro — sem recurso, imagem, tabela, gráfico, sem recurso… — e os 4 arquivos saem com tudo
+  await cenario(browser, app.url, "biologia_misto", { area: "natureza", disciplina: "Biologia", quantidade: 5, temas_texto: "respiração", contagem: { "Fácil": 2, "Médio": 2, "Difícil": 1 }, recurso: "misto", nivel: "Mista" },
+    { imagens: 1, minPaginas: { pdf_aluno: 2, pdf_professor: 3 }, professorMaior: true, recursos: ["nenhum", "imagem", "tabela", "grafico", "nenhum"] });
   // parâmetros inválidos → erro definitivo imediato
   log("\n=== cenário: parâmetros inválidos ===");
   const context = await browser.newContext(); await instalarMocks(context); const page = await context.newPage();

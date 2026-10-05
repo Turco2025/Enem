@@ -516,7 +516,7 @@ Deno.test("selftest exige a frase de verificação e só expõe presença dos se
   const r = await handler(new Request("https://x/w?selftest=1&t=fraseVerificacaoTeste2026"), env);
   const j = await r.json();
   const s = JSON.stringify(j);
-  ok(r.status === 200 && j.versao === "B2.1" && j.secretsPresentes.WHATSAPP_TOKEN === true && j.secretsPresentes.WHATSAPP_APP_SECRET === true, "selftest com t certo → 200 com presença dos secrets");
+  ok(r.status === 200 && j.versao === "B2.2" && j.secretsPresentes.WHATSAPP_TOKEN === true && j.secretsPresentes.WHATSAPP_APP_SECRET === true, "selftest com t certo → 200 com presença dos secrets");
   ok(s.indexOf("TOKEN_TESTE") < 0 && s.indexOf("segredo-de-teste") < 0 && s.indexOf("service-teste") < 0 && s.indexOf("fraseVerificacao") < 0, "nenhum valor de secret aparece na saída");
   ok(j.tabelas.perfis.startsWith("ok") && j.tabelas.wa_mensagens.startsWith("ok") && j.tabelas.wa_conversas.startsWith("ok") && j.tabelas.wa_trabalhos.startsWith("ok") && j.operario && j.operario.disparoImediato === false && j.operario.repositorio === "Turco2025/Enem", "tabelas consultadas; operário sem disparo imediato (varredura)");
   ok(Array.isArray(j.secretsComEspacosNasPontas) && j.formatoOk.WHATSAPP_PHONE_NUMBER_ID_numerico === true && j.formatoOk.WHATSAPP_APP_SECRET_hex32 === false, "selftest aponta formato dos secrets (segredo de teste não é hex32)");
@@ -584,16 +584,16 @@ Deno.test("formulário completo: 'oi' → 1/6 … 6/6 → resumo com botões →
   await toca("wamid.a1", lr("area:natureza"));
   ok(ultimo().interactive.body.text.includes("2/6") && ultimo().interactive.action.sections[0].rows.map((r: any) => r.title).join() === "Biologia,Física,Química", "2/6 disciplinas da área");
   await toca("wamid.a2", lr("disc:biologia"));
-  ok(ultimo().type === "text" && ultimo().text.body.includes("3/6"), "3/6 pede os temas");
-  await envia("wamid.a3", "fotossíntese, respiração celular, ciclo do carbono");
-  ok(ultimo().text.body.includes("4/6"), "4/6 pede a quantidade");
-  await envia("wamid.a4", "vinte e cinco");
-  ok(enviosWa[enviosWa.length - 2].text.body.includes("Responda só um número") && ultimo().text.body.includes("4/6"), "quantidade inválida → aviso + repete 4/6");
-  await envia("wamid.a5", "10");
-  ok(ultimo().interactive.body.text.includes("5/6"), "5/6 dificuldade");
-  await toca("wamid.a6", lr("dif:mista"));
-  ok(ultimo().interactive.body.text.includes("6/6"), "6/6 recurso");
-  await toca("wamid.a7", lr("rec:imagem"));
+  ok(ultimo().type === "text" && ultimo().text.body.includes("3/6") && ultimo().text.body.includes("Quantas questões"), "3/6 pede a quantidade");
+  await envia("wamid.a3", "vinte e cinco");
+  ok(enviosWa[enviosWa.length - 2].text.body.includes("Responda só um número") && ultimo().text.body.includes("3/6"), "quantidade inválida → aviso + repete 3/6");
+  await envia("wamid.a4", "10");
+  ok(ultimo().type === "text" && ultimo().text.body.includes("4/6") && ultimo().text.body.includes("Quais temas"), "4/6 pede os temas");
+  await envia("wamid.a5", "fotossíntese, respiração celular, ciclo do carbono");
+  ok(ultimo().interactive.body.text.includes("5/6") && ultimo().interactive.action.sections[0].rows.map((r: any) => r.id).join() === "rec:nenhum,rec:imagem,rec:grafico,rec:tabela,rec:misto", "5/6 recurso visual, com a opção Misto");
+  await toca("wamid.a6", lr("rec:imagem"));
+  ok(ultimo().interactive.body.text.includes("6/6") && ultimo().interactive.action.sections[0].rows.map((r: any) => r.title).join() === "Fácil,Médio,Difícil,Misto", "6/6 dificuldade");
+  await toca("wamid.a7", lr("dif:mista"));
   const conf = ultimo();
   ok(conf.interactive.type === "button" && conf.interactive.action.buttons.map((b: any) => b.reply.id).join() === "conf:sim,conf:refazer,conf:cancelar", "confirmação com 3 botões");
   const corpo = conf.interactive.body.text as string;
@@ -611,7 +611,7 @@ Deno.test("formulário completo: 'oi' → 1/6 … 6/6 → resumo com botões →
 
 Deno.test("Refazer volta ao 1/6; Cancelar (botão ou texto) descarta sem gravar; 'sim' digitado confirma; nível único", async () => {
   resetar(); vincula();
-  const ate6 = async (pref: string) => { await envia(pref + "0", "oi"); await toca(pref + "1", lr("area:humanas")); await toca(pref + "2", lr("disc:historia")); await envia(pref + "3", "Era Vargas"); await envia(pref + "4", "5"); await toca(pref + "5", lr("dif:dificil")); await toca(pref + "6", lr("rec:tabela")); };
+  const ate6 = async (pref: string) => { await envia(pref + "0", "oi"); await toca(pref + "1", lr("area:humanas")); await toca(pref + "2", lr("disc:historia")); await envia(pref + "3", "5"); await envia(pref + "4", "Era Vargas"); await toca(pref + "5", lr("rec:tabela")); await toca(pref + "6", lr("dif:dificil")); };
   await ate6("wamid.r");
   ok(ultimo().interactive.body.text.includes("5 questões de *História*") && ultimo().interactive.body.text.includes("Tema: Era Vargas") && ultimo().interactive.body.text.includes("difícil") && ultimo().interactive.body.text.includes("Com tabela"), "resumo com tema único e nível difícil");
   await toca("wamid.r7", botao("conf:refazer"));
@@ -638,8 +638,9 @@ Deno.test("respostas inválidas repetem a pergunta; 'constructor' como área nã
   await toca("wamid.v3", lr("disc:biologia"));
   ok(ultimo().interactive.body.text.includes("2/6") && enviosWa[enviosWa.length - 2].text.body.includes("Escolha uma disciplina da lista"), "disciplina de outra área → repete 2/6");
   await toca("wamid.v4", lr("disc:matematica"));
-  await envia("wamid.v5", "x");
-  ok(ultimo().text.body.includes("3/6") && enviosWa[enviosWa.length - 2].text.body.includes("pelo menos um tema"), "tema de 1 letra → repete 3/6");
+  await envia("wamid.v5", "4");
+  await envia("wamid.v5b", "x");
+  ok(ultimo().text.body.includes("4/6") && enviosWa[enviosWa.length - 2].text.body.includes("pelo menos um tema"), "tema de 1 letra → repete 4/6");
   resetar(); vincula();
   await toca("wamid.v6", botao("conf:sim"));
   ok(banco.mensagens.get("wamid.v6").acao === "guiado_iniciado" && banco.trabalhos.length === 0, "Sim sem formulário em andamento não grava nada; começa o formulário");
@@ -666,17 +667,17 @@ Deno.test("limite diário: conta comum é barrada quando estoura (cancelada não
   resetar(); vincula("u2", "Prof", { ilimitado: false, limite_diario_wa: 12 });
   banco.trabalhos.push({ id: "t-h", user_id: "u2", telefone: "556296116652", status: "enviado", criado_em: new Date().toISOString(), parametros: { quantidade: 8, disciplina: "Física" }, erro: null });
   banco.trabalhos.push({ id: "t-c", user_id: "u2", telefone: "556296116652", status: "cancelado", criado_em: new Date().toISOString(), parametros: { quantidade: 20, disciplina: "Física" }, erro: null });
-  await envia("wamid.l0", "oi"); await toca("wamid.l1", lr("area:natureza")); await toca("wamid.l2", lr("disc:fisica")); await envia("wamid.l3", "cinemática"); await envia("wamid.l4", "5"); await toca("wamid.l5", lr("dif:facil")); await toca("wamid.l6", lr("rec:nenhum"));
+  await envia("wamid.l0", "oi"); await toca("wamid.l1", lr("area:natureza")); await toca("wamid.l2", lr("disc:fisica")); await envia("wamid.l3", "5"); await envia("wamid.l4", "cinemática"); await toca("wamid.l5", lr("rec:nenhum")); await toca("wamid.l6", lr("dif:facil"));
   await toca("wamid.l7", botao("conf:sim"));
   const avisoLimite = enviosWa[enviosWa.length - 2];
   ok(banco.mensagens.get("wamid.l7").acao === "limite_diario" && banco.trabalhos.length === 2 && avisoLimite.text.body.includes("já pediu 8 questões") && avisoLimite.text.body.includes("limite diário é 12"), "8 + 5 > 12 → barrado, nada gravado");
   ok(banco.conversas.get("556296116652").estado.passo === "confirmar" && ultimo().interactive?.type === "button", "volta para a confirmação com os botões (dá para Refazer)");
   await toca("wamid.l8", botao("conf:refazer"));
-  await toca("wamid.l9", lr("area:natureza")); await toca("wamid.l10", lr("disc:fisica")); await envia("wamid.l11", "cinemática"); await envia("wamid.l12", "4"); await toca("wamid.l13", lr("dif:facil")); await toca("wamid.l14", lr("rec:nenhum"));
+  await toca("wamid.l9", lr("area:natureza")); await toca("wamid.l10", lr("disc:fisica")); await envia("wamid.l11", "4"); await envia("wamid.l12", "cinemática"); await toca("wamid.l13", lr("rec:nenhum")); await toca("wamid.l14", lr("dif:facil"));
   await toca("wamid.l15", botao("conf:sim"));
   ok(banco.mensagens.get("wamid.l15").acao === "pedido_na_fila" && banco.trabalhos.length === 3, "8 + 4 = 12 cabe");
   resetar(); vincula("u3", "Bloq", { ilimitado: false, limite_diario_wa: 0 });
-  await envia("wamid.z0", "oi"); await toca("wamid.z1", lr("area:natureza")); await toca("wamid.z2", lr("disc:fisica")); await envia("wamid.z3", "ondas"); await envia("wamid.z4", "1"); await toca("wamid.z5", lr("dif:facil")); await toca("wamid.z6", lr("rec:nenhum"));
+  await envia("wamid.z0", "oi"); await toca("wamid.z1", lr("area:natureza")); await toca("wamid.z2", lr("disc:fisica")); await envia("wamid.z3", "1"); await envia("wamid.z4", "ondas"); await toca("wamid.z5", lr("rec:nenhum")); await toca("wamid.z6", lr("dif:facil"));
   await toca("wamid.z7", botao("conf:sim"));
   ok(banco.mensagens.get("wamid.z7").acao === "limite_diario" && banco.trabalhos.length === 0 && enviosWa[enviosWa.length - 2].text.body.includes("limite diário 0"), "limite 0 bloqueia (não vira 30)");
   ok(inicioDoDiaBrasilia(new Date("2026-10-04T02:30:00.000Z")) === "2026-10-03T03:00:00.000Z" && inicioDoDiaBrasilia(new Date("2026-10-04T03:00:00.000Z")) === "2026-10-04T03:00:00.000Z", "início do dia em Brasília (UTC-3)");
@@ -692,7 +693,7 @@ Deno.test("reentregas da Meta: mesma mensagem repete a resposta (não avança); 
   await toca("wamid.g1", lr("area:natureza"));
   const e = banco.conversas.get("556296116652").estado;
   ok(banco.mensagens.get("wamid.g1").acao === "reentrega_disciplina" && e.passo === "disciplina" && !e.dados.disciplina && ultimo().interactive.body.text.includes("2/6"), "reentrega só repete a 2/6, não aplica a área como disciplina");
-  await toca("wamid.g2", lr("disc:quimica")); await envia("wamid.g3", "ligações"); await envia("wamid.g4", "6"); await toca("wamid.g5", lr("dif:medio")); await toca("wamid.g6", lr("rec:grafico"));
+  await toca("wamid.g2", lr("disc:quimica")); await envia("wamid.g3", "6"); await envia("wamid.g4", "ligações"); await toca("wamid.g5", lr("rec:grafico")); await toca("wamid.g6", lr("dif:medio"));
   graphFalha = "transitorio";
   await toca("wamid.g7", botao("conf:sim"));
   ok(banco.trabalhos.length === 1 && banco.mensagens.get("wamid.g7").acao === "pedido_na_fila_envio_falhou", "Sim gravou o pedido; envio falhou");
@@ -701,7 +702,7 @@ Deno.test("reentregas da Meta: mesma mensagem repete a resposta (não avança); 
   ok(banco.trabalhos.length === 1 && banco.mensagens.get("wamid.g7").acao === "reentrega_encerrado" && ultimo().text.body.includes("confirmado e na fila") && !banco.conversas.get("556296116652").estado.passo, "reentrega do Sim repete a confirmação, sem segundo trabalho");
   // dois Sim ao mesmo tempo
   resetar(); vincula();
-  await envia("wamid.h0", "oi"); await toca("wamid.h1", lr("area:natureza")); await toca("wamid.h2", lr("disc:quimica")); await envia("wamid.h3", "ácidos"); await envia("wamid.h4", "3"); await toca("wamid.h5", lr("dif:facil")); await toca("wamid.h6", lr("rec:nenhum"));
+  await envia("wamid.h0", "oi"); await toca("wamid.h1", lr("area:natureza")); await toca("wamid.h2", lr("disc:quimica")); await envia("wamid.h3", "3"); await envia("wamid.h4", "ácidos"); await toca("wamid.h5", lr("rec:nenhum")); await toca("wamid.h6", lr("dif:facil"));
   dbDemoraMs = 30;
   const [ra, rb] = await Promise.all([toca("wamid.h7", botao("conf:sim")), toca("wamid.h8", botao("conf:sim"))]);
   dbDemoraMs = 0;
@@ -733,7 +734,7 @@ Deno.test("reentregas: CANCELAR repetido não cancela a fila de novo; Sim reentr
   ok(banco.trabalhos[0].status === "pendente" && ultimo().text.body === TEXTOS.descartado, "reentrega do CANCELAR repete 'descartado' e não cancela a fila");
   // Sim reentregue depois de erro no meio da gravação (banco falhou no insert)
   resetar(); vincula();
-  await envia("wamid.n0", "oi"); await toca("wamid.n1", lr("area:natureza")); await toca("wamid.n2", lr("disc:fisica")); await envia("wamid.n3", "ondas"); await envia("wamid.n4", "2"); await toca("wamid.n5", lr("dif:facil")); await toca("wamid.n6", lr("rec:nenhum"));
+  await envia("wamid.n0", "oi"); await toca("wamid.n1", lr("area:natureza")); await toca("wamid.n2", lr("disc:fisica")); await envia("wamid.n3", "2"); await envia("wamid.n4", "ondas"); await toca("wamid.n5", lr("rec:nenhum")); await toca("wamid.n6", lr("dif:facil"));
   const fetchReal = globalThis.fetch;
   globalThis.fetch = (async (entrada: any, init?: RequestInit) => {
     const url = typeof entrada === "string" ? entrada : entrada.url;
@@ -747,9 +748,31 @@ Deno.test("reentregas: CANCELAR repetido não cancela a fila de novo; Sim reentr
   ok(banco.trabalhos.length === 1 && banco.mensagens.get("wamid.n7").acao === "pedido_na_fila", "reentrega do mesmo Sim grava o pedido (sem recomeçar o formulário)");
   // toque antigo no passo temas
   resetar(); vincula();
-  await envia("wamid.o0", "oi"); await toca("wamid.o1", lr("area:natureza")); await toca("wamid.o2", lr("disc:fisica"));
+  await envia("wamid.o0", "oi"); await toca("wamid.o1", lr("area:natureza")); await toca("wamid.o2", lr("disc:fisica")); await envia("wamid.o2b", "3");
   await toca("wamid.o3", botao("conf:sim"));
-  ok(banco.conversas.get("556296116652").estado.passo === "temas" && ultimo().text.body.includes("3/6"), "botão antigo no passo temas não vira tema");
+  ok(banco.conversas.get("556296116652").estado.passo === "temas" && ultimo().text.body.includes("4/6"), "botão antigo no passo temas não vira tema");
+});
+
+Deno.test("B2.2: recurso Misto no formulário; formulário que estava no meio quando a ordem mudou continua pelo que falta", async () => {
+  resetar(); vincula();
+  await envia("wamid.m0", "oi"); await toca("wamid.m1", lr("area:natureza")); await toca("wamid.m2", lr("disc:biologia"));
+  await envia("wamid.m3", "6"); await envia("wamid.m4", "genética, evolução"); await toca("wamid.m5", lr("rec:misto")); await toca("wamid.m6", lr("dif:medio"));
+  ok(ultimo().interactive.type === "button" && ultimo().interactive.body.text.includes("Recurso misto (sem recurso, imagem, tabela e gráfico em rodízio)") && ultimo().interactive.body.text.includes("Dificuldade: média"), "resumo mostra o recurso misto");
+  await toca("wamid.m7", botao("conf:sim"));
+  ok(banco.trabalhos.length === 1 && banco.trabalhos[0].parametros.recurso === "misto" && banco.trabalhos[0].parametros.quantidade === 6, "pedido gravado com recurso misto");
+  ok(P.minutosEstimados(banco.trabalhos[0].parametros) === 9, "estimativa do misto fica entre imagem e os demais (6 → 9 min)");
+  // estado antigo (ordem B2.1): área, disciplina e temas já respondidos, parado na pergunta da quantidade
+  resetar(); vincula();
+  banco.conversas.set("556296116652", { telefone: "556296116652", user_id: "u1", estado: { passo: "quantidade", dados: { area: "natureza", disciplina: "Física", temas: "ondas" }, iniciado_em: new Date().toISOString(), atualizado_em: new Date().toISOString() } });
+  await envia("wamid.m8", "4");
+  ok(ultimo().interactive.body.text.includes("5/6") && banco.conversas.get("556296116652").estado.passo === "recurso", "quantidade respondida → pula temas (já tem) e pede o recurso");
+  await toca("wamid.m9", lr("rec:tabela"));
+  ok(ultimo().interactive.body.text.includes("6/6") && banco.conversas.get("556296116652").estado.passo === "dificuldade", "recurso → dificuldade");
+  await toca("wamid.m10", lr("dif:facil"));
+  ok(ultimo().interactive.type === "button" && ultimo().interactive.body.text.includes("4 questões de *Física*") && ultimo().interactive.body.text.includes("Tema: ondas"), "fecha no resumo com todos os campos");
+  // normalização do recurso misto e dos sinônimos
+  ok(P.normalizaRecurso("misto") === "misto" && P.normalizaRecurso("Recurso misto") === "misto" && P.normalizaRecurso("em rodízio") === "misto" && P.normalizaRecurso("vídeo") === null, "normalizaRecurso aceita misto e sinônimos");
+  ok(P.proximoFaltante({}) === "area" && P.proximoFaltante({ area: "x", disciplina: "y" }) === "quantidade" && P.proximoFaltante({ area: "x", disciplina: "y", quantidade: "3", temas: "t", recurso: "nenhum", dificuldade: "Fácil" }) === "confirmar", "proximoFaltante segue a ordem nova");
 });
 
 Deno.test("estado de outra conta no mesmo telefone é ignorado", async () => {
@@ -798,7 +821,7 @@ async function entregarArquivo(trabalhoId: string, dono: string, rotulo: string,
 // Pedido na fila pelo caminho real (formulário + Sim), 5 questões de Biologia com imagem.
 async function pedidoNaFila(sufixo = "a") {
   await envia(`wamid.${sufixo}1`, "oi"); await toca(`wamid.${sufixo}2`, lr("area:natureza")); await toca(`wamid.${sufixo}3`, lr("disc:biologia"));
-  await envia(`wamid.${sufixo}4`, "fotossíntese, respiração celular"); await envia(`wamid.${sufixo}5`, "5"); await toca(`wamid.${sufixo}6`, lr("dif:mista")); await toca(`wamid.${sufixo}7`, lr("rec:imagem"));
+  await envia(`wamid.${sufixo}4`, "5"); await envia(`wamid.${sufixo}5`, "fotossíntese, respiração celular"); await toca(`wamid.${sufixo}6`, lr("rec:imagem")); await toca(`wamid.${sufixo}7`, lr("dif:mista"));
   await toca(`wamid.${sufixo}8`, botao("conf:sim"));
   return banco.trabalhos[banco.trabalhos.length - 1];
 }
@@ -1040,7 +1063,7 @@ Deno.test("operário: com WA_GITHUB_TOKEN o Sim dispara a execução na hora (re
   const envGh: Env = { ...env, WA_GITHUB_TOKEN: "github_pat_teste" };
   const sg = (texto: string, w: string) => postAssinado(payloadMeta(texto, w), env.WHATSAPP_APP_SECRET, envGh);
   const tg = (w: string, inter: any) => postAssinado(payloadMeta("", w, "556296116652", "Maziad", "interactive", "556296116652", inter), env.WHATSAPP_APP_SECRET, envGh);
-  await sg("oi", "wamid.h1"); await tg("wamid.h2", lr("area:matematica")); await tg("wamid.h3", lr("disc:matematica")); await sg("funções", "wamid.h4"); await sg("3", "wamid.h5"); await tg("wamid.h6", lr("dif:facil")); await tg("wamid.h7", lr("rec:nenhum")); await tg("wamid.h8", botao("conf:sim"));
+  await sg("oi", "wamid.h1"); await tg("wamid.h2", lr("area:matematica")); await tg("wamid.h3", lr("disc:matematica")); await sg("3", "wamid.h4"); await sg("funções", "wamid.h5"); await tg("wamid.h6", lr("rec:nenhum")); await tg("wamid.h7", lr("dif:facil")); await tg("wamid.h8", botao("conf:sim"));
   const t = banco.trabalhos[0];
   ok(dispatches.length === 1 && dispatches[0].url === "https://api.github.com/repos/Turco2025/Enem/dispatches" && dispatches[0].corpo.event_type === "wa-pedido" && dispatches[0].corpo.client_payload.trabalho_id === t.id && dispatches[0].auth === "Bearer github_pat_teste", "repository_dispatch com o id do pedido");
   ok(banco.mensagens.get("wamid.h8").acao === "pedido_criado" && ultimo().text.body.includes("começa agora") && ultimo().text.body.includes("PDF e Word"), "texto: começa agora");

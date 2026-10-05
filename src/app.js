@@ -8471,6 +8471,10 @@ if(document.fonts && document.fonts.ready) document.fonts.ready.then(calibraBarr
 
 /* ======================================================================================
    v18.35 — ENTRADA DE AUTOMAÇÃO (operário do WhatsApp, etapa C — 04/10/2026)
+   v18.36 — recurso "misto" (05/10/2026): o pedido do WhatsApp pode vir com recurso
+   "misto"; o lote é aplicado sem recurso e, em seguida, cada questão recebe o seu em
+   rodízio de quatro — 1ª sem recurso, 2ª imagem, 3ª tabela, 4ª gráfico, 5ª sem recurso, … —
+   o mesmo que o professor faria clicando no recurso de cada questão.
 
    O pedido feito pelo WhatsApp (formulário de 6 perguntas, etapa B1) fica na fila
    `wa_trabalhos`. Quem o executa é um robô (robo/operario.mjs, rodando no GitHub
@@ -8495,7 +8499,7 @@ if(document.fonts && document.fonts.ready) document.fonts.ready.then(calibraBarr
    parametros = { area, disciplina, quantidade, temas_texto, contagem, recurso }
    (os mesmos gravados em wa_trabalhos.parametros por supabase/functions/whatsapp-webhook).
    ====================================================================================== */
-const AUTOMACAO_VERSAO = "18.35";
+const AUTOMACAO_VERSAO = "18.36";
 let automacaoPronta = false;
 let automacaoFase = "carregando";   // carregando | pronto | configurando | gerando | exportando | concluido | erro
 let automacaoErro = "";
@@ -8538,6 +8542,9 @@ function automacaoContagem(contagem, total){
   return saida;
 }
 
+// Rodízio do recurso "misto": 1ª questão sem recurso, 2ª imagem, 3ª tabela, 4ª gráfico, e recomeça.
+const AUTOMACAO_RODIZIO_RECURSOS = ["nenhum", "imagem", "tabela", "grafico"];
+
 function automacaoValidaParametros(p){
   if(!p || typeof p !== "object") throw new Error("parâmetros ausentes");
   if(!AREA_META[p.area]) throw new Error("área inválida: " + String(p.area));
@@ -8545,7 +8552,7 @@ function automacaoValidaParametros(p){
   if(!disciplinas.includes(p.disciplina)) throw new Error("disciplina inválida para a área: " + String(p.disciplina));
   const qtd = Number(p.quantidade);
   if(!Number.isInteger(qtd) || qtd < 1 || qtd > 20) throw new Error("quantidade inválida: " + String(p.quantidade));
-  const recursos = ["nenhum", "imagem", "grafico", "tabela"];
+  const recursos = ["nenhum", "imagem", "grafico", "tabela", "misto"];
   const recurso = recursos.includes(p.recurso) ? p.recurso : "nenhum";
   // Vários temas vão um por linha: é assim que a caixa do lote separa itens que contêm vírgula
   // ("Era Vargas, Estado Novo" é UM tema). Com um só, vai o texto como veio.
@@ -8622,10 +8629,17 @@ window.enemAutomacao = {
     document.getElementById("loteOrientacoes").value = "";
     loteContadores = { ...p.contagem };
     atualizaResumoLote();
-    document.querySelectorAll("#loteRecursoRow .res-opt").forEach(x => x.classList.toggle("sel", x.dataset.r === p.recurso));
+    // Recurso "misto": o lote sai sem recurso e cada questão recebe o seu em rodízio (abaixo).
+    const recursoLote = p.recurso === "misto" ? "nenhum" : p.recurso;
+    document.querySelectorAll("#loteRecursoRow .res-opt").forEach(x => x.classList.toggle("sel", x.dataset.r === recursoLote));
     aplicarLoteATodas();
     if(somaContadores() !== state.questions.length) throw new Error("contadores do lote não fecharam com a quantidade");
-    const confere = state.questions.every(q => q.recurso === p.recurso);
+    const esperado = i => p.recurso === "misto" ? AUTOMACAO_RODIZIO_RECURSOS[i % AUTOMACAO_RODIZIO_RECURSOS.length] : p.recurso;
+    if(p.recurso === "misto"){
+      state.questions.forEach((q, i) => { q.recurso = esperado(i); q.instrucoesVisual = ""; });
+      renderQuestionBlocks();
+    }
+    const confere = state.questions.every((q, i) => q.recurso === esperado(i));
     if(!confere) throw new Error("o recurso do lote não foi aplicado às questões");
 
     // 3. Gerar — o mesmo caminho do botão (iniciarGeracao → generateAll), sem os
