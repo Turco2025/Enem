@@ -177,6 +177,31 @@ Teste: `verify_fontes_app.js` — 19 verificações; as seções B e C bis prova
 quatro marcas ligadas ao mesmo tempo nenhuma conferência bloqueia, e que nenhuma delas tem sequer um
 `return true` no corpo. `verify_gabarito_coerente.js` H1 passou a exigir o contrário do que exigia.
 
+## Banco de fontes desligado: o elaborador não recorre a nada gerado pelo aplicativo (generate-question v74.37, 06/10/2026)
+
+Decisão do professor: *"não quero que o elaborador recorra ao banco de questões geradas pelo aplicativo em
+nenhuma disciplina, quando uma nova questão for solicitada"*. Levantamento antes de mexer: a geração **nunca
+leu os simulados arquivados** (o backend acessa só `fontes_validadas`, `question_generation_log` — duas
+contagens, para o cache e o teto diário — e `textos_enem`); os "assuntos a evitar" do pedido vêm só das
+outras questões da **mesma leva**; a biblioteca (`textos_enem`) é acervo de provas oficiais (ENEM 2009–2025,
+Fuvest, Unicamp, UDESC…) e do professor, não material do app. O **único** material produzido pelo próprio
+aplicativo que a geração consultava era o **banco de fontes validadas** (v74.23): autor, obra, referência,
+URL e fatos validados das fontes de questões anteriores, reaproveitados numa questão nova de tema parecido
+(aviso "fonte reaproveitada do banco de fontes validadas" no cartão). Uso medido: 87 de 795 questões desde
+20/09; 5 de 186 desde 01/10 (História 3, Artes 2) — a biblioteca e o fluxo direto já passavam na frente.
+
+- `const BANCO_FONTES = { leitura: false, gravacao: false }`: `consultarBancoFontes` devolve nada antes de
+  tocar na tabela, em todas as disciplinas e nos três caminhos (pesquisa normal, fluxo direto de História e
+  Artes, ordem IA); `guardarNoBancoFontes` não grava mais. Os chamadores não mudaram. A tabela fica intacta
+  (86 fontes); para religar, basta mudar os dois valores.
+- Efeito no custo: as ≈ 3% de questões que ainda caíam no banco passam a usar biblioteca, conhecimento da IA
+  ou pesquisa como as demais (≈ US$ 0,10–0,15 a mais em cada uma dessas); nas outras, nada muda.
+
+Teste: `deno run -A tests/verify_banco_desligado_v7437.ts supabase/functions/generate-question/index.ts`
+(11: desligado nas duas pontas sem tocar na tabela, chamadores no lugar, religar é mudar dois valores, a
+geração não acessa "simulados", leituras do log são só contagem). `tests/verify_custo_v7429.ts` ganhou o B0
+(23). Selftest de produção: `v7437_bancoDesligado` (55 verificações).
+
 ## Distratores plausíveis: regra do quase-acerto, conferência ampliada e revisão por IA (generate-question v74.36 / app v18.41, 06/10/2026)
 
 Pedido do professor, com o Guia do Inep na mão: *"os itens das questões de qualquer disciplina estão

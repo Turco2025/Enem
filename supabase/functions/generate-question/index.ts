@@ -1415,6 +1415,18 @@ async function validarDossie(
    (service role; RLS sem política pública). Nunca derruba a geração: erro no
    banco = banco ignorado. */
 const BANCO_FONTES_MINIMO_TOKENS = 2;   // tokens em comum entre o tema e autor+obra para reaproveitar
+/* v74.37 — BANCO DE FONTES DESLIGADO (decisão do professor, 06/10/2026): "não quero que o
+   elaborador recorra ao banco de questões geradas pelo aplicativo em nenhuma disciplina".
+   Levantamento antes de mexer: a geração não lê os simulados arquivados; os "assuntos a evitar"
+   vêm só das outras questões da mesma leva; a biblioteca (textos_enem) é acervo de provas
+   oficiais e do professor, não material do app. O ÚNICO material produzido pelo próprio
+   aplicativo que a geração consultava era este banco: autor/obra/referência/URL e os fatos
+   validados das fontes de questões anteriores, reaproveitados numa questão nova de tema
+   parecido (87 de 795 questões desde 20/09; 5 de 186 desde 01/10, História e Artes). Agora
+   nem lê nem grava — toda questão nova parte da biblioteca, do conhecimento da IA ou da
+   pesquisa, nunca de fonte herdada de questão anterior. A tabela fontes_validadas fica intacta
+   (86 fontes); para religar, basta mudar os dois valores abaixo. */
+const BANCO_FONTES = { leitura: false, gravacao: false };
 function chaveTemaBanco(o: { tema?: string; recorte?: string; eixoTematico?: string }): string {
   return String((o.tema || "").trim() || (o.recorte || "").trim() || (o.eixoTematico || "").trim()).toLowerCase().replace(/\s+/g, " ").slice(0, 200);
 }
@@ -1433,6 +1445,7 @@ function pontuaFonteDoBanco(o: { tema?: string; recorte?: string; eixoTematico?:
    Nessas disciplinas o caminho é o texto da biblioteca (literal, com a referência
    impressa na prova), que o professor mandou usar. As demais disciplinas não mudam. */
 async function consultarBancoFontes(o: { area: string; disciplina: string; tema: string; eixoTematico?: string; recorte?: string }, evitar: string[], semRestritos = false): Promise<any | null> {
+  if (!BANCO_FONTES.leitura) return null;   // v74.37 — o elaborador não recorre ao que o aplicativo gerou
   try {
     const { data, error } = await supabase.from("fontes_validadas")
       .select("id, tema_chave, autor, instituicao, obra, ano, referencia, url, trecho, trecho_literal, restrito, nivel, validacao, usos")
@@ -1465,6 +1478,7 @@ async function consultarBancoFontes(o: { area: string; disciplina: string; tema:
   }
 }
 async function guardarNoBancoFontes(o: { area: string; disciplina: string; tema: string; eixoTematico?: string; recorte?: string }, d: any): Promise<void> {
+  if (!BANCO_FONTES.gravacao) return;   // v74.37 — banco desligado também na gravação
   try {
     if (!d || d.encontrou !== true || !d.validacao || d.validacao.libera !== true || d.doBanco || d.doEnem) return;
     const url = String(d.url || d.urlVerificacao || "").trim();
@@ -6445,7 +6459,7 @@ function selfTestResponse() {
     ferramentaBuscaNoDominioPara.toString(), liberaRestritoAoConfirmado.toString(), JSON.stringify([MINIMO_FATOS_APROVACAO_RESTRITA, DISCIPLINAS_SEM_APROVACAO_RESTRITA]),   // v74.21c
     existenciaProvadaPeloValidador.toString(), JSON.stringify(ITENS_DE_EXISTENCIA_DA_FICHA),   // v74.22
     fonteEstaNaListaDeEvitar.toString(), consultarBancoFontes.toString(), guardarNoBancoFontes.toString(), pontuaFonteDoBanco.toString(),   // v74.23
-    buildBlocoTextoProprio.toString(), buildCorrecaoAuditoria.toString(), JSON.stringify([REELABORACOES_MAX, MS_MINIMO_PARA_REELABORAR, MAX_FONTES_EVITAR, BANCO_FONTES_MINIMO_TOKENS]),
+    buildBlocoTextoProprio.toString(), buildCorrecaoAuditoria.toString(), JSON.stringify([REELABORACOES_MAX, MS_MINIMO_PARA_REELABORAR, MAX_FONTES_EVITAR, BANCO_FONTES_MINIMO_TOKENS, BANCO_FONTES]),   // v74.37: + BANCO_FONTES
     buildRestricaoSegurancaVisual.toString(),   // v74.24
     consultarTextosEnem.toString(), pontuaTextoEnem.toString(), dossieDoTextoEnem.toString(), buildBlocoTextoEnem.toString(), urlsDaReferencia.toString(),   // v74.25
     conferenciaIneditismo.toString(), similaridadeIneditismo.toString(), buildIneditismoParaAuditoria.toString(),
@@ -7079,6 +7093,15 @@ function selfTestResponse() {
             && linhasDaBiblioteca.toString().includes(".range(de, de + BIBLIOTECA_PAGINA - 1)") && BIBLIOTECA_PAGINA === 1000;
         })(),
         /* v74.34 — ferramenta de entrega única para os quatro recursos (pedido do professor, 06/10/2026). */
+        /* v74.37 — banco de fontes desligado (decisão do professor, 06/10/2026): o elaborador não
+           recorre a nenhum material gerado pelo aplicativo. */
+        v7437_bancoDesligado: (() => {
+          const c = consultarBancoFontes.toString(), g = guardarNoBancoFontes.toString(), p = pesquisarFonteReal.toString();
+          return BANCO_FONTES.leitura === false && BANCO_FONTES.gravacao === false
+            && c.indexOf("if (!BANCO_FONTES.leitura) return null;") > 0 && c.indexOf("if (!BANCO_FONTES.leitura) return null;") < c.indexOf('from("fontes_validadas")')
+            && g.indexOf("if (!BANCO_FONTES.gravacao) return;") > 0 && g.indexOf("if (!BANCO_FONTES.gravacao) return;") < g.indexOf("d.encontrou !== true")
+            && p.includes("await consultarBancoFontes(o, evitar, semPesquisaWeb(o.disciplina))") && p.includes("await consultarBancoFontes(o, evitar, true)");   // os chamadores continuam; a função é que devolve nada (a geração nunca leu os simulados arquivados: tests/verify_banco_desligado_v7437.ts confere no arquivo)
+        })(),
         v7434_ferramentaUnica: (() => {
           const f = (r: string) => JSON.stringify(ferramentaQuestaoPara(r, true, "Matemática"));
           const g = (r: string) => JSON.stringify(ferramentaQuestaoPara(r, false, "Biologia"));

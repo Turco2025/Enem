@@ -59,7 +59,7 @@ ${entre("const PALAVRAS_VAZIAS_FONTE", "\n]);\n")}
 ${recorta("normalizaUrl")}${recorta("fonteEstaNaListaDeEvitar")}
 ${entre("const BANCO_FONTES_MINIMO_TOKENS", "async function consultarBancoFontes(")}
 ${recorta("consultarBancoFontes", "async function ")}
-export { montaFerramentas, ferramentasDaQuestao, consultarBancoFontes, FERRAMENTA_ALTERNATIVAS, FERRAMENTA_GABARITO, FERRAMENTA_IDIOMA };
+export { montaFerramentas, ferramentasDaQuestao, consultarBancoFontes, FERRAMENTA_ALTERNATIVAS, FERRAMENTA_GABARITO, FERRAMENTA_IDIOMA, BANCO_FONTES };
 `;
 const tmp = await Deno.makeTempDir();
 await Deno.writeTextFile(`${tmp}/custo.ts`, modulo);
@@ -96,6 +96,12 @@ t("A7 sem ferramenta nenhuma: corpo sem tools (planejamento sem ferramenta conti
 t("A8 a busca na web sozinha continua saindo como antes", JSON.stringify(M.montaFerramentas(web, null, null)) === JSON.stringify({ tools: [web], tool_choice: { type: "auto" } }));
 
 /* ---------- B. banco de fontes sem fonte restrita (só sem pesquisa na internet) ---------- */
+/* v74.37 — o banco está DESLIGADO em produção (decisão do professor, 06/10/2026): com os valores de
+   produção a consulta devolve null sem tocar na tabela. Os casos B1–B3 conferem a lógica antiga
+   com a leitura religada só dentro deste teste. */
+t("B0 em produção o banco de fontes está desligado: leitura e gravação false, e a consulta devolve null sem consultar a tabela",
+  M.BANCO_FONTES.leitura === false && M.BANCO_FONTES.gravacao === false && (await (async () => { __d.linhas = [{ id: 9 }]; const r = await M.consultarBancoFontes({ area: "linguagens", disciplina: "Literatura", tema: "x" }, [], false); return r === null; })()));
+M.BANCO_FONTES.leitura = true;   // só para os casos abaixo
 const linha = (id: number, restrito: boolean, obra: string) => ({ id, tema_chave: "", autor: "Clarice Lispector", instituicao: "UFPE", obra, ano: "2015",
   referencia: `UFPE. ${obra}. Recife, 2015.`, url: `https://ufpe.br/${id}`, trecho: "t", trecho_literal: false, restrito, nivel: "A",
   validacao: { estado: restrito ? "aprovado_restrito" : "aprovado" }, usos: 0 });
@@ -106,6 +112,7 @@ const b1 = await M.consultarBancoFontes(pedido, [], true);
 const b2 = await M.consultarBancoFontes(pedido, [], false);
 __d.linhas = [linha(1, true, "Epifania em Clarice Lispector")];
 const b3 = await M.consultarBancoFontes(pedido, [], true);
+M.BANCO_FONTES.leitura = false;
 volta();
 t("B1 sem pesquisa na internet, a fonte restrita é pulada e vem a de texto liberado", !!b1 && b1.doBanco.id === 2 && b1.restritoAoConfirmado === false, JSON.stringify(b1 && b1.doBanco));
 t("B2 nas demais disciplinas nada muda: a restrita continua disputando (e ganha, aqui, pela pontuação)", !!b2 && b2.doBanco.id === 1 && b2.validacao.estado === "aprovado_restrito", JSON.stringify(b2 && b2.doBanco));
