@@ -3964,26 +3964,96 @@ function alternativasUtilizaveis(obj: any): boolean {
   return LETRAS_ALTERNATIVAS.every((L) => typeof obj[L] === "string" && obj[L].trim().length > 0);
 }
 
+/* v74.38 — PARÂMETROS VAZADOS (caso real, 06/10/2026, simulado de Matemática "Cilindros, prismas,
+   esferas, troncos", questões 6 e 9). O modelo escreveu o objeto "alternativas" da ferramenta com a
+   sintaxe antiga de parâmetros — <parameter name="A">20%.</parameter><parameter name="B">44%.… —
+   dentro da chamada. A API entregou o que conseguiu: na questão 6, alternativas = a STRING
+   "\n<parameter name=\"A\">20%." e B, C, D, E SOLTAS na raiz da questão; na 9, alternativas = {}
+   e B–E soltas (A perdida). Aqui, em código e sem chamar a IA:
+   · objetoDeParametrosVazados: um campo-objeto que veio como texto com <parameter name="X">…
+     é desdobrado em objeto (o valor vai até o próximo <parameter ou até </parameter>);
+   · recolheLetrasSoltas: letra A–E na raiz da questão (nunca é campo legítimo) volta para
+     "alternativas" (texto) ou para "analiseAlternativas" ({status, comentario}) e sai da raiz;
+   · valor numérico em alternativa vira texto; lista de cinco textos vira objeto A–E.
+   O que ainda faltar depois disto é tratado por garantirAlternativasCompletas (adiante). */
+const RE_PARAMETRO_VAZADO = /<parameter\s+name="([^"]+)"\s*>/i;
+
+function objetoDeParametrosVazados(bruto: unknown): Record<string, any> | null {
+  if (typeof bruto !== "string" || !RE_PARAMETRO_VAZADO.test(bruto)) return null;
+  const re = /<parameter\s+name="([^"]+)"\s*>([\s\S]*?)(?=<parameter\s+name="|<\/parameter>|$)/gi;
+  const saida: Record<string, any> = {};
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(bruto)) !== null) {
+    const chave = m[1].trim();
+    let valor: any = m[2].trim();
+    if (!chave || !valor || chave in saida) continue;
+    if (valor.startsWith("{")) { const o = objetoDeString(valor); if (o) valor = o; }
+    saida[chave] = valor;
+  }
+  return Object.keys(saida).length ? saida : null;
+}
+
+function recolheLetrasSoltas(data: any): string[] {
+  const recolhidas: string[] = [];
+  if (!data || typeof data !== "object" || Array.isArray(data)) return recolhidas;
+  for (const L of LETRAS_ALTERNATIVAS) {
+    if (!(L in data)) continue;
+    const v = data[L];
+    if (typeof v === "string" || typeof v === "number") {
+      if (!data.alternativas || typeof data.alternativas !== "object" || Array.isArray(data.alternativas)) data.alternativas = {};
+      if (!String(data.alternativas[L] ?? "").trim() && String(v).trim()) { data.alternativas[L] = String(v).trim(); recolhidas.push(L); }
+    } else if (v && typeof v === "object" && !Array.isArray(v) && ("comentario" in v || "status" in v)) {
+      if (!data.analiseAlternativas || typeof data.analiseAlternativas !== "object" || Array.isArray(data.analiseAlternativas)) data.analiseAlternativas = {};
+      if (!data.analiseAlternativas[L] || typeof data.analiseAlternativas[L] !== "object") { data.analiseAlternativas[L] = v; recolhidas.push(L); }
+    }
+    delete data[L];
+  }
+  return recolhidas;
+}
+
+/* As letras que faltam em "alternativas" (texto vazio, ausente ou de outro tipo). */
+function letrasFaltantes(data: any): string[] {
+  const alts = data && data.alternativas && typeof data.alternativas === "object" && !Array.isArray(data.alternativas) ? data.alternativas : {};
+  return LETRAS_ALTERNATIVAS.filter((L) => typeof alts[L] !== "string" || !alts[L].trim());
+}
+
 function normalizarCamposEstruturados(data: any): any {
   if (!data || typeof data !== "object") return data;
   if (typeof data.alternativas === "string") {
     const tamanho = data.alternativas.length;
     const obj = alternativasDeString(data.alternativas);
     if (obj) { data.alternativas = obj; console.log("[alternativas] campo veio como string — reparado (" + tamanho + " caracteres)"); }
-    else console.warn("[alternativas] campo veio como string e NÃO pôde ser reparado (" + tamanho + " caracteres)");
+    else {
+      // v74.38 — sintaxe antiga de parâmetros dentro do campo: desdobra o que der (o resto é completado adiante)
+      const vazados = objetoDeParametrosVazados(data.alternativas);
+      const letras = vazados ? Object.fromEntries(Object.entries(vazados).filter(([k, v]) => LETRAS_ALTERNATIVAS.includes(k) && (typeof v === "string" || typeof v === "number")).map(([k, v]) => [k, String(v).trim()])) : {};
+      if (Object.keys(letras).length) { data.alternativas = letras; console.warn("[alternativas] campo veio como texto com <parameter name=…> — desdobrado: " + Object.keys(letras).join(", ")); }
+      else console.warn("[alternativas] campo veio como string e NÃO pôde ser reparado (" + tamanho + " caracteres)");
+    }
+  }
+  // v74.38 — lista de cinco textos vira objeto A–E; número vira texto
+  if (Array.isArray(data.alternativas) && data.alternativas.length === 5 && data.alternativas.every((v: unknown) => typeof v === "string" || typeof v === "number")) {
+    data.alternativas = Object.fromEntries(LETRAS_ALTERNATIVAS.map((L, i) => [L, String(data.alternativas[i]).trim()]));
+    console.warn("[alternativas] campo veio como lista — convertido em A–E");
+  }
+  if (data.alternativas && typeof data.alternativas === "object" && !Array.isArray(data.alternativas)) {
+    for (const L of LETRAS_ALTERNATIVAS) if (typeof data.alternativas[L] === "number") data.alternativas[L] = String(data.alternativas[L]);
   }
   for (const campo of ["analiseAlternativas", "competencia", "habilidade"]) {
     if (typeof data[campo] === "string") {
-      const obj = objetoDeString(data[campo]);
+      const obj = objetoDeString(data[campo]) || objetoDeParametrosVazados(data[campo]);   // v74.38: + parâmetros vazados
       if (obj) { data[campo] = obj; console.log("[" + campo + "] campo veio como string — reparado"); }
     }
   }
   if (data.analiseAlternativas && typeof data.analiseAlternativas === "object") {
     for (const L of LETRAS_ALTERNATIVAS) {
       const v = data.analiseAlternativas[L];
-      if (typeof v === "string") { const obj = objetoDeString(v); if (obj) data.analiseAlternativas[L] = obj; }
+      if (typeof v === "string") { const obj = objetoDeString(v) || objetoDeParametrosVazados(v); if (obj) data.analiseAlternativas[L] = obj; }
     }
   }
+  // v74.38 — letras soltas na raiz (B, C, D, E da questão 6) voltam para o lugar
+  const soltas = recolheLetrasSoltas(data);
+  if (soltas.length) console.warn("[alternativas] letra(s) solta(s) na raiz da questão recolhida(s): " + soltas.join(", "));
   return data;
 }
 
@@ -4647,6 +4717,159 @@ async function garantirAlternativasConformes(data: any, system: SistemaPrompt, u
   return diag;
 }
 /* ═══════════ FIM DA CONFERÊNCIA DAS ALTERNATIVAS ═══════════ */
+
+/* ═══════════ v74.38 — AS CINCO ALTERNATIVAS, SEMPRE (06/10/2026) ═══════════
+
+   DEFEITO RELATADO (06/10/2026): simulado de Matemática "Cilindros, prismas, esferas, troncos",
+   questão 6 — chegou ao professor SEM alternativas. No arquivo, data.alternativas era a string
+   "\n<parameter name=\"A\">20%." e B, C, D, E estavam soltas na raiz; a questão 9 tinha
+   alternativas = {} e B–E soltas (A perdida). O backend conferia gabarito, distratores, forma
+   das alternativas, dados do gráfico, fontes, extensão e notação — mas ninguém conferia se as
+   CINCO alternativas estavam lá: a revisão dos distratores e a conferência das alternativas se
+   declararam "não aplicáveis" e a questão saiu como pronta, com uma chamada só. Nos 1.196 itens
+   arquivados desde 01/09, só esses dois casos — os dois hoje.
+
+   O que passa a acontecer, nesta ordem, logo depois da geração (antes do visual, do revisor
+   matemático e de tudo o mais):
+   1. REPARO EM CÓDIGO (normalizarCamposEstruturados, acima): parâmetros vazados desdobrados e
+      letras soltas recolhidas. Resolve a questão 6 inteira sem chamar a IA (A estava no
+      fragmento; B–E na raiz).
+   2. COMPLETAR SÓ O QUE FALTA (garantirAlternativasCompletas): uma chamada dirigida
+      (entregar_alternativas, mesmo cache da geração) escreve apenas a(s) letra(s) que falta(m),
+      guiada pelo comentário já registrado para a letra em analiseAlternativas, com as outras
+      quatro intocáveis; aceita só se as cinco ficam distintas, a nova tem tamanho compatível e
+      o gabarito continua coerente. Até ALTERNATIVAS_FALTANTES_MAX vezes.
+   3. ÚLTIMO RECURSO (no handler): se não completou, a questão é pedida de novo UMA vez com a
+      ordem explícita sobre o formato do campo; se ainda assim faltar alternativa, a função
+      responde erro 502 ("peça de novo") em vez de entregar uma questão sem alternativas. Uma
+      questão sem as cinco alternativas nunca mais sai como "pronta". */
+const ALTERNATIVAS_FALTANTES_MAX = 2;
+
+function buildAlternativasFaltantesPrompt(data: any, faltantes: string[], tentativa = 1, recusaAnterior = ""): string {
+  const alts = (data && data.alternativas && typeof data.alternativas === "object") ? data.alternativas : {};
+  const gab = String(data?.gabarito || "");
+  const an = (data && data.analiseAlternativas && typeof data.analiseAlternativas === "object") ? data.analiseAlternativas : {};
+  const linhas = LETRAS_ALTERNATIVAS.map((k) => `${k}) ${faltantes.includes(k) ? "(FALTANDO — escrever)" : String(alts[k] || "")}${k === gab ? "   ← CORRETA" : ""}`).join("\n");
+  const coments = LETRAS_ALTERNATIVAS.map((k) => `${k}: ${String((an as any)[k]?.comentario || "(sem comentário registrado)").slice(0, 400)}`).join("\n");
+  const papel = [
+    faltantes.includes(gab) ? `a ${gab} é a CORRETA — a única resposta defensável, exatamente a conclusão da resolução.` : "",
+    faltantes.some((k) => k !== gab) ? "cada distrator que faltar carrega o erro de raciocínio descrito no comentário registrado para a letra dele, como QUASE-ACERTO da correta (a mesma frase com UM elemento trocado), plausível para quem não domina a habilidade." : "",
+  ].filter(Boolean).join(" ");
+  return `ALTERNATIVAS FALTANTES${tentativa > 1 ? ` — TENTATIVA ${tentativa}` : ""} — a questão abaixo está pronta, mas a entrega anterior veio SEM o texto da(s) alternativa(s) ${faltantes.join(", ")}: o campo "alternativas" chegou incompleto.${recusaAnterior ? `\nA proposta anterior foi recusada pela conferência automática: ${recusaAnterior}.` : ""}
+
+O QUE FAZER
+· Escreva SOMENTE a(s) alternativa(s) ${faltantes.join(", ")}, coerente(s) com o comentário já registrado para essa(s) letra(s): ${papel}
+· Mesma construção sintática, mesmo registro e extensão próxima das demais (paralelismo e paridade); nenhum termo absoluto ou de exagero; nada de pista pelo tom; a correta não pode ser a mais atrativa.
+· Respeite a ORDEM LÓGICA na posição da letra: alternativas numéricas em ordem crescente (o valor da letra que falta fica entre o das vizinhas); as de texto da mais curta para a mais longa, quando isso sair natural.
+· NÃO MEXA no texto-base, no comando, na letra correta (continua ${gab || "a registrada"}) nem nas alternativas que já existem — devolva-as IDÊNTICAS, caractere por caractere.
+
+TEXTO-BASE
+${String(data?.textoBase || "").slice(0, 2500)}
+
+COMANDO
+${String(data?.comando || "")}
+
+ALTERNATIVAS
+${linhas}
+
+COMENTÁRIOS REGISTRADOS
+${coments}
+
+RESOLUÇÃO (só para contexto)
+${String(data?.resolucaoComentada || "").slice(0, 1500)}
+
+Devolva pela ferramenta "entregar_alternativas": "alternativas" (as cinco — as existentes idênticas), "comentarios" (a(s) letra(s) que você escreveu, com o comentário dela(s); pode repetir o já registrado se continuar exato) e "resolucaoComentada" (string vazia).`;
+}
+
+/* Monta a questão completada sem confiar na resposta: só as letras FALTANTES entram; as outras
+   ficam como estavam; exige texto (sem parâmetro vazado), cinco distintas, tamanho compatível
+   com as demais e comentário para cada letra escrita (o registrado serve). */
+function aplicaAlternativasFaltantes(data: any, bruto: any, faltantes: string[]): { ok: boolean; motivo: string; nova: any } {
+  const falha = (motivo: string) => ({ ok: false, motivo, nova: null });
+  if (!bruto || typeof bruto !== "object" || !bruto.alternativas || typeof bruto.alternativas !== "object") return falha("a resposta veio sem as alternativas");
+  const antes: any = (data.alternativas && typeof data.alternativas === "object") ? data.alternativas : {};
+  const novas: any = {};
+  for (const k of LETRAS_ALTERNATIVAS) {
+    if (!faltantes.includes(k)) { novas[k] = String(antes[k] ?? "").trim(); continue; }
+    const t = String(bruto.alternativas[k] ?? "").trim();
+    if (!t || RE_PARAMETRO_VAZADO.test(t)) return falha(`a alternativa ${k} voltou vazia`);
+    novas[k] = t;
+  }
+  if (!alternativasUtilizaveis(novas)) return falha("ainda falta alternativa");
+  if (new Set(LETRAS_ALTERNATIVAS.map((k) => normalizaAlternativa(novas[k]))).size !== 5) return falha("as cinco alternativas não ficaram distintas");
+  const existentes = LETRAS_ALTERNATIVAS.filter((k) => !faltantes.includes(k)).map((k) => novas[k].length).sort((a, b) => a - b);
+  if (existentes.length) {
+    const mediana = existentes[Math.floor(existentes.length / 2)];
+    for (const k of faltantes) {
+      const b = novas[k].length;
+      if (mediana >= 20 && (b < 0.4 * mediana || b > 1.6 * mediana)) return falha(`a alternativa ${k} ficou fora do tamanho das demais (${b} caracteres; as outras têm cerca de ${mediana})`);
+    }
+  }
+  const coments: any = (bruto.comentarios && typeof bruto.comentarios === "object") ? bruto.comentarios : {};
+  const anAntes: any = (data.analiseAlternativas && typeof data.analiseAlternativas === "object") ? data.analiseAlternativas : {};
+  const gab = String(data.gabarito || "");
+  const an: any = {};
+  for (const k of LETRAS_ALTERNATIVAS) {
+    const v = anAntes[k] && typeof anAntes[k] === "object" ? { ...anAntes[k] } : {};
+    if (faltantes.includes(k)) {
+      const c = String(coments[k] ?? "").trim() || String(v.comentario ?? "").trim();
+      if (!c) return falha(`faltou o comentário da alternativa ${k}`);
+      v.comentario = c;
+      if (!String(v.status ?? "").trim() && LETRAS_ALTERNATIVAS.includes(gab)) v.status = k === gab ? "correta" : "incorreta";
+    }
+    an[k] = v;
+  }
+  return { ok: true, motivo: "", nova: { ...data, alternativas: novas, analiseAlternativas: an } };
+}
+
+/* Custo zero na questão sã (as cinco presentes). Só com letra faltando chama a IA, e só pela(s)
+   letra(s) que falta(m). A questão é alterada no lugar SÓ quando a proposta passa em tudo. */
+async function garantirAlternativasCompletas(data: any, system: SistemaPrompt, usos: any[], restanteMs: number, declaradas: any[] | null = null) {
+  const prazo = Date.now() + restanteMs;
+  const diag: any = { chamadas: 0, completado: false };
+  if (!data || typeof data !== "object") { diag.estado = "nao_aplicavel"; diag.motivo = "questão inválida"; return diag; }
+  const faltantes = letrasFaltantes(data);
+  if (!faltantes.length) { diag.estado = "ok"; return diag; }
+  diag.faltantes = faltantes;
+  console.warn(`[alternativas] a questão veio sem a(s) alternativa(s) ${faltantes.join(", ")} — pedindo só a(s) que falta(m)`);
+  const gabAntes = conferenciaGabarito(data);
+  let recusa = "";
+  for (let tentativa = 1; tentativa <= ALTERNATIVAS_FALTANTES_MAX; tentativa++) {
+    const restante = prazo - Date.now();
+    if (restante < MS_MINIMO_PARA_CORRIGIR_ALTERNATIVAS) { diag.pulado = `sem tempo para completar (restavam ${Math.round(restante / 1000)} s)`; break; }
+    try {
+      const bruto = await callClaudeForJSON(system, buildAlternativasFaltantesPrompt(data, faltantes, tentativa, recusa), false, usos, FERRAMENTA_ALTERNATIVAS, undefined, `alternativas-faltantes-${tentativa}`, undefined, undefined, declaradas);
+      diag.chamadas++;
+      const p = aplicaAlternativasFaltantes(data, bruto, faltantes);
+      if (!p.ok) { recusa = p.motivo; continue; }
+      if (gabAntes.estado === "ok") {
+        const gab2 = conferenciaGabarito(p.nova);
+        if (gab2.estado !== "ok" || gab2.letra !== gabAntes.letra) { recusa = `a resposta deixou de ser coerente (${gab2.motivo})`; continue; }
+      }
+      data.alternativas = p.nova.alternativas;
+      data.analiseAlternativas = p.nova.analiseAlternativas;
+      diag.completado = true; diag.estado = "completado"; diag.letrasEscritas = faltantes; diag.tentativas = tentativa;
+      console.log(`[alternativas] completada na tentativa ${tentativa}: ${faltantes.join(", ")} escrita(s)`);
+      return diag;
+    } catch (e) {
+      diag.erro = String((e as any)?.message || e).slice(0, 200);
+      break;
+    }
+  }
+  diag.estado = "pendente";
+  if (recusa) diag.motivoRecusa = recusa;
+  console.warn(`[alternativas] NÃO foi possível completar ${faltantes.join(", ")} (${diag.pulado || diag.erro || recusa || "sem proposta"})`);
+  return diag;
+}
+
+/* A ordem que vai junto com o pedido original quando a questão precisa ser refeita por causa
+   das alternativas (último recurso): diz o defeito e o formato exato do campo. */
+function buildCorrecaoAlternativasIncompletas(faltantes: string[]): string {
+  return `
+
+ATENÇÃO — sua entrega anterior desta questão veio SEM a(s) alternativa(s) ${faltantes.join(", ")}: o campo "alternativas" chegou incompleto (parte das letras fora do objeto). Elabore a questão de novo, inteira, e entregue "alternativas" EXATAMENTE como um objeto JSON com as cinco chaves "A", "B", "C", "D" e "E", cada uma com o texto da alternativa — nunca com marcação de parâmetro, nunca com letras fora desse objeto. Todas as outras regras continuam valendo.`;
+}
+/* ═══════════ FIM DAS CINCO ALTERNATIVAS ═══════════ */
 
 /* ═══════════ v74.35 — COERÊNCIA ENTRE O TEXTO E OS DADOS DO GRÁFICO/TABELA (06/10/2026) ═══════════
 
@@ -6501,6 +6724,8 @@ function selfTestResponse() {
     serieDaOracao.toString(), serieUnicaNoTrecho.toString(), rotulosNoTrecho.toString(), radicaisDaSerie.toString(), numeroDeTexto.toString(), listaDadosDoVisual.toString(),
     buildCorrecaoDadosPrompt.toString(), aplicaCorrecaoDados.toString(), garantirDadosCoerentes.toString(), marcaDadosVisual.toString(), JSON.stringify(FERRAMENTA_DADOS),
     JSON.stringify([CORRECOES_DADOS_MAX, MS_MINIMO_PARA_CORRIGIR_DADOS, DADOS_CONTAGEM_MAX, DADOS_SUBSTANTIVOS_CONTAGEM, DADOS_SUBSTANTIVOS_DURACAO, [...DADOS_ROTULOS_AGREGADOS], DADOS_GRANDEZA_UNIDADES.map(([re, u]) => [String(re), u]), DADOS_UNIDADES_CURTAS, String(DADOS_MARCA_MIN), String(DADOS_MARCA_MAX), DADOS_VARIACAO, String(DADOS_ANTES_DO_VALOR), String(DADOS_OBJETO_GENERICO)]),
+    objetoDeParametrosVazados.toString(), recolheLetrasSoltas.toString(), letrasFaltantes.toString(), normalizarCamposEstruturados.toString(), alternativasDeString.toString(),   // v74.38
+    buildAlternativasFaltantesPrompt.toString(), aplicaAlternativasFaltantes.toString(), garantirAlternativasCompletas.toString(), buildCorrecaoAlternativasIncompletas.toString(), JSON.stringify([ALTERNATIVAS_FALTANTES_MAX, String(RE_PARAMETRO_VAZADO)]),
   ].join(String.fromCharCode(0));
   return jsonResponse({
     selftest: true,
@@ -7093,6 +7318,39 @@ function selfTestResponse() {
             && linhasDaBiblioteca.toString().includes(".range(de, de + BIBLIOTECA_PAGINA - 1)") && BIBLIOTECA_PAGINA === 1000;
         })(),
         /* v74.34 — ferramenta de entrega única para os quatro recursos (pedido do professor, 06/10/2026). */
+        /* v74.38 — as cinco alternativas, sempre (questões 6 e 9 do simulado de Matemática de 06/10/2026):
+           parâmetros vazados desdobrados, letras soltas recolhidas, letra faltante completada pela IA,
+           questão refeita em último caso, erro em vez de questão "pronta" sem alternativas. */
+        v7438_alternativasCompletas: (() => {
+          const an = (c: string) => { const o: any = {}; for (const L of LETRAS_ALTERNATIVAS) o[L] = { status: L === c ? "correta" : "incorreta", comentario: "c" + L }; return o; };
+          // questão 6 (06/10): alternativas = string com <parameter name="A">… e B–E soltas na raiz
+          const q6: any = normalizarCamposEstruturados({ textoBase: "t", comando: "c", gabarito: "B", alternativas: '\n<parameter name="A">20%.', B: "44%.", C: "40%.", D: "60%.", E: "728%.", analiseAlternativas: an("B") });
+          // questão 9 (06/10): alternativas = {} e B–E soltas (A perdida)
+          const q9: any = normalizarCamposEstruturados({ textoBase: "t", comando: "c", gabarito: "D", alternativas: {}, B: "correta, pois troncos são cilíndricos.", C: "subestimada, pois a base tem menor raio.", D: "superestimada, pois tratou o tronco como cilindro.", E: "superestimada, pois usou o raio no diâmetro.", analiseAlternativas: an("D") });
+          const vaz = objetoDeParametrosVazados('\n<parameter name="A">20%.</parameter>\n<parameter name="B">44%.');
+          const lista: any = normalizarCamposEstruturados({ alternativas: ["1", "2", 3, "4", "5"] });
+          const soltaAnalise: any = normalizarCamposEstruturados({ alternativas: { A: "a", B: "b", C: "c", D: "d", E: "e" }, analiseAlternativas: { A: { status: "correta", comentario: "x" } }, B: { status: "incorreta", comentario: "y" } });
+          const base: any = { textoBase: "t", comando: "c", gabarito: "D", alternativas: { B: "correta, pois troncos de eucalipto são cilíndricos.", C: "subestimada, pois a base tem menor raio que a ponta.", D: "superestimada, pois tratou o tronco como cilindro.", E: "superestimada, pois usou o raio no lugar do diâmetro." }, analiseAlternativas: an("D") };
+          const okA = aplicaAlternativasFaltantes(base, { alternativas: { ...base.alternativas, A: "subestimada, pois ignorou o afinamento do tronco." }, comentarios: { A: "inverte o efeito do afinamento" }, resolucaoComentada: "" }, ["A"]);
+          const vazia = aplicaAlternativasFaltantes(base, { alternativas: { ...base.alternativas, A: "" }, comentarios: {}, resolucaoComentada: "" }, ["A"]);
+          const repetida = aplicaAlternativasFaltantes(base, { alternativas: { ...base.alternativas, A: base.alternativas.C }, comentarios: { A: "x" }, resolucaoComentada: "" }, ["A"]);
+          const vazada = aplicaAlternativasFaltantes(base, { alternativas: { ...base.alternativas, A: '<parameter name="A">x' }, comentarios: { A: "x" }, resolucaoComentada: "" }, ["A"]);
+          const curta = aplicaAlternativasFaltantes(base, { alternativas: { ...base.alternativas, A: "errada." }, comentarios: { A: "x" }, resolucaoComentada: "" }, ["A"]);
+          const semComentario = aplicaAlternativasFaltantes({ ...base, analiseAlternativas: { ...an("D"), A: {} } }, { alternativas: { ...base.alternativas, A: "subestimada, pois ignorou o afinamento do tronco." }, comentarios: {}, resolucaoComentada: "" }, ["A"]);
+          const prompt = buildAlternativasFaltantesPrompt(base, ["A"], 2, "motivo x");
+          const g = garantirAlternativasCompletas.toString(), ap = aplicaAlternativasFaltantes.toString();
+          return !!vaz && vaz.A === "20%." && vaz.B === "44%." && objetoDeParametrosVazados("sem marcação") === null
+            && alternativasUtilizaveis(q6.alternativas) && q6.alternativas.A === "20%." && q6.alternativas.E === "728%." && !("B" in q6) && !("E" in q6) && letrasFaltantes(q6).length === 0
+            && letrasFaltantes(q9).join() === "A" && q9.alternativas.D === "superestimada, pois tratou o tronco como cilindro." && !("B" in q9)
+            && lista.alternativas.C === "3" && alternativasUtilizaveis(lista.alternativas)
+            && soltaAnalise.analiseAlternativas.B.comentario === "y" && !("B" in soltaAnalise) && soltaAnalise.alternativas.B === "b"
+            && okA.ok && alternativasUtilizaveis(okA.nova.alternativas) && okA.nova.analiseAlternativas.A.comentario === "inverte o efeito do afinamento" && okA.nova.analiseAlternativas.A.status === "incorreta" && okA.nova.alternativas.D === base.alternativas.D
+            && !vazia.ok && !repetida.ok && repetida.motivo.includes("distintas") && !vazada.ok && !curta.ok && curta.motivo.includes("tamanho") && !semComentario.ok && semComentario.motivo.includes("comentário")
+            && prompt.startsWith("ALTERNATIVAS FALTANTES — TENTATIVA 2") && prompt.includes("A) (FALTANDO — escrever)") && prompt.includes("D) superestimada, pois tratou o tronco como cilindro.   ← CORRETA") && prompt.includes("recusada pela conferência automática: motivo x") && prompt.includes("COMENTÁRIOS REGISTRADOS")
+            && g.includes("alternativas-faltantes-") && g.includes("letrasFaltantes(data)") && g.includes("FERRAMENTA_ALTERNATIVAS") && g.indexOf("conferenciaGabarito(data)") < g.indexOf("conferenciaGabarito(p.nova)")
+            && ap.includes("RE_PARAMETRO_VAZADO.test(t)") && ALTERNATIVAS_FALTANTES_MAX === 2
+            && buildCorrecaoAlternativasIncompletas(["A"]).includes('as cinco chaves "A", "B", "C", "D" e "E"');
+        })(),
         /* v74.37 — banco de fontes desligado (decisão do professor, 06/10/2026): o elaborador não
            recorre a nenhum material gerado pelo aplicativo. */
         v7437_bancoDesligado: (() => {
@@ -7954,6 +8212,33 @@ ATENÇÃO — sua resposta anterior não pôde ser usada: o argumento da ferrame
     // v67: alternativas/análise/competência/habilidade sempre como objeto.
     data = normalizarCamposEstruturados(data);
     repoeTextoDaBiblioteca(data, "geração");
+    /* v74.38 — AS CINCO ALTERNATIVAS, SEMPRE (questões 6 e 9 do simulado de Matemática de 06/10):
+       o reparo em código já rodou em normalizarCamposEstruturados; o que ainda faltar é pedido à IA
+       só pela(s) letra(s) que falta(m); sem sucesso, a questão é refeita UMA vez com a ordem sobre o
+       formato; sem as cinco, erro — nunca uma questão "pronta" sem alternativas. Antes do visual, do
+       revisor matemático e de tudo o mais, para que todos trabalhem sobre a questão inteira. */
+    const completasDiag: any = await garantirAlternativasCompletas(data, system, usos, LIMITE_FUNCAO_MS - (Date.now() - inicioReq), familiaQ);
+    if (completasDiag.estado === "pendente") {
+      const restante = LIMITE_FUNCAO_MS - (Date.now() - inicioReq);
+      if (restante > MS_MINIMO_PARA_REELABORAR) {
+        console.warn(`[alternativas] refazendo a questão inteira — veio sem ${completasDiag.faltantes.join(", ")} e não foi possível completar`);
+        let nova = await callClaudeForJSON(system, userMsg + buildCorrecaoAlternativasIncompletas(completasDiag.faltantes), false, usos, ferramentaQ, buscasWeb, "geracao/alternativas-incompletas", undefined, undefined, familiaQ);
+        nova = normalizarCamposEstruturados(nova);
+        if (nova && typeof nova === "object") {
+          repoeTextoDaBiblioteca(nova, "refeita por alternativas incompletas");
+          const c2 = await garantirAlternativasCompletas(nova, system, usos, LIMITE_FUNCAO_MS - (Date.now() - inicioReq), familiaQ);
+          completasDiag.refeita = true;
+          completasDiag.aposRefazer = c2;
+          if (c2.estado !== "pendente") { data = nova; completasDiag.estado = "refeita"; }
+        }
+      } else completasDiag.pulado = `sem tempo para refazer a questão (restavam ${Math.round(restante / 1000)} s)`;
+    }
+    if (!data || typeof data !== "object" || letrasFaltantes(data).length) {
+      const faltam = data && typeof data === "object" ? letrasFaltantes(data).join(", ") : "A, B, C, D, E";
+      await logGeneration(area, disciplina, tema, { recurso, uso: resumoUso(usos), fonteUrl: "", validacao: { estado: "alternativas_incompletas" }, tentativa: tentativaApp, reelaboracoes: 0, fonteDoBanco, ultimoRecurso: !!textoProprio });
+      throw new Error(`a questão veio sem a(s) alternativa(s) ${faltam} e não foi possível completá-la — peça esta questão de novo (Regenerar)`);
+    }
+    const alternativasAntesDoRevisor = data.alternativas, analiseAntesDoRevisor = data.analiseAlternativas;   // v74.38
     // "promptImagem"/"descricao" sempre como string — ver normalizarVisual().
     if (data && typeof data === "object") data.visual = normalizarVisual(data.visual, recurso);
     // v62: recurso pedido = recurso entregue, ou o backend refaz só o visual.
@@ -8019,6 +8304,14 @@ ATENÇÃO — sua resposta anterior não pôde ser usada: o argumento da ferrame
     // De novo, depois da revisão matemática: idempotente, e garante o tipo na saída.
     data = normalizarCamposEstruturados(data);
     if (data && typeof data === "object") data.visual = normalizarVisual(data.visual, recurso);
+    /* v74.38 — o revisor devolve a questão inteira: se as alternativas se perderam no caminho,
+       voltam as cinco que entraram (conferidas acima). */
+    if (data && typeof data === "object" && letrasFaltantes(data).length && alternativasUtilizaveis(alternativasAntesDoRevisor)) {
+      data.alternativas = alternativasAntesDoRevisor;
+      if (analiseAntesDoRevisor && typeof analiseAntesDoRevisor === "object") data.analiseAlternativas = analiseAntesDoRevisor;
+      completasDiag.repostasAposRevisor = true;
+      console.warn("[alternativas] o revisor devolveu a questão sem as cinco alternativas — repostas as de antes");
+    }
     // v62: a revisão matemática devolve a questão inteira — o recurso visual
     // garantido acima não pode ter sido perdido no caminho. Se foi, reaplica.
     if (data && typeof data === "object" && ["imagem", "grafico", "tabela"].includes(recurso) && !visualConforme(data.visual, recurso).ok && visualDiag.conforme) {
@@ -8098,6 +8391,10 @@ ATENÇÃO — sua resposta anterior não pôde ser usada: o argumento da ferrame
       let nova = await callClaudeForJSON(system, userMsg + buildCorrecaoAuditoria(fontesDiag, reelaboracoes), false, usos, ferramentaQ, buscasWeb, `geracao/reelaboracao-${reelaboracoes}`, undefined, undefined, familiaQ);
       nova = normalizarCamposEstruturados(nova);
       if (!nova || typeof nova !== "object") break;
+      /* v74.38 — a reescrita também tem de vir com as cinco; sem completar, fica a versão anterior. */
+      const cd2 = await garantirAlternativasCompletas(nova, system, usos, LIMITE_FUNCAO_MS - (Date.now() - inicioReq), familiaQ);
+      completasDiag.aposReelaboracao = cd2;
+      if (cd2.estado === "pendente") { console.warn("[alternativas] a reescrita veio sem as cinco alternativas e não foi completada — mantendo a versão anterior"); break; }
       nova.visual = normalizarVisual(nova.visual, recurso);
       const vd2 = await garantirVisual(nova, { area, disciplina, recurso, tema, instrucoesVisual }, usos);
       visualDiag.refeito += vd2.refeito; visualDiag.conforme = vd2.conforme; visualDiag.motivo = vd2.motivo; visualDiag.entregueTipo = vd2.entregueTipo; visualDiag.promptChars = vd2.promptChars;
@@ -8168,7 +8465,7 @@ ATENÇÃO — sua resposta anterior não pôde ser usada: o argumento da ferrame
     notacaoDiag.residuoFinal = temResiduoNotacao(data, area);
     if (notacaoDiag.residuoFinal) console.warn(`[notação] resíduo ASCII na questão entregue (${disciplina}: "${String(data?.tema || "").slice(0, 60)}") — ` + JSON.stringify(notacaoDiag.notacao?.residuosDepois ?? notacaoDiag));
     else if (notacaoDiag.residuoAntesDoRevisor) console.log(`[notação] resíduo corrigido pelo revisor (${notacaoDiag.notacao?.tentativas ?? "?"} tentativa(s))`);
-    return jsonResponse({ question: corrigirQuebrasLiterais(data), uso, visualDiag, diversidadeDiag, notacaoDiag, gabaritoDiag, distratoresDiag, alternativasDiag, dadosDiag, fontesDiag, objetoDiag: objetoDiagFinal });
+    return jsonResponse({ question: corrigirQuebrasLiterais(data), uso, visualDiag, diversidadeDiag, notacaoDiag, completasDiag, gabaritoDiag, distratoresDiag, alternativasDiag, dadosDiag, fontesDiag, objetoDiag: objetoDiagFinal });   // v74.38: + completasDiag
   } catch (err) {
     return jsonResponse({ error: `Erro ao gerar questão: ${String((err as any)?.message || err)}` }, 502);
   }

@@ -177,6 +177,46 @@ Teste: `verify_fontes_app.js` — 19 verificações; as seções B e C bis prova
 quatro marcas ligadas ao mesmo tempo nenhuma conferência bloqueia, e que nenhuma delas tem sequer um
 `return true` no corpo. `verify_gabarito_coerente.js` H1 passou a exigir o contrário do que exigia.
 
+## As cinco alternativas, sempre: reparo, completar o que falta, refazer, nunca entregar sem (generate-question v74.38, 06/10/2026)
+
+Defeito relatado pelo professor: simulado de Matemática *"Cilindros, prismas, esferas, troncos"* (20 questões), a
+**questão 6 veio sem alternativas**. No arquivo, `data.alternativas` era a string `"\n<parameter name=\"A\">20%."`
+e `B`, `C`, `D`, `E` estavam **soltas na raiz da questão**; a questão 9 do mesmo simulado tinha `alternativas = {}`
+e B–E soltas (A perdida). O modelo escreveu o objeto `alternativas` da ferramenta com a sintaxe antiga de parâmetros
+(`<parameter name="A">…`) dentro da chamada, e a API entregou o que conseguiu. O backend conferia gabarito, distratores,
+forma das alternativas, dados do gráfico, fontes, extensão e notação — mas **ninguém conferia se as cinco alternativas
+estavam lá**: a revisão dos distratores e a conferência das alternativas se declararam "não aplicáveis" e a questão saiu
+como pronta, com uma chamada só. Nos 1.196 itens arquivados desde 01/09, só esses dois casos — os dois nesse simulado.
+
+O que passa a acontecer, nesta ordem, logo depois da geração (antes do visual, do revisor matemático e de tudo o mais):
+
+1. **Reparo em código** (`normalizarCamposEstruturados`, custo zero): campo que veio como texto com `<parameter name="X">…`
+   é desdobrado (`objetoDeParametrosVazados`); letra A–E solta na raiz volta para `alternativas` (texto) ou para
+   `analiseAlternativas` (`{status, comentario}`) e sai da raiz (`recolheLetrasSoltas`); lista de cinco textos vira A–E;
+   número vira texto. Resolve a questão 6 inteira sem chamar a IA (A estava no fragmento; B–E na raiz).
+2. **Completar só o que falta** (`garantirAlternativasCompletas`): uma chamada dirigida (`entregar_alternativas`, mesmo
+   cache da geração, etapa `alternativas-faltantes-N`) escreve **apenas** a(s) letra(s) que falta(m), guiada pelo
+   comentário já registrado para a letra em `analiseAlternativas`, com as outras quatro intocáveis (o que o modelo mudar
+   fora delas é descartado); aceita só se as cinco ficam distintas, a nova tem tamanho compatível com as demais, há
+   comentário e o gabarito continua coerente. Até 2 tentativas. Resolveria a questão 9 (só a A).
+3. **Último recurso**: se não completou, a questão é **refeita uma vez** (mesmo pedido + ordem explícita sobre o formato
+   do campo, `geracao/alternativas-incompletas`); se ainda assim faltar alternativa, a função registra o custo
+   (`validacao_status = alternativas_incompletas`) e responde **erro 502** — *"a questão veio sem a(s) alternativa(s) X e
+   não foi possível completá-la — peça esta questão de novo (Regenerar)"* — em vez de entregar uma questão sem
+   alternativas. O app mostra o erro no cartão. Uma questão sem as cinco alternativas **nunca mais sai como "pronta"**.
+
+Também: a reescrita pedida pelo auditor de fontes passa pela mesma porteira (sem completar, fica a versão anterior); se o
+revisor matemático devolver a questão sem as cinco, voltam as que entraram. A resposta ganha `completasDiag`
+(`ok` | `completado` | `refeita`). Custo: zero na questão sã; ≈ US$ 0,01 por letra completada; ≈ US$ 0,03 quando precisa
+refazer. Nada muda na qualidade, no método do Inep nem na Matriz — é só a garantia de que o item chega inteiro.
+
+Teste: `deno run -A tests/verify_alternativas_completas_v7438.ts supabase/functions/generate-question/index.ts` (25:
+reparo das duas questões reais, parâmetros vazados, lista/número, letra solta de análise, questão sã intacta; completar
+só a letra que falta com as recusas; o pedido e a ordem de refazer; a ordem no handler, o erro, a reposição pós-revisor e
+a reescrita do auditor). Ensaio do handler com API simulada: 7 cenários novos (questão 6 reparada em código com uma
+chamada só; questão 9 completada com uma chamada dirigida; completar falha → refeita; nada resolve → 502; questão sã →
+custo zero). Selftest de produção: `v7438_alternativasCompletas` (56 verificações).
+
 ## Banco de fontes desligado: o elaborador não recorre a nada gerado pelo aplicativo (generate-question v74.37, 06/10/2026)
 
 Decisão do professor: *"não quero que o elaborador recorra ao banco de questões geradas pelo aplicativo em
