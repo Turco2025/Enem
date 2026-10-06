@@ -220,8 +220,10 @@ revisão por IA ligada.
   se a proposta for recusada), lendo o mesmo cache (ferramenta `entregar_alternativas`, da família
   v74.29), que aplica o teste do candidato mediano a cada distrator e reescreve só os que falham, como
   quase-acertos. **A correta nunca é tocada** (a montagem só aceita mudança nas letras dos distratores).
-  A proposta só entra se: cada reescrito ficar entre 0,75× e 1,3× do que substitui e sem crescer além do
-  teto da disciplina; as cinco continuarem distintas; a conferência em código não ganhar problema novo;
+  A proposta só entra se: cada reescrito ficar entre 0,75× e 1,3× do que substitui (o teto absoluto da
+  disciplina ficou de fora — v74.36b: o p75 das provas reais, 46 caracteres em Biologia, é menor do que o
+  app gera e barraria toda reescrita; o selftest de produção da v110 pegou isso, 53/54, e a v111 corrigiu);
+  as cinco continuarem distintas; a conferência em código não ganhar problema novo;
   gabarito e análise continuarem na mesma letra. "Os quatro passaram" = aprovado, sem mudança. Recusada
   duas vezes, sem tempo ou com erro: a questão segue como estava, marcada (`distratores: pendente`).
 - **App:** auditoria do cartão mostra `d.distratores` (revisado → observação com as letras; pendente →
@@ -237,8 +239,8 @@ Testes: `deno run -A tests/verify_distratores_v7436.ts supabase/functions/genera
 regra no bloco fixo, exagero/eco do texto-base com flexões e exclusões, montagem da proposta com todas as
 recusas, fluxo com IA simulada — revisa, aprova, recusa problema novo, pendente, relógio, numéricas —,
 ligação, selftest, impressão digital); `node tests/verify_distratores_v1841.mjs` (8, Chromium real).
-Selftest de produção: `v7436_distratores` (54 verificações). Smoke do handler com API simulada: 26
-cenários (3 novos: revisão reescreve D; numéricas sem revisão; exagero corrigido em código).
+Selftest de produção: `v7436_distratores` (54 verificações). Smoke do handler com API simulada: 25
+verificações (3 cenários novos: revisão reescreve D; numéricas sem revisão; exagero corrigido em código).
 
 ## Coerência entre o texto e os dados do gráfico/tabela (generate-question v74.35 / app v18.40, 06/10/2026)
 

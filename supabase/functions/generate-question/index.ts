@@ -5237,8 +5237,10 @@ async function garantirDadosCoerentes(data: any, system: SistemaPrompt, usos: an
    DO CANDIDATO MEDIANO a cada distrator; reescreve só os que falham, como quase-acertos
    (REGRA DOS DISTRATORES, no prompt do sistema). A correta NUNCA é tocada: a montagem só
    aceita mudança nas letras dos distratores. A proposta só entra se: cada reescrito ficar
-   entre 0,75× e 1,3× do tamanho do que substitui (paridade e ordem lógica preservadas) e
-   dentro do teto da disciplina; as cinco continuarem distintas; a conferência em código
+   entre 0,75× e 1,3× do tamanho do que substitui (paridade e ordem lógica preservadas —
+   v74.36b: o teto absoluto da disciplina ficou de fora, porque o p75 das provas reais, 46
+   caracteres em Biologia, é menor do que o app gera e barraria toda reescrita); as cinco
+   continuarem distintas; a conferência em código
    não ganhar problema NOVO (absoluto, exagero, eco, dominante); gabarito e análise
    continuarem na mesma letra. Recusada duas vezes, sem tempo ou com erro: a questão segue
    como estava, marcada ("distratores": pendente) para o professor ver. Alternativas
@@ -5289,9 +5291,10 @@ Devolva pela ferramenta "entregar_alternativas": "alternativas" (as cinco; a cor
 }
 
 /* Monta a proposta sem confiar nela: a correta nunca muda (só as letras dos distratores são
-   permitidas); quatro idênticos = aprovado; reescrito fora de 0,75×–1,3× do que substitui, ou
-   acima do teto da disciplina, é recusado; cinco alternativas têm de continuar distintas. */
+   permitidas); quatro idênticos = aprovado; reescrito fora de 0,75×–1,3× do que substitui é
+   recusado; cinco alternativas têm de continuar distintas. */
 function aplicaRevisaoDistratores(data: any, bruto: any, disciplina: string): { ok: boolean; motivo: string; nova: any; mudadas: string[]; aprovado: boolean } {
+  void disciplina;   // v74.36b — o teto da disciplina (p75 das provas reais: Biologia 46 caracteres) fica abaixo do que o app gera (50–60); a faixa relativa 0,75×–1,3× é o que protege paridade e ordem
   const falha = (motivo: string) => ({ ok: false, motivo, nova: null, mudadas: [] as string[], aprovado: false });
   if (!bruto || typeof bruto !== "object" || !bruto.alternativas || typeof bruto.alternativas !== "object") return falha("a resposta veio sem as alternativas");
   const gab = String(data?.gabarito || "");
@@ -5300,11 +5303,9 @@ function aplicaRevisaoDistratores(data: any, bruto: any, disciplina: string): { 
   if (iguais) return { ok: true, motivo: "", nova: data, mudadas: [], aprovado: true };
   const p = aplicaCorrecaoAlternativas(data, bruto, LETRAS_ALTERNATIVAS.filter((k) => k !== gab));
   if (!p.ok) return falha(p.motivo === "nenhuma alternativa foi alterada" ? "só a alternativa correta foi alterada, e ela não pode mudar" : p.motivo);
-  const teto = tetosDaDisciplina(disciplina)?.item ?? 0;
   for (const k of p.mudadas) {
     const a = String(antes[k] ?? "").trim().length, b = String(p.nova.alternativas[k] ?? "").trim().length;
     if (a >= 20 && (b < DISTRATOR_RAZAO_MIN * a || b > DISTRATOR_RAZAO_MAX * a)) return falha(`o distrator ${k} mudou de tamanho demais (${a} → ${b} caracteres; o limite é de 75% a 130% do original)`);
-    if (teto && b > teto && b > a) return falha(`o distrator ${k} passou do teto da disciplina (${b} > ${teto} caracteres)`);   // só quando cresceu além do teto; o que já era longo pode encolher
   }
   const distintas = new Set(LETRAS_ALTERNATIVAS.map((k) => normalizaAlternativa(p.nova.alternativas[k])));
   if (distintas.size < LETRAS_ALTERNATIVAS.length) return falha("duas alternativas ficaram iguais");

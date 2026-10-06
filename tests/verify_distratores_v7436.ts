@@ -35,8 +35,7 @@ type SistemaPrompt = any;
 const LETRAS_ALTERNATIVAS = ["A", "B", "C", "D", "E"];
 const JSON_SCHEMA_TXT = "ESQUEMA JSON DE SAÍDA (placeholder do teste) xxxxxxxxxxxxxxxxxxxxxxxx";
 function buildRecorteDaDisciplina() { return ""; } function buildRegraFontesReais() { return ""; } function buildCalibracaoExtensao() { return "CALIBRAÇÃO"; }
-export const __stub: any = { respostas: [] as any[], chamadas: [] as any[], teto: 125 };
-function tetosDaDisciplina(_d: string) { return __stub.teto ? { item: __stub.teto, alvoItem: 100, texto: 900, alvoTexto: 600, comando: 200, alvoComando: 120 } : null; }
+export const __stub: any = { respostas: [] as any[], chamadas: [] as any[] };
 async function callClaudeForJSON(_s: any, prompt: string, _w: any, usos: any[], ferramenta: any, _b: any, etapa: string, _f: any, _t: any, declaradas: any[] | null) {
   __stub.chamadas.push({ etapa, ferramenta: ferramenta.name, prompt, declaradas: (declaradas || []).map((d: any) => d.name) });
   if (usos) usos.push({ etapa });
@@ -129,13 +128,13 @@ t("C1 proposta boa: dois distratores reescritos como quase-acertos, correta inta
   p1.ok && !p1.aprovado && p1.mudadas.join() === "B,D" && p1.nova.alternativas.E === base.alternativas.E && p1.nova.alternativas.A === base.alternativas.A
   && p1.nova.analiseAlternativas.D.comentario.startsWith("troca o hormônio") && p1.nova.analiseAlternativas.E.comentario === "cE" && p1.nova.analiseAlternativas.E.status === "correta");
 t("C2 os quatro idênticos = aprovado (nenhuma mudança, nenhum comentário exigido)", (() => { const p = M.aplicaRevisaoDistratores(base, bruto(base.alternativas), "Biologia"); return p.ok && p.aprovado && p.mudadas.length === 0 && p.nova === base; })());
-t("C3 recusas: resposta vazia; só a correta alterada (ela não pode mudar); distrator reescrito sem comentário; tamanho fora de 0,75×–1,3×; cresceu além do teto da disciplina (encolher pode); duas alternativas iguais",
+t("C3 recusas: resposta vazia; só a correta alterada (ela não pode mudar); distrator reescrito sem comentário; tamanho fora de 0,75×–1,3× (o teto absoluto da disciplina NÃO barra: p75 real < o que o app gera); duas alternativas iguais",
   !M.aplicaRevisaoDistratores(base, null, "Biologia").ok
   && !M.aplicaRevisaoDistratores(base, bruto({ ...base.alternativas, E: "eleva a reabsorção de água via ADH." }), "Biologia").ok && M.aplicaRevisaoDistratores(base, bruto({ ...base.alternativas, E: "eleva a reabsorção de água via ADH." }), "Biologia").motivo.includes("só a alternativa correta")
   && !M.aplicaRevisaoDistratores(base, bruto(quase), "Biologia").ok
   && !M.aplicaRevisaoDistratores(base, bruto({ ...base.alternativas, D: "eleva a reabsorção de sódio no túbulo renal via aldosterona, e não de água, como faria o ADH nos trabalhadores." }, { D: "c" }), "Biologia").ok
   && !M.aplicaRevisaoDistratores(base, bruto({ ...base.alternativas, D: "eleva o sódio." }, { D: "c" }), "Biologia").ok
-  && (() => { __stub.teto = 60; const r = M.aplicaRevisaoDistratores(base, bruto({ ...base.alternativas, D: "eleva a reabsorção de sódio no túbulo renal distal via aldosterona." }, { D: "c" }), "Biologia"); const r2 = M.aplicaRevisaoDistratores({ ...base, alternativas: { ...base.alternativas, D: "eleva a reabsorção de sódio no túbulo renal distal e coletor via aldosterona." } }, bruto({ ...base.alternativas, D: "eleva a reabsorção de sódio no túbulo renal distal via aldosterona." }, { D: "c" }), "Biologia"); __stub.teto = 125; return !r.ok && r.motivo.includes("teto da disciplina") && r2.ok; })()
+  && (() => { const r = M.aplicaRevisaoDistratores(base, bruto({ ...base.alternativas, D: "eleva a reabsorção de sódio no túbulo renal distal via aldosterona." }, { D: "c" }), "Biologia"); return r.ok && r.mudadas.join() === "D"; })()   // v74.36b: 67 caracteres (1,14× dos 59) entram mesmo acima do p75 real da disciplina (46)
   && !M.aplicaRevisaoDistratores(base, bruto({ ...base.alternativas, D: base.alternativas.C }, { D: "c" }), "Biologia").ok);
 t("C4 a correta alterada JUNTO com um distrator: a mudança na correta é descartada (fica a original) e o distrator entra",
   (() => { const p = M.aplicaRevisaoDistratores(base, bruto({ ...quase, E: "outra coisa." }, { B: "x", D: "y" }), "Biologia"); return p.ok && p.nova.alternativas.E === base.alternativas.E && p.mudadas.join() === "B,D"; })());
@@ -146,7 +145,7 @@ t("C5 o prompt da revisão: teste do candidato mediano, correta marcada como int
 
 const fam = [{ name: "entregar_questao" }, { name: "entregar_alternativas" }, { name: "entregar_gabarito" }, { name: "entregar_item_em_portugues" }, { name: "entregar_coerencia_dados" }];
 const fresca = () => JSON.parse(JSON.stringify(base));
-const zera = () => { __stub.respostas = []; __stub.chamadas = []; __stub.teto = 125; };
+const zera = () => { __stub.respostas = []; __stub.chamadas = []; };
 const volta = cala();
 zera(); __stub.respostas = [bruto(quase, { B: "inverte o efeito do ADH", D: "troca o hormônio que retém água pelo que retém sódio" })];
 const d1 = fresca(); const usos1: any[] = [];
