@@ -230,6 +230,17 @@ para o tema — texto-base autoral com dados reais … conferências em código,
 "após o auditor", e o aviso do texto mais próximo deixou de dizer que Artes não pesquisa.
 `enemAutomacao.versao` = 18.37; a entrada de automação não muda.
 
+**Seção 6 só com o botão (app v18.37, decisão do professor de 06/10):** as duas caixas saíram.
+(1) "Revisão matemática independente" (2ª chamada à IA em Matemática, ≈ US$ 0,02 por questão)
+passou a ser **sempre ligada** — o app manda `revisarMatematica: true`; as conferências em código
+(gabarito, alternativas, objeto, fontes, notação) sempre rodaram em toda questão, a custo zero, e a
+frase antiga "validação em duas etapas" (resto de uma versão anterior) foi trocada no texto de ajuda.
+(2) "Manter o cache aquecido por 1 hora (~US$ 0,004)" foi **removida, junto com o marca-passo**
+(v18.21): desde a v74.17 a geração usa o cache de 5 minutos, e a renovação 50 min depois da leva
+encontrava o cache expirado e regravava o prompt inteiro (23 mil tokens) no preço de 1 hora —
+≈ US$ 0,09–0,12 por renovação para economizar no máximo ≈ US$ 0,06 na leva seguinte. O endpoint
+`?aquecer=1` continua no backend, sem uso. O botão "Gerar simulado completo" ocupa a caixa inteira.
+
 Esperado: 1 chamada na maioria das questões (≈ US$ 0,05–0,07 com cache lido; a 1ª da leva ≈ US$
 0,12), 2 chamadas quando uma conferência em código reprova. A medir nas próximas levas reais.
 

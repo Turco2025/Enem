@@ -73,6 +73,10 @@ header.topbar{display:flex;align-items:center;justify-content:space-between;gap:
 .btn.ghost{background:var(--glass);border:1px solid var(--glass-brd);box-shadow:none;color:var(--ink-1);}
 .btn.ghost:hover{background:rgba(255,255,255,.1);color:#fff;}
 .btn.sm{padding:7px 12px;font-size:12.5px;border-radius:9px;}
+/* v18.37 — o botão da seção 6 ocupa a caixa inteira */
+.footer-gerar{justify-content:center;margin-top:14px;}
+.btn.btn-gerar{width:100%;justify-content:center;font-size:20px;font-weight:700;padding:22px 28px;border-radius:16px;letter-spacing:.2px;
+  box-shadow:0 14px 34px -10px rgba(168,85,247,.7), inset 0 1px 0 rgba(255,255,255,.25);}
 /* v18.33 — botão "Interromper geração" */
 .btn.parar{border-color:rgba(248,113,113,.55);color:#fecaca;}
 .btn.parar:hover{background:rgba(248,113,113,.16);color:#fff;}
@@ -585,31 +589,18 @@ body.mode-professor .qcard{box-shadow:0 25px 60px -25px rgba(0,0,0,.6), 0 0 0 1.
 
     <div class="card card-step6">
       <div class="section-title"><span class="num">6</span> Gerar simulado</div>
-      <div class="footer-actions">
-        <!-- Este interruptor controla a revisão matemática independente
-             (review-math-question): uma 2ª chamada à IA que confere contas,
-             fórmulas e gabarito contra 63 livros de referência. Só tem efeito
-             em Matemática (o app o esconde nas outras áreas). Custa ~US$ 0,02
-             por questão; desmarcado, a questão sai só com a geração principal.
-             A auditoria local (sem custo) roda sempre, no card de cada questão. -->
-        <label id="lblRevisaoMat" style="display:none;align-items:center;gap:8px;font-size:13px;color:var(--ink-1);">
-          <input type="checkbox" id="chkValidacao" checked style="width:auto;">
-          Revisão matemática independente — 2ª chamada à IA (~US$ 0,02 por questão), só para Matemática
-        </label>
-        <!-- v18.21 — MARCA-PASSO DO CACHE. O prompt do sistema (modelo do INEP,
-             Matriz, objetos de conhecimento) custa US$ 0,037 para gravar e
-             US$ 0,003 para ler. O cache dura 1 hora; passada a hora, a próxima
-             questão paga a gravação inteira de novo. Marcado, o app renova o
-             cache uma vez, 50 minutos depois da leva, por ~US$ 0,004 — e a
-             questão seguinte sai ~US$ 0,05 mais barata. Desmarcado (padrão),
-             nada roda em segundo plano. -->
-        <label style="display:flex;align-items:center;gap:8px;font-size:13px;color:var(--ink-1);">
-          <input type="checkbox" id="chkAquecerCache" style="width:auto;">
-          Manter o cache aquecido por 1 hora (~US$ 0,004 por renovação) — vale se você for gerar de novo dentro da hora
-        </label>
-        <button class="btn" id="btnGenerate">✨ Gerar simulado completo</button>
+      <!-- v18.37 — decisão do professor (06/10/2026): a seção 6 é só o botão, grande.
+           · A revisão matemática independente (review-math-question, 2ª chamada à IA,
+             ≈ US$ 0,02 por questão, só em Matemática) passou a ser SEMPRE ligada — a
+             caixa saiu; o app manda sempre "revisarMatematica": true. As conferências em código (gabarito, alternativas, objeto, fontes,
+             notação) sempre rodaram em toda questão, a custo zero.
+           · A caixa "Manter o cache aquecido" saiu: desde a v74.17 a geração usa o cache
+             de 5 minutos, e a renovação 50 min depois encontrava o cache expirado e
+             regravava o prompt inteiro no preço de 1 hora (≈ US$ 0,09–0,12 por
+             renovação) para economizar no máximo ≈ US$ 0,06 — era gasto, não economia. -->
+      <div class="footer-actions footer-gerar">
+        <button class="btn btn-gerar" id="btnGenerate">✨ Gerar simulado completo</button>
       </div>
-      <p class="hint" style="margin-top:10px;">A validação em duas etapas faz o agente revisar cada questão (gabarito único, distratores plausíveis, coerência com a dificuldade e com a habilidade) antes de te entregar — recomendado, porém um pouco mais lento.</p>
     </div>
   </div>
 
@@ -732,7 +723,7 @@ body.mode-professor .qcard{box-shadow:0 25px 60px -25px rgba(0,0,0,.6), 0 0 0 1.
     <p class="desc">
       1) Você escolhe área, disciplina e configura cada questão (tema, dificuldade, recurso visual e, se quiser, a competência/habilidade específica). <br><br>
       2) O aplicativo monta, para cada questão, um prompt para o agente contendo o padrão de construção do ENEM (derivado da leitura de 11 provas reais, 2015–2025) e o trecho relevante da Matriz de Referência oficial. Se você não escolher competência/habilidade, o próprio agente decide a mais aderente ao tema e informa qual usou. <br><br>
-      3) Com a validação em duas etapas ativada, uma segunda chamada ao agente revisa a questão contra os critérios pedagógicos (gabarito único, distratores plausíveis, coerência com a dificuldade) e corrige antes de te entregar. <br><br>
+      3) Toda questão passa, antes de chegar a você, pelas conferências em código do backend — gabarito único e coerente com a resolução, cinco alternativas no padrão do ENEM, objeto de conhecimento dentro da disciplina, fonte real (Linguagens e Humanas) e notação —, que pedem ao agente uma correção dirigida quando algo falha. Em Matemática, uma segunda chamada ao agente ainda confere contas, fórmulas e gabarito contra os livros de referência. <br><br>
       4) Gráficos e tabelas são gerados com dados reais criados pelo agente e renderizados no navegador; imagens usam um serviço de geração de imagens gratuito, a partir de uma descrição pedagógica feita pelo agente. <br><br>
       5) Ao final, alterne entre a <strong>versão do aluno</strong> (sem gabarito) e a <strong>versão do professor</strong> (com gabarito, competência/habilidade e comentários) e use "Imprimir/Exportar".
     </p>

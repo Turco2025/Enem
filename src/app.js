@@ -543,7 +543,7 @@ async function salvarSimuladoAtual(){
     area_label: nomeArea,
     disciplina: state.disciplina,
     num_questoes: state.questions.length,
-    validacao_dupla: !!document.getElementById("chkValidacao").checked,
+    validacao_dupla: true,   // v18.37 — a revisão matemática é sempre ligada (a caixa saiu)
     dados: {
       area: state.area,
       disciplina: state.disciplina,
@@ -717,7 +717,6 @@ async function abrirSimuladoSalvo(id){
     const caixaLote = document.getElementById("loteTema");
     if(caixaLote) caixaLote.value = temaReaberto;
     loteTemaAplicado = temaReaberto;
-    document.getElementById("chkValidacao").checked = !!data.validacao_dupla;
     document.getElementById("simuladosPanel").style.display = "none";
     document.getElementById("formPanel").style.display = "none";
     document.getElementById("resultsPanel").style.display = "block";
@@ -1174,12 +1173,9 @@ function limpaInstrucoesVisuais(){
   state.questions.forEach(q => { q.instrucoesVisual = ""; });
 }
 
-// O interruptor da revisão matemática só aparece onde tem efeito (Matemática);
-// nas outras áreas o backend nem chama o revisor, então não há o que decidir.
-function atualizaOpcoesPorArea(){
-  const lbl = document.getElementById("lblRevisaoMat");
-  if(lbl) lbl.style.display = state.area === "matematica" ? "flex" : "none";
-}
+/* v18.37 — a seção 6 é só o botão: a caixa da revisão matemática saiu (sempre ligada) e a
+   do cache também. Mantida vazia porque é chamada de quatro lugares. */
+function atualizaOpcoesPorArea(){}
 
 function renderDisciplinaChips(){
   const wrap = document.getElementById("disciplinaChips");
@@ -2815,13 +2811,10 @@ async function generateQuestion(q){
       });
     };
     q.tentativasFonte = 0;
-    /* O checkbox "chkValidacao" controla a única validação real que existe
-       no backend: a revisão matemática independente (review-math-question,
-       uma 2ª chamada à IA, só para Matemática). O backend lê
-       "revisarMatematica" e só desliga a revisão quando recebe false —
-       qualquer outra coisa mantém o comportamento padrão (revisar). Antes,
-       o app enviava "validar", campo que o backend nunca leu. */
-    const revisarMatematica = document.getElementById("chkValidacao").checked;
+    /* v18.37 — revisão matemática independente SEMPRE ligada (decisão do professor,
+       06/10/2026): review-math-question, 2ª chamada à IA, só em Matemática. O backend
+       só desliga quando recebe "revisarMatematica": false — o app nunca mais manda. */
+    const revisarMatematica = true;
     let resp, rawBody, payload;
     while(true){
       if(run && run.interrompida) throw erroDeInterrupcao();   // v18.33
@@ -3252,49 +3245,11 @@ function relatoCachePorEtapa(n){
   return `\n[cache por etapa] (gravar custa US$ 2,50/M · ler US$ 0,20/M)` + linhas.join("");
 }
 
-/* v18.21 — MARCA-PASSO DO CACHE (medida 2 do plano de custo).
-   O prefixo do sistema custa US$ 0,037 para gravar e US$ 0,003 para ler, e o
-   cache de 1 hora morre passada a hora. Quem gera uma questão avulsa 70 minutos
-   depois da leva paga a gravação inteira de novo. Uma renovação de ~US$ 0,004,
-   50 minutos depois da leva, evita esses US$ 0,05.
-
-   Regras: só com a caixa marcada (padrão DESMARCADA — nada roda em segundo
-   plano sem o professor mandar); UMA renovação agendada por leva, cancelando a
-   anterior; no máximo 3 seguidas, para a aba esquecida aberta não ficar gastando
-   a noite toda; e tudo aparece no console. */
-const AQUECIMENTO_INTERVALO_MS = 50 * 60 * 1000;
-const AQUECIMENTO_MAX_SEGUIDOS = 3;
-let aquecimentoTimer = null, aquecimentoSeguidos = 0;
-
-async function aquecerCacheAgora(){
-  const url = `${QUESTION_BACKEND_URL}?aquecer=1&area=${encodeURIComponent(state.area || "")}`
-    + `&disciplina=${encodeURIComponent(state.disciplina || "")}`
-    + `&recurso=${encodeURIComponent((state.questions && state.questions[0] && state.questions[0].recurso) || "nenhum")}`;
-  const resp = await fetch(url, { headers: { ...authHeaders() } });
-  const payload = await resp.json().catch(() => ({}));
-  if(!resp.ok || payload.error) throw new Error(payload.error || `HTTP ${resp.status}`);
-  console.log(`[cache] aquecido (${(payload.etapas || []).join(", ") || "nenhuma etapa"}) · US$ ${Number((payload.uso && payload.uso.custoUSD) || 0).toFixed(4)}`);
-  return payload;
-}
-
-function agendaMarcaPassoDoCache(){
-  if(aquecimentoTimer){ clearTimeout(aquecimentoTimer); aquecimentoTimer = null; }
-  const caixa = document.getElementById("chkAquecerCache");
-  if(!caixa || !caixa.checked){ aquecimentoSeguidos = 0; return; }
-  if(aquecimentoSeguidos >= AQUECIMENTO_MAX_SEGUIDOS){
-    console.log(`[cache] marca-passo parado após ${AQUECIMENTO_MAX_SEGUIDOS} renovações seguidas sem geração nova.`);
-    return;
-  }
-  aquecimentoTimer = setTimeout(async () => {
-    aquecimentoTimer = null;
-    try{
-      aquecimentoSeguidos++;
-      await aquecerCacheAgora();
-      agendaMarcaPassoDoCache();   // encadeia a próxima, até o teto
-    }catch(e){ console.warn("[cache] marca-passo falhou (sem efeito na geração):", e && e.message); }
-  }, AQUECIMENTO_INTERVALO_MS);
-  console.log(`[cache] marca-passo agendado para daqui a ${Math.round(AQUECIMENTO_INTERVALO_MS / 60000)} min.`);
-}
+/* v18.37 — o marca-passo do cache (v18.21: caixa "Manter o cache aquecido", renovação do
+   cache 50 min depois da leva) foi removido. Desde a v74.17 a geração usa o cache de 5
+   minutos; a renovação achava o cache expirado e regravava o prompt inteiro no preço de
+   1 hora (≈ US$ 0,09–0,12) para economizar no máximo ≈ US$ 0,06 na leva seguinte. O
+   endpoint ?aquecer=1 continua no backend, sem uso. */
 
 async function runPool(items, worker, concurrency, deveParar){   // v18.33: deveParar() → nenhum item novo começa
   let i = 0;
@@ -3416,9 +3371,6 @@ async function generateAll(){
   loadScriptOnce(CDN_URLS.jspdf).catch(() => {});
   const relato = relatoUso();
   if(relato) console.log(relato);
-  // v18.21: leva nova zera o contador do marca-passo e reagenda (ver agendaMarcaPassoDoCache)
-  aquecimentoSeguidos = 0;
-  agendaMarcaPassoDoCache();
 
   // Auditoria da distribuição do gabarito, com o resultado dito em voz alta.
   const presos = state.questions.filter(q => q.gabaritoStatus === "impossivel").length;
@@ -8497,8 +8449,9 @@ if(document.fonts && document.fonts.ready) document.fonts.ready.then(calibraBarr
    "misto"; o lote é aplicado sem recurso e, em seguida, cada questão recebe o seu em
    rodízio de quatro — 1ª sem recurso, 2ª imagem, 3ª tabela, 4ª gráfico, 5ª sem recurso, … —
    o mesmo que o professor faria clicando no recurso de cada questão.
-   v18.37 — só tela (06/10/2026): avisos do fluxo direto de História e Artes (backend v74.33);
-   a entrada de automação não muda.
+   v18.37 — (06/10/2026) avisos do fluxo direto de História e Artes (backend v74.33); seção 6
+   só com o botão (caixas da revisão matemática e do cache removidas; revisão sempre ligada;
+   marca-passo do cache removido). A entrada de automação não muda.
 
    O pedido feito pelo WhatsApp (formulário de 6 perguntas, etapa B1) fica na fila
    `wa_trabalhos`. Quem o executa é um robô (robo/operario.mjs, rodando no GitHub
