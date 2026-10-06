@@ -605,7 +605,7 @@ function buildRegraAlternativas(): string {
 
 1. PARIDADE (alternativas de TEXTO). As cinco têm de ter o MESMO grau de elaboração: mesma extensão aproximada, mesmo nível de detalhe técnico e a mesma quantidade de justificativa embutida. A mais longa não deve passar de cerca de 1,25 vez a mais curta. Nenhuma pode ser a única com uma explicação extra, uma ressalva ou um segundo período.
 2. O GABARITO NÃO PODE SE DENUNCIAR. A alternativa correta nunca é a mais completa, a mais qualificada nem a mais bem redigida do conjunto. Em alternativas de TEXTO ela também nunca se destaca por tamanho: não pode passar de 25% nem de 25 caracteres acima da segunda mais longa. (Em alternativas NUMÉRICAS o tamanho do número é irrelevante — ali manda a ordem crescente do item 3, e os valores não se mexem por causa de tamanho.) Um candidato que não domine a habilidade tem de errar por não dominá-la — jamais por escolher a alternativa visivelmente mais trabalhada.
-3. ORDEM LÓGICA. Alternativas NUMÉRICAS vão sempre em ordem crescente de valor — essa ordem manda, e os valores de cada distrator (que carregam o erro de raciocínio específico dele) nunca podem ser alterados para acertar tamanho de texto. As de TEXTO vão da mais curta para a mais longa; cumprida a paridade do item 1, a diferença entre vizinhas é de poucos caracteres e não sinaliza nada.
+3. ORDEM LÓGICA. Alternativas NUMÉRICAS vão sempre em ordem crescente de valor — essa ordem manda, e os valores de cada distrator (que carregam o erro de raciocínio específico dele) nunca podem ser alterados para acertar tamanho de texto. A letra da correta é a reservada no pedido e NÃO muda: escolha os VALORES dos quatro distratores de modo que, em ordem crescente, a correta caia exatamente nessa letra (tantos valores menores que ela quantas forem as letras antes, tantos maiores quantas forem as letras depois); nunca dois valores iguais; nunca mova a correta para outra letra nem quebre a ordem para encaixá-la. Isso é conferido em código. As de TEXTO vão da mais curta para a mais longa; cumprida a paridade do item 1, a diferença entre vizinhas é de poucos caracteres e não sinaliza nada.
 4. COMO ESCREVER PARA CUMPRIR OS TRÊS (alternativas de TEXTO). Decida o tamanho ANTES — e o tamanho NÃO é você que escolhe: é o da CALIBRAÇÃO DE EXTENSÃO acima, medida caractere a caractere nas provas reais do ENEM. Fixe como extensão-alvo das cinco a MÉDIA que a calibração dá para esta disciplina e escreva todas nessa medida, cada uma com o seu erro de raciocínio próprio. A alternativa CORRETA cabe nessa medida — ela NÃO define o tamanho das outras. Se a correta só ficar defensável acima do teto da calibração, o problema não é o tamanho: é o RECORTE. Escolha outro recorte do mesmo objeto de conhecimento, um que caiba. Se uma alternativa estiver ficando maior que as demais, ENCURTE-A — nunca alongue as outras para alcançá-la, e nunca deixe uma sozinha maior.
 5. A DIFICULDADE NÃO É TAMANHO. Fácil, médio e difícil usam a MESMA extensão de alternativa e de texto-base: a da calibração. A dificuldade vem do número de etapas de raciocínio exigidas e da proximidade do distrator em relação à resposta certa — nunca do volume de texto. Medição das questões já geradas por este app: a alternativa de nível "difícil" saiu 26% maior que a de nível "fácil" na mesma disciplina (Artes 93 → 117; Biologia 113 → 144). É exatamente o que o Guia do Inep proíbe: o candidato tem três minutos por item, e o item difícil não pode ser o item longo.
 6. FORMA IGUAL PARA AS CINCO (é o que garante os itens 1 e 4 na hora de escrever, alternativas de TEXTO). Cada alternativa é UMA única oração, sem segundo período. Proibido em qualquer uma delas: oração explicativa emendada no fim, puxada por "já que", "uma vez que", "algo que", "de modo que" ou travessão; e um segundo argumento somado ao primeiro. E não acrescente à alternativa CORRETA nenhum reforço final do tipo "o que garante…", "algo que os demais não fazem" ou "de forma duradoura" para deixá-la mais convincente que os distratores: é exatamente assim que o gabarito se denuncia.
@@ -4248,6 +4248,109 @@ function radicaisEco(s: unknown): Set<string> {
     .map((w) => w.slice(0, 6)));
 }
 
+/* ─────────── v74.39 — ORDEM DAS ALTERNATIVAS NUMÉRICAS (06/10/2026) ───────────
+   Observação do professor na questão 6 do simulado de Matemática de 06/10: as alternativas
+   numéricas saíram 20%, 44%, 40%, 60%, 728% — fora da ordem crescente que o item 3 da REGRA
+   DAS CINCO ALTERNATIVAS (e o Guia do Inep) exige. A regra estava só no prompt; ninguém
+   conferia em código. Medido no arquivo (01/09–06/10, 221 questões com as cinco alternativas
+   numéricas): 28 fora da ordem crescente (12,7%) e 8 com dois valores iguais; 18 das 28 têm
+   gabarito A ou E — o elaborador põe a correta na letra reservada e quebra a ordem para
+   encaixá-la, em vez de escolher os valores dos distratores em volta dela.
+
+   O que passa a acontecer, em código e sem chamar a IA: quando as CINCO alternativas são
+   números (com ou sem unidade: "44%.", "R$ 1.200,00.", "2,5 m.", "33 mil.", "3 × 10⁴ km³",
+   "7/19.", "30√2 m.", "252π", "10⁻³", "-2 km/h."), lê-se o valor de cada uma; valores iguais
+   viram o problema "repetida" e ordem não crescente vira o problema "ordem" na conferência
+   das alternativas (v74.27) — e a correção dirigida já existente reorganiza SÓ os distratores:
+   a correta fica com a mesma letra, o mesmo valor e o mesmo texto (a letra é a reservada no
+   pedido); as letras antes dela recebem valores menores, as depois, maiores. Só se confere o
+   que se lê com segurança: alternativa com segundo número, expressão algébrica, intervalo,
+   par de valores, ou unidades diferentes entre as cinco, não entra (nada de falso positivo). */
+const ORDEM_NUMERICA_UNIDADE_MAX = 28;   // caracteres de unidade/complemento depois do número ("bilhões de anos", "vezes mais ladrilhos")
+const SUPERSCRITOS_DIGITOS: Record<string, string> = { "⁰": "0", "¹": "1", "²": "2", "³": "3", "⁴": "4", "⁵": "5", "⁶": "6", "⁷": "7", "⁸": "8", "⁹": "9", "⁻": "-" };
+const NUMERO_PTBR_SRC = String.raw`-?\d[\d .]*(?:,\d+)?`;
+
+/* "1.200,50" → 1200.5; "27 000" → 27000; "100.000.000" → 1e8; "0,5" → 0.5; "1.5" → 1.5. */
+function numeroPtBr(s: string): number | null {
+  const m = /^(-?)(\d[\d .]*?)(?:,(\d+))?$/.exec(String(s).trim().replace(/[−–]/g, "-"));
+  if (!m) return null;
+  let inteiro = m[2].replace(/ /g, "");
+  let frac = m[3] ?? "";
+  if (inteiro.includes(".")) {
+    const partes = inteiro.split(".");
+    if (partes.slice(1).every((p) => p.length === 3)) inteiro = partes.join("");                  // 1.200 · 100.000.000 · 1.200,50
+    else if (partes.length === 2 && !frac) { frac = partes[1]; inteiro = partes[0]; }           // 1.5 (decimal com ponto, incomum)
+    else return null;
+  }
+  if (!/^\d+$/.test(inteiro) || (frac && !/^\d+$/.test(frac))) return null;
+  const v = Number(`${m[1]}${inteiro}${frac ? "." + frac : ""}`);
+  return Number.isFinite(v) ? v : null;
+}
+
+/* O valor e a unidade de UMA alternativa numérica, ou null quando ela não é um número único
+   que se leia com segurança. */
+function valorNumerico(alt: unknown): { valor: number; unidade: string } | null {
+  let t = String(alt ?? "").normalize("NFD").replace(/\p{M}/gu, "").trim();   // sem acentos e sem as barras sobre o radicando (√1̅8̅0̅)
+  t = t.replace(/\.$/, "").trim().replace(/[−–]/g, "-").replace(/^(R\$|US\$|€)\s*/i, "");
+  if (!t || !/^[-\d√]/.test(t)) return null;
+  const sup = (x: string) => x.replace(/[⁰¹²³⁴⁵⁶⁷⁸⁹⁻]/g, (c) => SUPERSCRITOS_DIGITOS[c]);
+  const expoente = (x: string) => { const e = Number(sup(x).replace(/[\^\s]/g, "")); return Number.isFinite(e) ? e : null; };
+  let m: RegExpExecArray | null;
+  let valor: number | null = null;
+  let resto = "";
+  if ((m = new RegExp(String.raw`^(${NUMERO_PTBR_SRC})\s*[×x·*]\s*10\s*(\^\s*-?\d+|[⁰¹²³⁴⁵⁶⁷⁸⁹⁻]+)(.*)$`).exec(t))) {   // 3 × 10⁴ · 3,2 x 10^12
+    const mant = numeroPtBr(m[1]), exp = expoente(m[2]);
+    if (mant === null || exp === null) return null;
+    valor = mant * Math.pow(10, exp); resto = m[3];
+  } else if ((m = /^10\s*(\^\s*-?\d+|[⁰¹²³⁴⁵⁶⁷⁸⁹⁻]+)(.*)$/.exec(t))) {   // 10⁻³ · 10²²
+    const exp = expoente(m[1]);
+    if (exp === null) return null;
+    valor = Math.pow(10, exp); resto = m[2];
+  } else if ((m = new RegExp(String.raw`^(${NUMERO_PTBR_SRC})?\s*√\s*(\d+)(?:\s*/\s*(\d+))?(.*)$`).exec(t))) {   // 30√2 m · √2/4 · 10√2 cm
+    const coef = m[1] ? numeroPtBr(m[1]) : 1, den = m[3] ? Number(m[3]) : 1;
+    if (coef === null || !den) return null;
+    valor = coef * Math.sqrt(Number(m[2])) / den; resto = m[4];
+  } else if ((m = new RegExp(String.raw`^(${NUMERO_PTBR_SRC})\s*/\s*(\d+(?:,\d+)?)(.*)$`).exec(t))) {   // 7/19 · 20/9 m
+    const num = numeroPtBr(m[1]), den = numeroPtBr(m[2]);
+    if (num === null || !den) return null;
+    valor = num / den; resto = m[3];
+  } else if ((m = new RegExp(String.raw`^(${NUMERO_PTBR_SRC})\s*(π|pi)(?![a-z])(.*)$`).exec(t))) {   // 252π
+    const coef = numeroPtBr(m[1]);
+    if (coef === null) return null;
+    valor = coef * Math.PI; resto = m[3];
+  } else if ((m = new RegExp(String.raw`^(${NUMERO_PTBR_SRC})(.*)$`).exec(t))) {
+    valor = numeroPtBr(m[1]); resto = m[2];
+    if (valor === null) return null;
+  } else return null;
+  resto = resto.trim();
+  const mult = /^(mil|milh(?:ao|oes)|bilh(?:ao|oes))(?![a-z])\s*(.*)$/i.exec(resto);   // 33 mil · 2,1 bilhões de anos
+  if (mult) { valor *= /^mil$/i.test(mult[1]) ? 1e3 : /^milh/i.test(mult[1]) ? 1e6 : 1e9; resto = mult[2].trim(); }
+  // unidade/complemento: letras, símbolos de unidade e espaços — nenhum outro algarismo, nada de operador
+  if (/\d/.test(resto) || resto.length > ORDEM_NUMERICA_UNIDADE_MAX || !/^[%‰°ºa-zA-ZµΩ²³/·()\s-]*$/.test(resto)) return null;
+  const unidade = resto.toLowerCase().replace(/oes(?![a-z])/g, "ao").replace(/([a-z])(es|s)(?![a-z])/g, "$1").replace(/\s+/g, " ").trim();
+  return { valor, unidade };
+}
+
+/* As cinco alternativas numéricas: ordem crescente e valores distintos. "nao_aplicavel" quando
+   alguma não é número único legível ou as unidades diferem entre as cinco. */
+function conferenciaOrdemNumerica(alts: any): { estado: string; tipo: string; detalhe: string; valores: number[] } {
+  const na = { estado: "nao_aplicavel", tipo: "", detalhe: "", valores: [] as number[] };
+  if (!alts || typeof alts !== "object") return na;
+  const lidos = LETRAS_ALTERNATIVAS.map((k) => valorNumerico(alts[k]));
+  if (lidos.some((x) => x === null)) return na;
+  const unidades = new Set(lidos.map((x) => x!.unidade));
+  if (unidades.size !== 1) return na;
+  const valores = lidos.map((x) => x!.valor);
+  const txt = (k: string) => String(alts[k] ?? "").trim().replace(/\.$/, "");
+  const iguais = (a: number, b: number) => Math.abs(a - b) <= 1e-9 * Math.max(1, Math.abs(a), Math.abs(b));
+  const repetidas: string[] = [];
+  for (let i = 0; i < 5; i++) for (let j = i + 1; j < 5; j++) if (iguais(valores[i], valores[j])) repetidas.push(`${LETRAS_ALTERNATIVAS[i]} e ${LETRAS_ALTERNATIVAS[j]} (${txt(LETRAS_ALTERNATIVAS[i])})`);
+  if (repetidas.length) return { estado: "corrigir", tipo: "repetida", detalhe: `valores iguais em ${repetidas.join("; ")}`, valores };
+  const crescente = valores.every((v, i) => i === 0 || v > valores[i - 1]);
+  if (!crescente) return { estado: "corrigir", tipo: "ordem", detalhe: `fora da ordem crescente: ${LETRAS_ALTERNATIVAS.map((k) => `${k}) ${txt(k)}`).join(" · ")}`, valores };
+  return { estado: "ok", tipo: "", detalhe: "", valores };
+}
+
 /* ─────────── v74.27 (b) — IDIOMA DO ITEM (26/09/2026) ───────────
    Relato do professor: "parte das questões de Língua Estrangeira sai com
    comando e alternativas em inglês, e no ENEM real eles vêm em português".
@@ -4557,6 +4660,13 @@ function conferenciaAlternativas(d: any): { estado: string; problemas: { tipo: s
       }
     }
   }
+  /* 5. v74.39 — As cinco NUMÉRICAS: ordem crescente e valores distintos (item 3 da regra). A
+     correta não se mexe (letra reservada, mesmo valor); a correção reorganiza só os distratores. */
+  const ordem = conferenciaOrdemNumerica(alts);
+  if (ordem.estado === "corrigir") {
+    const distratores = LETRAS_ALTERNATIVAS.filter((k) => k !== gab);
+    problemas.push({ tipo: ordem.tipo, letras: distratores, termos: [], detalhe: ordem.detalhe });
+  }
   const letras = [...new Set(problemas.flatMap((p) => p.letras))].sort();
   return { estado: problemas.length ? "corrigir" : "ok", problemas, letras };
 }
@@ -4595,6 +4705,11 @@ function buildCorrecaoAlternativasPrompt(data: any, conf: { problemas: { tipo: s
     if (p.tipo === "eco") ordens.push(`· ECO DO COMANDO: ${p.detalhe}. Reescreva a CORRETA sem essa(s) palavra(s), com formulação equivalente e o mesmo sentido. Se for termo técnico indispensável, mantenha-o na correta e faça-o aparecer também, com naturalidade, em pelo menos dois distratores (reescrevendo-os só o necessário).`);
     if (p.tipo === "exagero") ordens.push(`· EXAGERO (pista de tom) em ${p.detalhe}. Reescreva cada uma dessas alternativas SEM esses termos e sem equivalentes (${EXAGEROS_EXIBICAO}; nem os absolutos ${ABSOLUTOS_EXIBICAO}). O distrator continua errado pelo CONTEÚDO, como QUASE-ACERTO da correta — a mesma frase com UM elemento trocado (agente, direção, etapa, causa↔efeito, contexto) — e não como negação, rebaixamento ou versão extrema da ideia. Se a apontada for a correta, ela continua dizendo a mesma coisa certa, sem o termo.`);   // v74.36
     if (p.tipo === "ecoTexto") ordens.push(`· ECO DO TEXTO-BASE: ${p.detalhe}. O candidato acha a resposta por casamento de palavras. Preferência: reescreva DOIS distratores para que também usem essas palavras com naturalidade (cada um mantendo o seu erro de raciocínio); se não ficar natural, parafraseie a CORRETA sem essas palavras, com o mesmo sentido.`);   // v74.36
+    if (p.tipo === "ordem") {   // v74.39
+      const antes = LETRAS_ALTERNATIVAS.indexOf(gab), depois = 4 - antes;
+      ordens.push(`· ORDEM CRESCENTE: ${p.detalhe}. As cinco alternativas são numéricas e têm de ficar em ORDEM CRESCENTE de valor, com a CORRETA (${gab}) exatamente onde está — mesma letra, mesmo valor, mesmo texto. Reorganize SÓ os distratores: ${antes ? `a(s) ${antes} letra(s) antes da ${gab} recebe(m) valor(es) MENOR(ES) que o da correta` : `nenhuma letra antes da ${gab}`}${antes && depois ? " e " : ""}${depois ? `a(s) ${depois} letra(s) depois da ${gab} recebe(m) valor(es) MAIOR(ES) que o da correta` : ""}, tudo em ordem crescente. Primeiro tente apenas REDISTRIBUIR os valores que já existem entre as letras dos distratores (cada valor leva junto o seu comentário, que descreve o erro de raciocínio dele); se a quantidade de valores menores e maiores não permitir, troque o MENOR número possível de distratores por um valor novo e plausível, resultado de um erro de raciocínio específico (descreva esse erro no comentário). Nunca dois valores iguais; nunca mude a correta; mantenha a mesma unidade e a mesma forma de escrever o número.`);
+    }
+    if (p.tipo === "repetida") ordens.push(`· VALORES REPETIDOS: ${p.detalhe}. Duas alternativas não podem ter o mesmo valor. Reescreva o(s) distrator(es) repetido(s) com um valor plausível e DISTINTO, resultado de um erro de raciocínio específico (descreva-o no comentário), mantendo a ordem crescente das cinco, a mesma unidade e a correta (${gab}) intacta — mesma letra, mesmo valor, mesmo texto.`);   // v74.39
   }
   const linhas = LETRAS_ALTERNATIVAS.map((k) => `${k}) ${String(alts[k] || "")}${k === gab ? "   ← CORRETA" : ""}${conf.letras.includes(k) ? "   ← CORRIGIR" : ""}`).join("\n");
   const coments = LETRAS_ALTERNATIVAS.filter((k) => conf.letras.includes(k) || conf.problemas.some((p) => p.tipo === "eco" || p.tipo === "ecoTexto"))
@@ -4605,7 +4720,7 @@ O QUE CORRIGIR
 ${ordens.join("\n")}
 
 EM TODA ALTERNATIVA QUE VOCÊ REESCREVER: uma única oração; mesmo registro, mesma construção sintática e extensão próxima das demais (paralelismo e paridade); nenhum dos termos proibidos; nada de pista pelo tom; o distrator segue plausível e com um erro de raciocínio identificável; a correta segue a única defensável.
-NÃO MEXA: no texto-base, no comando, na letra correta (continua ${gab}), na ordem das alternativas e nas alternativas que não foram apontadas — devolva-as IDÊNTICAS, caractere por caractere.
+NÃO MEXA: ${conf.problemas.some((p) => p.tipo === "ordem" || p.tipo === "repetida") ? `no texto-base, no comando e na alternativa correta (continua ${gab}, com o mesmo valor e o mesmo texto); os distratores que você não precisar alterar voltam IDÊNTICOS, caractere por caractere.` : `no texto-base, no comando, na letra correta (continua ${gab}), na ordem das alternativas e nas alternativas que não foram apontadas — devolva-as IDÊNTICAS, caractere por caractere.`}
 
 TEXTO-BASE (só para contexto)
 ${String(data?.textoBase || "").slice(0, conf.problemas.some((p) => p.tipo === "ecoTexto") ? 4000 : 2500)}
@@ -6726,6 +6841,7 @@ function selfTestResponse() {
     JSON.stringify([CORRECOES_DADOS_MAX, MS_MINIMO_PARA_CORRIGIR_DADOS, DADOS_CONTAGEM_MAX, DADOS_SUBSTANTIVOS_CONTAGEM, DADOS_SUBSTANTIVOS_DURACAO, [...DADOS_ROTULOS_AGREGADOS], DADOS_GRANDEZA_UNIDADES.map(([re, u]) => [String(re), u]), DADOS_UNIDADES_CURTAS, String(DADOS_MARCA_MIN), String(DADOS_MARCA_MAX), DADOS_VARIACAO, String(DADOS_ANTES_DO_VALOR), String(DADOS_OBJETO_GENERICO)]),
     objetoDeParametrosVazados.toString(), recolheLetrasSoltas.toString(), letrasFaltantes.toString(), normalizarCamposEstruturados.toString(), alternativasDeString.toString(),   // v74.38
     buildAlternativasFaltantesPrompt.toString(), aplicaAlternativasFaltantes.toString(), garantirAlternativasCompletas.toString(), buildCorrecaoAlternativasIncompletas.toString(), JSON.stringify([ALTERNATIVAS_FALTANTES_MAX, String(RE_PARAMETRO_VAZADO)]),
+    conferenciaOrdemNumerica.toString(), valorNumerico.toString(), numeroPtBr.toString(), JSON.stringify([ORDEM_NUMERICA_UNIDADE_MAX, SUPERSCRITOS_DIGITOS, NUMERO_PTBR_SRC]),   // v74.39
   ].join(String.fromCharCode(0));
   return jsonResponse({
     selftest: true,
@@ -7318,6 +7434,30 @@ function selfTestResponse() {
             && linhasDaBiblioteca.toString().includes(".range(de, de + BIBLIOTECA_PAGINA - 1)") && BIBLIOTECA_PAGINA === 1000;
         })(),
         /* v74.34 — ferramenta de entrega única para os quatro recursos (pedido do professor, 06/10/2026). */
+        /* v74.39 — ordem crescente e valores distintos nas alternativas numéricas (questão 6 do simulado
+           de Matemática de 06/10/2026: 20%, 44%, 40%, 60%, 728%), conferidos em código; a correção
+           dirigida reorganiza só os distratores, com a correta na letra reservada. */
+        v7439_ordemNumerica: (() => {
+          const v = (s: string) => valorNumerico(s)?.valor ?? null;
+          const u = (s: string) => valorNumerico(s)?.unidade ?? null;
+          const perto = (a: number | null, b: number) => a !== null && Math.abs(a - b) < 1e-9 * Math.max(1, Math.abs(b));
+          const an = (c: string) => { const o: any = {}; for (const L of LETRAS_ALTERNATIVAS) o[L] = { status: L === c ? "correta" : "incorreta", comentario: "c" + L }; return o; };
+          const q6 = { textoBase: "t", comando: "c", gabarito: "B", alternativas: { A: "20%.", B: "44%.", C: "40%.", D: "60%.", E: "728%." }, analiseAlternativas: an("B") };
+          const c6 = conferenciaAlternativas(q6);
+          const okNum = conferenciaAlternativas({ ...q6, alternativas: { A: "20%.", B: "44%.", C: "60%.", D: "72,8%.", E: "144%." } });
+          const rep = conferenciaAlternativas({ ...q6, gabarito: "C", alternativas: { A: "9 m².", B: "15 m².", C: "15 m².", D: "30 m².", E: "45 m²." }, analiseAlternativas: an("C") });
+          const prompt = buildCorrecaoAlternativasPrompt(q6, c6);
+          return perto(v("44%."), 44) && u("44%.") === "%" && perto(v("R$ 1.200,00."), 1200) && perto(v("27 000 m³."), 27000) && u("27 000 m³.") === "m³" && perto(v("100.000.000"), 1e8) && perto(v("0,020 g/h"), 0.02)
+            && perto(v("33 mil."), 33000) && perto(v("2,1 bilhões de anos."), 2.1e9) && u("2,1 bilhões de anos.") === u("0,7 bilhão de anos.") && perto(v("3 × 10⁴"), 30000) && perto(v("1,2 × 10⁻³ C."), 0.0012) && perto(v("10⁻³"), 0.001)
+            && perto(v("7/19."), 7 / 19) && perto(v("20/9 m."), 20 / 9) && perto(v("30√2 m."), 30 * Math.SQRT2) && perto(v("√1̅8̅0̅"), Math.sqrt(180)) && perto(v("252π"), 252 * Math.PI) && perto(v("-2 km/h."), -2) && perto(v("45°."), 45) && u("6 Ω.") === "ω"
+            && u("1 hora.") === u("3 horas.") && u("9 pintores.") === "pintor" && u("1,4 vez maior.") === u("14 vezes maior.")
+            && v("4 e 5.") === null && v("x + 3.") === null && v("t = 5") === null && v("1 para 6.") === null && v("2,4 A e 1,2 A.") === null && v("5 elevado a (-2).") === null && v("menor que a tangente de 30°.") === null && v("R$ 400,00, R$ 400,00 e R$ 400,00.") === null && v("3/7 aproximado, ou seja, 30/70") === null
+            && conferenciaOrdemNumerica({ A: "2 m.", B: "4 m.", C: "600 cm.", D: "8 m.", E: "9 m." }).estado === "nao_aplicavel"
+            && c6.estado === "corrigir" && c6.problemas.length === 1 && c6.problemas[0].tipo === "ordem" && c6.problemas[0].letras.join() === "A,C,D,E" && c6.problemas[0].detalhe.startsWith("fora da ordem crescente: A) 20% · B) 44% · C) 40%")
+            && okNum.estado === "ok" && rep.estado === "corrigir" && rep.problemas[0].tipo === "repetida" && rep.problemas[0].detalhe === "valores iguais em B e C (15 m²)" && rep.problemas[0].letras.join() === "A,B,D,E"
+            && prompt.includes("· ORDEM CRESCENTE: fora da ordem crescente") && prompt.includes("a(s) 1 letra(s) antes da B recebe(m) valor(es) MENOR(ES)") && prompt.includes("a(s) 3 letra(s) depois da B recebe(m) valor(es) MAIOR(ES)") && prompt.includes("apenas REDISTRIBUIR") && prompt.includes("com o mesmo valor e o mesmo texto") && !prompt.includes("na ordem das alternativas")
+            && buildRegraAlternativas().includes("A letra da correta é a reservada no pedido e NÃO muda") && buildRegraAlternativas().includes("Isso é conferido em código.");
+        })(),
         /* v74.38 — as cinco alternativas, sempre (questões 6 e 9 do simulado de Matemática de 06/10/2026):
            parâmetros vazados desdobrados, letras soltas recolhidas, letra faltante completada pela IA,
            questão refeita em último caso, erro em vez de questão "pronta" sem alternativas. */

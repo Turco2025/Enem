@@ -177,6 +177,39 @@ Teste: `verify_fontes_app.js` — 19 verificações; as seções B e C bis prova
 quatro marcas ligadas ao mesmo tempo nenhuma conferência bloqueia, e que nenhuma delas tem sequer um
 `return true` no corpo. `verify_gabarito_coerente.js` H1 passou a exigir o contrário do que exigia.
 
+## Alternativas numéricas em ordem crescente e sem valor repetido, conferidas em código (generate-question v74.39, 06/10/2026)
+
+Observação do professor na questão 6 do simulado de Matemática de 06/10: as alternativas saíram **20%, 44%, 40%, 60%,
+728%** — fora da ordem crescente que o item 3 da REGRA DAS CINCO ALTERNATIVAS (e o Guia do Inep) exige. A regra estava só
+no prompt; ninguém conferia em código. Medido no arquivo (01/09–06/10): **221 questões com as cinco alternativas numéricas,
+28 fora da ordem crescente (12,7%) e 8 com dois valores iguais**; 18 das 28 têm gabarito A ou E — o elaborador põe a
+correta na letra reservada e quebra a ordem para encaixá-la, em vez de escolher os valores dos distratores em volta dela.
+Dois conjuntos com radicais que *pareciam* em ordem também estão fora (30√3 ≈ 52 > 45; 4√10 ≈ 12,6 > 5√2 ≈ 7,1), e um tem
+dois valores iguais disfarçados (2√50 = 10√2).
+
+- **Leitor de número** (`valorNumerico`, `numeroPtBr`): percentual, moeda, milhar com ponto ou espaço, decimal com vírgula,
+  unidade (normalizada: plural, acento), "mil"/"milhões"/"bilhões", notação científica (`3 × 10⁴`), potência de dez
+  (`10⁻³`), fração (`7/19`), radical (`30√2`, com as barras sobre o radicando), π, negativo, grau. O que não se lê com
+  segurança **não entra** (par de valores, álgebra, "1 hora e 30 minutos", "elevado a", intervalo, texto, unidades
+  diferentes entre as cinco) — nada de falso positivo.
+- **Conferência** (`conferenciaOrdemNumerica`, dentro de `conferenciaAlternativas`, custo zero): com as cinco numéricas,
+  valores iguais viram o problema **"repetida"** e ordem não crescente vira **"ordem"**; as letras apontadas são os quatro
+  distratores — a correta não se mexe.
+- **Correção dirigida** (a mesma de v74.27, `entregar_alternativas`, mesmo cache): a ordem ao modelo diz quantas letras antes
+  da correta recebem valores menores e quantas depois recebem maiores, pede para **redistribuir primeiro** os valores que já
+  existem (cada um com o seu comentário) e, só se a contagem não permitir, trocar o menor número possível de distratores por
+  um valor novo com erro de raciocínio descrito. A proposta só é aceita se as cinco ficam em ordem, distintas, a correta
+  idêntica (mesma letra, valor e texto — mudança nela é descartada) e o gabarito coerente. Até 2 tentativas (≈ US$ 0,01 cada).
+- **Prevenção no bloco cacheado**: o item 3 da regra passa a dizer que a letra da correta é a reservada e não muda, que os
+  valores dos distratores é que se escolhem em volta dela, e que isso é conferido em código (uma regravação de cache de
+  ≈ US$ 0,02 por disciplina × recurso após o deploy).
+
+Nada muda na qualidade pedagógica nem na Matriz: é a regra que já existia, agora garantida. Teste:
+`deno run -A tests/verify_ordem_numerica_v7439.ts supabase/functions/generate-question/index.ts` (25: leitor sobre os
+formatos reais do arquivo, 21 conjuntos reais fora de ordem, 5 repetidos, 12 em ordem, 7 que não se aplicam, integração,
+correção com dublê, pedido, regra, selftest). Ensaio do handler: 2 cenários novos (35/35). Selftest de produção:
+`v7439_ordemNumerica` (57 verificações).
+
 ## As cinco alternativas, sempre: reparo, completar o que falta, refazer, nunca entregar sem (generate-question v74.38, 06/10/2026)
 
 Defeito relatado pelo professor: simulado de Matemática *"Cilindros, prismas, esferas, troncos"* (20 questões), a
