@@ -1583,7 +1583,9 @@ const DISCIPLINAS_SEM_PESQUISA_WEB = ["Literatura", "Língua Portuguesa"];   // 
       último recurso, DENTRO da própria chamada de elaboração, com teto de UMA
       busca (BUSCA_FLUXO_DIRETO / buscaDaGeracao).
    Conferências em código continuam todas (campo "fonte", dossiê, ineditismo,
-   alternativas, gabarito, objeto, texto da biblioteca intocável); o que foi
+   alternativas, gabarito, objeto, texto da biblioteca intocável) e ganham duas
+   só do fluxo direto sem texto: citação literal exige URL devolvida pela busca,
+   e texto "proprio" não cita nem atribui (conferenciaTextoProprio); o que foi
    dispensado é a chamada do auditor (garantirFontesReais). Reprovação em
    código → UMA reescrita, não duas (opção B do professor: REELABORACOES_FLUXO_DIRETO). */
 const DISCIPLINAS_FLUXO_DIRETO = ["História", "Artes"];
@@ -5203,6 +5205,53 @@ function existenciaProvadaPeloValidador(dossie: any, fonteDaQuestao: any, estado
 
 /* Roda a validação e, reprovando, MARCA a questão para bloqueio. Não repara:
    a regra 8 manda interromper a questão afetada e pedir a fonte ao professor. */
+/* v74.33 — TEXTO PRÓPRIO NÃO CITA NEM ATRIBUI (decisão do professor, 06/10/2026). No fluxo
+   direto não há auditor; era ele quem pegava "nenhumaFraseAtribuidaIndevidamente". Em código,
+   só no fluxo direto e só com "tipoUso": "proprio" sem dossiê: o texto-base não pode trazer
+   trecho entre aspas com tamanho de citação (TEXTO_PROPRIO_ASPAS_MIN caracteres — aspas de
+   termo, como a chamada "Belle Époque", passam), atribuição a nome próprio ("segundo Fulano",
+   "de acordo com o IBGE", "como escreveu Machado"), marca de fonte ("Fonte:", "Disponível
+   em:", "Adaptado de") nem linha de referência (SOBRENOME, Nome. …). Falha → reescrita única:
+   ou a questão declara parafrase/citacao com a fonte completa, ou tira as aspas e a atribuição. */
+const TEXTO_PROPRIO_ASPAS_MIN = 60;
+/* Nome próprio (uma ou mais palavras com inicial maiúscula, com "de/da/do" no meio) ou sigla. */
+const TP_NOME = String.raw`(?:[A-ZÁÉÍÓÚÂÊÔÃÕÇ][\p{L}'’.-]*|[A-ZÁÉÍÓÚÂÊÔÃÕÇ]{2,})(?:\s+(?:d[aeo]s?\s+)?[A-ZÁÉÍÓÚÂÊÔÃÕÇ][\p{L}'’.-]*)*`;
+const TP_MEIO = String.raw`(?:\p{Ll}[\p{L}'’-]*\s+){0,3}`;   // até três palavras minúsculas ("o historiador", "dados do")
+const TP_VERBOS = String.raw`(?:afirm(?:a|ou)|escreveu|observ(?:a|ou)|defend(?:e|eu)|apont(?:a|ou)|sustent(?:a|ou)|diz|disse|registr(?:a|ou)|relat(?:a|ou)|descrev(?:e|eu)|lembr(?:a|ou)|explic(?:a|ou))`;
+/* "segundo" ORDINAL não é atribuição: "o segundo governo Vargas", "no segundo mandato de Lula",
+   "Segundo Reinado". Fica de fora quando vem depois de artigo/determinante ou antes de um
+   substantivo de ordem. */
+const TP_ORDINAL = String.raw`(?!(?:governo|mandato|turno|semestre|per[ií]odo|ciclo|momento|plano|tempo|ano|lugar|grau|reinado|imp[ée]rio|setor|passo|cap[ií]tulo|ato|dia|m[êe]s|s[ée]culo|trimestre|ex[ée]rcito|bloco|andar|volume|tomo|n[ií]vel|estágio|surto|choque)\b)`;
+const TP_ANTES_ORDINAL = String.raw`(?<!\b(?:o|a|no|na|do|da|ao|um|uma|seu|sua|este|esta|esse|essa|pelo|pela|neste|nesta|nesse|nessa|aquele|daquele|naquele|meu|nosso|cada)\s)`;
+const TP_ATRIBUICOES: RegExp[] = [
+  new RegExp(String.raw`${TP_ANTES_ORDINAL}\bsegundo\s+${TP_ORDINAL}${TP_MEIO}${TP_NOME}`, "u"),     // "segundo Fausto", "segundo o IBGE" (minúsculo: no meio da frase)
+  new RegExp(String.raw`\bSegundo\s+${TP_ORDINAL}\p{Ll}[\p{L}'’-]*\s+${TP_MEIO}${TP_NOME}`, "u"),   // "Segundo o historiador Boris Fausto" — nunca "Segundo Reinado"
+  new RegExp(String.raw`\b[Dd]e acordo com\s+${TP_MEIO}${TP_NOME}`, "u"),
+  new RegExp(String.raw`\b[Nn]as palavras de\s+${TP_MEIO}${TP_NOME}`, "u"),
+  new RegExp(String.raw`\b[Cc]omo ${TP_VERBOS}\s+${TP_MEIO}${TP_NOME}`, "u"),                 // "como escreveu Machado de Assis"
+];
+function conferenciaTextoProprio(d: any): { estado: string; motivo: string } {
+  const texto = String((d && d.textoBase) || "").replace(/\r\n?/g, "\n");
+  if (!texto.trim()) return { estado: "ok", motivo: "" };
+  const problemas: string[] = [];
+  const aspas = [...texto.matchAll(/[“"«‘]([^”"»’]{1,2000})[”"»’]/g)].map((m) => m[1].trim()).filter((t) => t.length >= TEXTO_PROPRIO_ASPAS_MIN);
+  if (aspas.length) problemas.push(`trecho entre aspas com tamanho de citação (${aspas.length}: "${aspas[0].slice(0, 60)}…")`);
+  for (const re of TP_ATRIBUICOES) {
+    const m = texto.match(re);
+    if (m) { problemas.push(`atribuição a terceiro ("${m[0].slice(0, 60)}")`); break; }
+  }
+  const marca = texto.match(/(?:^|\n|\()\s*(?:Adaptado de|Extraído de)\b|\b(?:Fonte:|Disponível em:)\s/);
+  if (marca) problemas.push(`marca de fonte ("${marca[0].trim()}")`);
+  const linhas = texto.split("\n").map((l) => l.trim()).filter(Boolean);
+  const ultima = linhas[linhas.length - 1] || "";
+  if (linhas.length > 1 && /^[A-ZÁÉÍÓÚÂÊÔÃÕÇ]{2,}(?:\s+[A-ZÁÉÍÓÚÂÊÔÃÕÇ]{2,})*,\s/.test(ultima) && ultima.length <= 240) problemas.push(`linha de referência no fim do texto ("${ultima.slice(0, 60)}")`);
+  if (!problemas.length) return { estado: "ok", motivo: "" };
+  return {
+    estado: "proprio_com_atribuicao",
+    motivo: `o campo "fonte" declara texto PRÓPRIO ("proprio"), mas o texto-base traz ${problemas.join("; ")}. Texto próprio não cita nem atribui nada a pessoa, obra ou instituição: ou reescreva o texto-base sem aspas, sem "segundo/de acordo com" e sem referência, ou declare "parafrase" (sem aspas, com autor/instituição, obra, ano e referência reais e completos) — citação literal só com a URL devolvida pela busca desta geração`,
+  };
+}
+
 async function garantirFontesReais(
   data: any, system: SistemaPrompt, usos: any[], restanteMs: number,
   area: string, buscas: { url: string; title: string }[], dossiePrevio?: any, disciplina = "",
@@ -5325,6 +5374,18 @@ async function garantirFontesReais(
       data.fonteNaoVerificada = { motivo: diag.motivo, mensagem: MENSAGEM_FONTE_BLOQUEIO, etapa: "conferência estrutural" };
       console.error(`[fontes] BLOQUEADA (fluxo direto): ${diag.motivo}`);
       return diag;
+    }
+    /* v74.33 (b) — texto próprio não cita nem atribui (ver conferenciaTextoProprio). */
+    if (!dossiePrevio && det.tipoUso === "proprio") {
+      const tp = conferenciaTextoProprio(data);
+      if (tp.estado !== "ok") {
+        diag.estado = "reprovado";
+        diag.determinista = tp.estado;
+        diag.motivo = tp.motivo;
+        data.fonteNaoVerificada = { motivo: tp.motivo, mensagem: MENSAGEM_FONTE_BLOQUEIO, etapa: "conferência estrutural" };
+        console.error(`[fontes] BLOQUEADA (fluxo direto): ${tp.motivo.slice(0, 220)}`);
+        return diag;
+      }
     }
     diag.estado = "aprovado";
     diag.auditor = "dispensado_fluxo_direto";
@@ -5573,7 +5634,7 @@ function selfTestResponse() {
     BUSCA_PADRAO,
     BUSCA_BIOLOGIA,
     BUSCA_FLUXO_DIRETO, fluxoDireto.toString(), modoFluxoDireto.toString(), buildBlocoFluxoDiretoAutoral.toString(),   // v74.33
-    JSON.stringify([DISCIPLINAS_FLUXO_DIRETO, REELABORACOES_FLUXO_DIRETO, BUSCAS_FLUXO_DIRETO]),
+    JSON.stringify([DISCIPLINAS_FLUXO_DIRETO, REELABORACOES_FLUXO_DIRETO, BUSCAS_FLUXO_DIRETO, TEXTO_PROPRIO_ASPAS_MIN, TP_ATRIBUICOES.map(String)]), conferenciaTextoProprio.toString(),
   ].join(String.fromCharCode(0));
   return jsonResponse({
     selftest: true,
@@ -6199,6 +6260,16 @@ function selfTestResponse() {
             && escolheTextoMaisProximo("Barroco mineiro", [{ id: 1, temas: ["barroco", "aleijadinho"], autor: "", obra: "", usos: 0 }], () => 0)!.comuns === 1
             && escolheTextoMaisProximo("Grafite urbano", [{ id: 1, temas: ["barroco", "aleijadinho"], autor: "", obra: "", usos: 0 }], () => 0)!.comuns === 0 && consultarTextoMaisProximo.toString().includes("exigeRelacaoTematica && usadoHaPouco(row, agora)")
             && consultarTextosEnem.toString().includes("usaOrdemIA(o.disciplina) || fluxoDireto(o.disciplina)")
+            && conferenciaTextoProprio({ textoBase: 'Em 1897 o arraial foi destruído. A chamada "Belle Époque" carioca veio depois.' }).estado === "ok"
+            && conferenciaTextoProprio({ textoBase: "" }).estado === "ok" && conferenciaTextoProprio({ textoBase: "Segundo o IBGE, a população urbana passou de 44% em 1960 para 84% em 2010." }).estado === "proprio_com_atribuicao"
+            && conferenciaTextoProprio({ textoBase: 'O autor escreveu: "' + "x".repeat(70) + '" e seguiu.' }).estado === "proprio_com_atribuicao"
+            && conferenciaTextoProprio({ textoBase: "Texto do elaborador sobre o sertão.\n\nCUNHA, Euclides da. Os Sertões. 1902." }).estado === "proprio_com_atribuicao"
+            && conferenciaTextoProprio({ textoBase: "Texto. Disponível em: https://x.org" }).estado === "proprio_com_atribuicao"
+            && conferenciaTextoProprio({ textoBase: "Como escreveu Machado de Assis, a vida é assim." }).estado === "proprio_com_atribuicao"
+            && conferenciaTextoProprio({ textoBase: "De acordo com as atas da câmara, o comércio cresceu. Segundo estimativas da época, dobrou." }).estado === "ok"
+            && conferenciaTextoProprio({ textoBase: "O Segundo Reinado (1840–1889) e o segundo governo Vargas; no segundo mandato de Lula, o Pré-sal. Dom Pedro II, o segundo imperador do Brasil." }).estado === "ok"
+            && conferenciaTextoProprio({ textoBase: "A reforma, segundo Darcy Ribeiro, mudou a escola." }).estado === "proprio_com_atribuicao"
+            && TEXTO_PROPRIO_ASPAS_MIN === 60 && g.includes("const tp = conferenciaTextoProprio(data);") && g.indexOf("conferenciaTextoProprio(data)") < g.indexOf('diag.auditor = "dispensado_fluxo_direto"')
             && g.includes('diag.auditor = "dispensado_fluxo_direto"') && g.includes('diag.determinista = "citacao_sem_busca"') && g.indexOf("if (diag.fluxoDireto) {") > g.indexOf("conferenciaIneditismo(data, dossiePrevio)") && g.indexOf("if (diag.fluxoDireto) {") < g.indexOf("if (restanteMs < 30_000)")
             && c.includes("if (fontesDiag.fluxoDireto) {");
         })(),

@@ -2954,6 +2954,7 @@ async function generateQuestion(q){
       ultimoRecurso: payload.fontesDiag.ultimoRecurso || null,
       fontesDescartadas: fontesEvitar.length,
       doEnem: payload.fontesDiag.doEnem || null,   // v18.29 — texto-base da prova oficial do ENEM (backend v74.25)
+      fluxoDireto: payload.fontesDiag.fluxoDireto || null,   // v18.37 — História e Artes sem auditor (backend v74.33)
     } : null;
     // Rede de segurança: a letra planejada tem de ser mesmo a correta.
     q.gabaritoStatus = aplicaGabaritoAlvo(q.data, gabaritoAlvoDe(state.questions.indexOf(q)));
@@ -4413,8 +4414,28 @@ function auditaQuestaoLocal(q){
     } else if(i.tentativas > 1 || i.reelaboracoes > 0 || i.doBanco){
       info("Insistência automática: " + (i.tentativas > 1 ? i.tentativas + " pedidos" : "1 pedido") +
            (i.fontesDescartadas ? " · " + i.fontesDescartadas + " fonte(s) descartada(s)" : "") +
-           (i.reelaboracoes ? " · reelaborada " + i.reelaboracoes + "× após o auditor" : "") +
+           (i.reelaboracoes ? " · reelaborada " + i.reelaboracoes + "× após " + (i.fluxoDireto ? "a conferência em código" : "o auditor") : "") +   // v18.37
            (i.doBanco ? " · fonte reaproveitada do banco de fontes validadas" : "") + ".");
+    }
+    /* v18.37 — FLUXO DIRETO em História e Artes (backend v74.33, decisão do professor de
+       05/10/2026): uma só chamada de elaboração, sem pesquisador, validador ou auditor; as
+       conferências são em código. Sem texto na biblioteca, a questão é autoral. Só tela. */
+    if(i.fluxoDireto && !i.ultimoRecurso){
+      const tipoUso = String((d.fonte && d.fonte.tipoUso) || "").toLowerCase();
+      const comUrl = !!(d.fonte && String(d.fonte.urlVerificacao || "").trim());
+      if(i.fluxoDireto.modo === "autoral"){
+        info("Fluxo direto (" + String(d.disciplina || "") + "): a biblioteca não tinha texto para o tema — " +
+             (tipoUso === "parafrase"
+               ? "paráfrase de obra real do conhecimento da própria IA, com a referência declarada" + (comUrl ? ", confirmada com uma busca na web" : ", sem pesquisa na internet")
+               : tipoUso === "citacao" || tipoUso === "adaptacao"
+               ? (tipoUso === "citacao" ? "citação" : "adaptação") + " conferida em página devolvida pela busca na web (uma busca, último recurso)"
+               : "texto-base autoral com dados reais, escrito a partir do conhecimento da própria IA, sem citar ninguém" + (comUrl ? ", com uma busca na web de confirmação" : ", sem pesquisa na internet")) +
+             " · conferências em código (fonte, alternativas, gabarito, objeto), sem auditor.");
+      } else {
+        info("Fluxo direto (" + String(d.disciplina || "") + "): " +
+             (i.fluxoDireto.modo === "banco_fontes" ? "fonte real reaproveitada do banco de fontes já validadas" : "texto da biblioteca") +
+             " · conferências em código (fonte, dossiê, ineditismo, alternativas, gabarito, objeto), sem auditor.");
+      }
     }
     /* v18.29 — texto-base da prova oficial do ENEM (backend v74.25). Só tela. */
     if(i.doEnem && !i.ultimoRecurso){
@@ -4426,7 +4447,8 @@ function auditaQuestaoLocal(q){
              : "Texto-base da prova oficial do ENEM " + String(i.doEnem.ano || "?") + " (questão " + String(i.doEnem.numero || "?") + "), com autor, obra e referência impressos pelo INEP. ") +
            "A questão é inédita: o comando, as alternativas e o gabarito foram conferidos contra os da questão original.");
       if(i.doEnem.aproximado){
-        info("A biblioteca não tinha um texto para o tema pedido; foi usado o texto mais próximo, e a questão foi ajustada a ele (Literatura, Língua Portuguesa e Artes não pesquisam na internet).");
+        info("A biblioteca não tinha um texto para o tema pedido; foi usado o texto mais próximo" + (i.fluxoDireto ? ", com relação temática com o pedido," : "") + " e a questão foi ajustada a ele" +
+             (i.fluxoDireto ? " (fluxo direto: a internet só entraria como último recurso, e aqui não foi preciso)." : " (Literatura e Língua Portuguesa não pesquisam na internet)."));   // v18.37
       }
     }
   }
@@ -8475,6 +8497,8 @@ if(document.fonts && document.fonts.ready) document.fonts.ready.then(calibraBarr
    "misto"; o lote é aplicado sem recurso e, em seguida, cada questão recebe o seu em
    rodízio de quatro — 1ª sem recurso, 2ª imagem, 3ª tabela, 4ª gráfico, 5ª sem recurso, … —
    o mesmo que o professor faria clicando no recurso de cada questão.
+   v18.37 — só tela (06/10/2026): avisos do fluxo direto de História e Artes (backend v74.33);
+   a entrada de automação não muda.
 
    O pedido feito pelo WhatsApp (formulário de 6 perguntas, etapa B1) fica na fila
    `wa_trabalhos`. Quem o executa é um robô (robo/operario.mjs, rodando no GitHub
@@ -8499,7 +8523,7 @@ if(document.fonts && document.fonts.ready) document.fonts.ready.then(calibraBarr
    parametros = { area, disciplina, quantidade, temas_texto, contagem, recurso }
    (os mesmos gravados em wa_trabalhos.parametros por supabase/functions/whatsapp-webhook).
    ====================================================================================== */
-const AUTOMACAO_VERSAO = "18.36";
+const AUTOMACAO_VERSAO = "18.37";
 let automacaoPronta = false;
 let automacaoFase = "carregando";   // carregando | pronto | configurando | gerando | exportando | concluido | erro
 let automacaoErro = "";

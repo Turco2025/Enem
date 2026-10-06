@@ -83,6 +83,14 @@ async function instalarMocks(context) {
       await new Promise((r) => setTimeout(r, 150));
       const q = structuredClone(questaoPara(corpo.recurso));
       q.tema = `${corpo.tema || q.tema} (${chamadasQuestao})`;   // temas distintos, como numa leva real
+      /* v18.37 — História: resposta do fluxo direto (backend v74.33), questão autoral sem auditor,
+         com uma reescrita em código — para provar os avisos novos da tela. */
+      if (corpo.disciplina === "História") {
+        q.disciplina = "História"; q.area = "humanas";
+        q.fonte = { tipoUso: "proprio", autor: "", instituicao: "", obra: "", ano: "", referencia: "", comoVerificou: "texto autoral do elaborador", conferidoNaFonte: false, urlVerificacao: "" };
+        return json({ question: q, uso: { chamadas: 2, entradaNova: 1500, cacheEscrito: 0, cacheLido: 18000, saida: 1900, buscasWeb: 0, custoUSD: 0.03 },
+          fontesDiag: { aplicavel: true, estado: "aprovado", auditor: "dispensado_fluxo_direto", chamadas: 0, pesquisaPrevia: false, reelaboracoes: 1, tentativa: 1, doBanco: false, fluxoDireto: { modo: "autoral", auditor: "dispensado", reelaboracoesMax: 1 } } });
+      }
       return json({ question: q, uso: { chamadas: 3, entradaNova: 2000, cacheEscrito: 0, cacheLido: 25000, saida: 1800, buscasWeb: 0, custoUSD: 0.02 }, fontesDiag: { estado: "ok", doBanco: true } });
     }
     if (u.pathname === "/functions/v1/generate-image") {
@@ -133,6 +141,11 @@ async function cenario(browser, urlApp, nome, parametros, esperado) {
     confere(["Fácil", "Médio", "Difícil"].every((n) => contagem[n] === (esperada[n] || 0)), `níveis distribuídos conforme a contagem ${JSON.stringify(esperada)} (real: ${estadoApp.niveis.join(", ")})`);
     if (esperado.temas) confere(esperado.temas.every((t) => estadoApp.temas.includes(t)), `temas em rodízio: ${esperado.temas.join(" · ")}`);
     if (esperado.temasExatos) confere(new Set(estadoApp.temas).size === esperado.temasExatos, `exatamente ${esperado.temasExatos} temas distintos (vírgula dentro do tema preservada)`);
+    if (esperado.textoNaTela) {   // v18.37 — avisos da auditoria local do card (só tela)
+      const tela = await page.evaluate(() => document.body.innerText);
+      for (const t of esperado.textoNaTela) confere(tela.includes(t), `a tela mostra "${t.slice(0, 70)}"`);
+      for (const t of esperado.textoForaDaTela || []) confere(!tela.includes(t), `a tela NÃO mostra "${t.slice(0, 70)}"`);
+    }
     confere(estadoApp.fase === "concluido", "fase final: concluido");
     for (const a of r.arquivos) {
       if (a.rotulo.startsWith("pdf")) {
@@ -169,7 +182,9 @@ try {
     { imagens: 3, minPaginas: { pdf_aluno: 2, pdf_professor: 3 }, professorMaior: true, temas: ["fotossíntese", "respiração celular"] });
   // tema com vírgula dentro ("Era Vargas, Estado Novo" é UM tema): a lista vai um por linha e o app mantém 2 itens
   await cenario(browser, app.url, "historia_sem_recurso", { area: "humanas", disciplina: "História", quantidade: 2, temas: ["Era Vargas, Estado Novo", "Guerra Fria"], temas_texto: "Era Vargas, Estado Novo; Guerra Fria", contagem: { "Fácil": 0, "Médio": 2, "Difícil": 0 }, recurso: "nenhum", nivel: "Médio" },
-    { imagens: 0, minPaginas: { pdf_aluno: 1, pdf_professor: 2 }, professorMaior: true, temas: ["Era Vargas, Estado Novo", "Guerra Fria"], temasExatos: 2 });
+    { imagens: 0, minPaginas: { pdf_aluno: 1, pdf_professor: 2 }, professorMaior: true, temas: ["Era Vargas, Estado Novo", "Guerra Fria"], temasExatos: 2,
+      textoNaTela: ["Fluxo direto (História): a biblioteca não tinha texto para o tema — texto-base autoral com dados reais", "sem auditor", "reelaborada 1× após a conferência em código"],
+      textoForaDaTela: ["após o auditor", "ÚLTIMO RECURSO", "Fonte validada pelo agente validador"] });
   // contagem inconsistente → o app divide igualmente (2 fáceis, 1 média, 1 difícil… para 4: 2/1/1)
   await cenario(browser, app.url, "matematica_contagem_invalida", { area: "matematica", disciplina: "Matemática", quantidade: 4, temas_texto: "", contagem: { "Fácil": 9 }, recurso: "nenhum", nivel: "Mista" },
     { imagens: 0, minPaginas: { pdf_aluno: 1, pdf_professor: 2 }, professorMaior: true, contagem: { "Fácil": 2, "Médio": 1, "Difícil": 1 } });

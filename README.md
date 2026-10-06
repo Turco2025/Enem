@@ -177,7 +177,7 @@ Teste: `verify_fontes_app.js` — 19 verificações; as seções B e C bis prova
 quatro marcas ligadas ao mesmo tempo nenhuma conferência bloqueia, e que nenhuma delas tem sequer um
 `return true` no corpo. `verify_gabarito_coerente.js` H1 passou a exigir o contrário do que exigia.
 
-## Fluxo direto em História e Artes (generate-question v74.33, 06/10/2026)
+## Fluxo direto em História e Artes (generate-question v74.33 / app v18.37, 06/10/2026)
 
 Decisão do professor (05/10): **"história e artes igual a Biologia"** — uma única chamada de
 elaboração, sem pesquisador, sem validador e sem auditor —, "no entanto, o aplicativo deve buscar
@@ -203,9 +203,13 @@ Ordem do material, toda em código e a custo zero (`pesquisarFonteReal`, `DISCIP
    `buscaDaGeracao`). A lista dos acervos não entra nessa mensagem (ela mandaria procurar).
 
 O que continua: todas as conferências em código (campo "fonte", dossiê, ineditismo, alternativas,
-gabarito, objeto da disciplina, texto da biblioteca intocável, idioma). Uma trava nova, só no fluxo
+gabarito, objeto da disciplina, texto da biblioteca intocável, idioma). Duas travas novas, só no fluxo
 direto sem texto: **citação literal sem URL devolvida pela busca reprova** (regra 5 do professor —
-de memória não se cita). O que foi dispensado: a chamada do auditor (`garantirFontesReais` aprova ao
+de memória não se cita) e **texto "proprio" não cita nem atribui** (`conferenciaTextoProprio`: trecho
+entre aspas com 60+ caracteres, "segundo/de acordo com/nas palavras de/como escreveu + Nome",
+"Fonte:", "Disponível em:", "Adaptado de" ou linha de referência no fim do texto-base; "segundo"
+ordinal — "o segundo governo Vargas", "Segundo Reinado" — e aspas de termo passam). Era o que o
+auditor pegava em "nenhumaFraseAtribuidaIndevidamente". O que foi dispensado: a chamada do auditor (`garantirFontesReais` aprova ao
 fim das conferências; `fontesDiag.auditor = "dispensado_fluxo_direto"`, `fontesDiag.fluxoDireto =
 { modo, auditor, reelaboracoesMax }`). Reprovação em código → **uma** reescrita, não duas
 (`REELABORACOES_FLUXO_DIRETO = 1`, opção B do professor), com o bloco "REESCRITA ÚNICA … REPROVADA
@@ -220,16 +224,24 @@ biblioteca_proximo | banco_fontes | dossie>`. Nada muda nas demais disciplinas, 
 do Inep nem nas regras de qualidade das questões; o bloco fixo do prompt de História e Artes muda
 (regra de busca), então a primeira questão de cada leva regrava o cache.
 
+**App (v18.37, só tela):** o card passa a dizer "Fluxo direto (História): a biblioteca não tinha texto
+para o tema — texto-base autoral com dados reais … conferências em código, sem auditor" (ou
+"texto da biblioteca"/"fonte do banco"), "reelaborada 1× após a conferência em código" em vez de
+"após o auditor", e o aviso do texto mais próximo deixou de dizer que Artes não pesquisa.
+`enemAutomacao.versao` = 18.37; a entrada de automação não muda.
+
 Esperado: 1 chamada na maioria das questões (≈ US$ 0,05–0,07 com cache lido; a 1ª da leva ≈ US$
 0,12), 2 chamadas quando uma conferência em código reprova. A medir nas próximas levas reais.
 
-Testes: `tests/verify_fontes_backend.ts` seção U (13: aprovação sem auditor, citação sem busca,
-URL inventada, texto da biblioteca, fonte trocada, Geografia ainda com auditor, ligação no handler),
+Testes: `tests/verify_fontes_backend.ts` seção U (17: aprovação sem auditor, citação sem busca,
+URL inventada, texto próprio com atribuição/aspas/referência, "segundo" ordinal, texto da biblioteca,
+fonte trocada, Geografia ainda com auditor, ligação no handler),
 `verify_biblioteca_v7428.ts` C7–C7d (banco sem restritas, relação temática, autoral), `verify_ordem_ia_v7431.ts`
 seção F (6), `verify_validador_v7421.ts` (a lista do fluxo direto fica vazia ali, como as outras),
-selftest `v7433_fluxoDireto`, e um ensaio do handler com a API simulada (seis cenários: autoral,
-reescrita única, teto de uma reescrita, URL apagada, Artes, `ultimoRecurso`). Testes que
-exemplificavam o modo da IA com História passaram a usar Geografia.
+selftest `v7433_fluxoDireto`, um ensaio do handler com a API simulada (oito cenários: autoral,
+reescrita única, teto de uma reescrita, URL apagada, Artes, `ultimoRecurso`, atribuição em texto
+próprio, "segundo" ordinal) e `node robo/teste_local.mjs` (cenário de História com os avisos novos na
+tela). Testes que exemplificavam o modo da IA com História passaram a usar Geografia.
 
 ## Inglês e Espanhol separados (generate-question v74.32 / app v18.34, 02/10/2026)
 

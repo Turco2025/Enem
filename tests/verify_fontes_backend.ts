@@ -1169,6 +1169,24 @@ __stub.resposta = fichaBoa(); __stub.chamadas = 0; __stub.buscaLigada = "nao-cha
 const qU11: any = questao(proprioS());
 const dU11 = await rodaD(qU11, "humanas", "Geografia", [], autS);
 t("U11 Geografia (fora do fluxo direto) continua indo ao auditor", dU11.estado === "aprovado" && __stub.chamadas === 1 && !dU11.fluxoDireto);
+__stub.chamadas = 0;
+const qU14: any = { ...questao(proprioS()), textoBase: "Segundo o IBGE, a população urbana passou de 44% em 1960 para 84% em 2010. O êxodo rural acompanhou a industrialização." };
+const dU14 = await rodaD(qU14, "humanas", "História");
+t("U14 (v74.33 b) texto 'proprio' que atribui a terceiro ('Segundo o IBGE') reprova em código → reescrita única, sem auditor",
+  dU14.estado === "reprovado" && dU14.determinista === "proprio_com_atribuicao" && __stub.chamadas === 0 && /parafrase/.test(dU14.motivo) && qU14.fonteNaoVerificada, JSON.stringify(dU14));
+__stub.chamadas = 0;
+const qU15: any = { ...questao(proprioS()), textoBase: 'O segundo governo Vargas (1951–1954) criou a Petrobras; a chamada "Belle Époque" carioca ficou para trás. No Segundo Reinado, o café dominava.' };
+const dU15 = await rodaD(qU15, "humanas", "História");
+t("U15 'segundo' ordinal e aspas de termo não são atribuição: aprovada", dU15.estado === "aprovado" && __stub.chamadas === 0, JSON.stringify(dU15));
+__stub.chamadas = 0;
+const qU16: any = { ...questao(proprioS()), textoBase: 'O autor escreveu: "' + "palavra ".repeat(12) + '" e seguiu.\n\nCUNHA, Euclides da. Os Sertões. 1902.' };
+const dU16 = await rodaD(qU16, "linguagens", "Artes");
+t("U16 aspas com tamanho de citação e linha de referência num texto 'proprio' (Artes): reprovada em código",
+  dU16.estado === "reprovado" && dU16.determinista === "proprio_com_atribuicao" && /aspas/.test(dU16.motivo) && /referência/.test(dU16.motivo) && __stub.chamadas === 0);
+__stub.resposta = fichaBoa(); __stub.chamadas = 0;
+const qU17: any = { ...questao(proprioS()), textoBase: "Segundo o IBGE, a população urbana cresceu." };
+const dU17 = await rodaD(qU17, "humanas", "Geografia", [], autS);
+t("U17 fora do fluxo direto (Geografia, modo da IA) a trava nova não roda: quem decide continua sendo o auditor", dU17.estado === "aprovado" && __stub.chamadas === 1 && !dU17.fluxoDireto);
 t("U12 modoFluxoDireto classifica a origem do material",
   modoFluxoDireto(null) === "autoral" && modoFluxoDireto({ encontrou: false, bloqueado: true }) === "autoral" && modoFluxoDireto(dossU) === "biblioteca_enem"
   && modoFluxoDireto({ ...dossU, doEnem: { ...dossU.doEnem, aproximado: true } }) === "biblioteca_proximo"
