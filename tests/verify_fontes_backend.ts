@@ -196,6 +196,7 @@ export { DOMINIOS_ACERVO_PRIORITARIO, hostDaUrl, ehDominioDeAcervo, acervoFoiCon
 export { existenciaProvadaPeloValidador, ITENS_DE_EXISTENCIA_DA_FICHA };
 export { pontuaTextoEnem, dossieDoTextoEnem, buildBlocoTextoEnem, urlsDaReferencia, conferenciaIneditismo, buildIneditismoParaAuditoria, DISCIPLINAS_TEXTOS_ENEM, chaveEvitarEnem };
 export { usaOrdemIA, dossieAutoralIA, dossieParafraseIA, parafraseIAUtilizavel, buildBlocoConhecimentoIA, buildBlocoAuditoriaIA, consultarConhecimentoIA, FERRAMENTA_DOSSIE_IA, SISTEMA_PESQUISA_IA, buildPesquisaIAPrompt };   // v74.31
+export { fluxoDireto, modoFluxoDireto, DISCIPLINAS_FLUXO_DIRETO, REELABORACOES_FLUXO_DIRETO, BUSCAS_FLUXO_DIRETO };   // v74.33
 export { conferenciaFontes, conferenciaDossie, tokensDeFonte, normalizaUrl, buildAuditoriaFontesPrompt,
          garantirFontesReais, FERRAMENTA_AUDITORIA_FONTE, MENSAGEM_FONTE_BLOQUEIO, fontesReaisEstrito,
          buscaDaGeracao, buildDossieFonte,
@@ -217,6 +218,7 @@ const { conferenciaFontes, conferenciaDossie, normalizaUrl, buildAuditoriaFontes
         existenciaProvadaPeloValidador, ITENS_DE_EXISTENCIA_DA_FICHA,
         pontuaTextoEnem, dossieDoTextoEnem, buildBlocoTextoEnem, urlsDaReferencia, conferenciaIneditismo, buildIneditismoParaAuditoria, DISCIPLINAS_TEXTOS_ENEM, chaveEvitarEnem,
         usaOrdemIA, dossieAutoralIA, dossieParafraseIA, parafraseIAUtilizavel, buildBlocoConhecimentoIA, buildBlocoAuditoriaIA, consultarConhecimentoIA, FERRAMENTA_DOSSIE_IA, SISTEMA_PESQUISA_IA, buildPesquisaIAPrompt,
+        fluxoDireto, modoFluxoDireto, DISCIPLINAS_FLUXO_DIRETO, REELABORACOES_FLUXO_DIRETO, BUSCAS_FLUXO_DIRETO,
         __stub } = M;
 
 let ok = 0, bad = 0;
@@ -428,8 +430,9 @@ t("H3 a segunda tentativa do pesquisador existe e é onde a segunda busca ficou"
   BUSCA_PESQUISADOR_RETRY.max_uses === 1 && BUSCA_PESQUISADOR_RETRY.max_uses >= BUSCA_PESQUISADOR.max_uses);   // v74.21: era 2
 t("H4 a auditoria sem dossiê tem teto 2", BUSCA_AUDITORIA.max_uses === 2);
 t("H5 COM dossiê validado a geração NÃO busca", buscaDaGeracao(doss, "linguagens", "Artes") === false);
-t("H6 SEM dossiê a geração continua buscando em Linguagens (v74.28: nas disciplinas que ainda pesquisam — Literatura, Língua Portuguesa e Artes não pesquisam mais)",
-  !!buscaDaGeracao(null, "linguagens", "Práticas Corporais") && buscaDaGeracao(null, "linguagens", "Artes") === false);
+t("H6 SEM dossiê a geração continua buscando em Linguagens (v74.28: Literatura e Língua Portuguesa não pesquisam; v74.33: Artes pesquisa só como último recurso, teto 1)",
+  !!buscaDaGeracao(null, "linguagens", "Práticas Corporais") && buscaDaGeracao(null, "linguagens", "Literatura") === false && buscaDaGeracao(null, "linguagens", "Língua Portuguesa") === false
+  && buscaDaGeracao(null, "linguagens", "Artes").max_uses === 1);
 t("H7 dossiê vazio ou sem trecho não desliga a busca (não achou fonte = continua procurando)",
   !!buscaDaGeracao({ encontrou: false }, "humanas", "História")
   && !!buscaDaGeracao({ encontrou: true, trecho: "   " }, "humanas", "História"));
@@ -631,8 +634,9 @@ t("L8 (v74.21) a trava está no pesquisador: a rodada 1 das disciplinas com acer
 t("L9 (v74.21) fonte de fora dos acervos fica marcada, e a segunda tentativa é avisada de que a primeira foi restrita",
   fonte.includes("a busca restrita aos acervos não devolveu material utilizável; a fonte veio das demais fontes confiáveis")
   && fonte.includes("procure agora nas demais fontes confiáveis do item 1"));
-t("L10 a geração recebe o bloco só quando vai buscar (sem dossiê)",
-  fonte.includes("const acervosDaGeracao = (buildDossieFonte(opts.dossie) || opts.textoProprio) ? \"\" : buildAcervosPrioritarios(opts.disciplina);")
+t("L10 a geração recebe o bloco só quando vai buscar (sem dossiê; v74.33: nem no fluxo direto autoral, em que a internet é o último recurso)",
+  fonte.includes("const acervosDaGeracao = (buildDossieFonte(opts.dossie) || opts.textoProprio || autoralDireto) ? \"\" : buildAcervosPrioritarios(opts.disciplina);")
+  && fonte.includes("const autoralDireto = opts.fluxoDiretoSemTexto === true && !opts.textoProprio && !buildDossieFonte(opts.dossie);")
   && fonte.includes("${acervosDaGeracao}"));
 t("L11 a auditoria recebe o bloco só quando vai buscar (sem dossiê)",
   buildAuditoriaFontesPrompt({ fonte: {}, disciplina: "Artes" }).includes("ACERVOS DE PRIORIDADE OBRIGATÓRIA")
@@ -862,8 +866,9 @@ t("P2 sem fonte validada: bloqueia (422) com as fontes tentadas — EXCETO quand
   handlerP.includes("if (!ultimoRecursoPedido) {") && handlerP.includes("tentativa: tentativaApp, fontesTentadas }")
   && handlerP.includes("textoProprio = { tentativa: tentativaApp, motivo };") && handlerP.includes("dossie = null;")
   && handlerP.includes("const webSearch = textoProprio ? false : buscaDaGeracao(dossie, area, disciplina);"));
-t("P3 auditor reprovou a questão → reelaboração com o MESMO dossiê, até REELABORACOES_MAX, com tempo, e tudo depois da elaboração roda de novo",
-  handlerP.includes("while (fontesDiag && fontesDiag.estado === \"reprovado\" && reelaboracoes < REELABORACOES_MAX")
+t("P3 auditor reprovou a questão → reelaboração com o MESMO dossiê, até REELABORACOES_MAX (v74.33: REELABORACOES_FLUXO_DIRETO = 1 em História e Artes), com tempo, e tudo depois da elaboração roda de novo",
+  handlerP.includes("while (fontesDiag && fontesDiag.estado === \"reprovado\" && reelaboracoes < reelabMax")
+  && handlerP.includes("const reelabMax = fluxoDireto(disciplina) ? REELABORACOES_FLUXO_DIRETO : REELABORACOES_MAX;")
   && handlerP.includes("> MS_MINIMO_PARA_REELABORAR)")
   && handlerP.includes("userMsg + buildCorrecaoAuditoria(fontesDiag, reelaboracoes)")
   && handlerP.includes("`geracao/reelaboracao-${reelaboracoes}`")
@@ -1038,7 +1043,7 @@ t("S7 elaborador, autor/obra que a IA não conhece: questão SEMELHANTE autoral,
   && buildDossieFonte(dossieAutoralIA(iaS, "m", "Hannah Arendt", true)).includes("a pesquisa única na internet não confirmou uma fonte"));
 t("S8 Língua Estrangeira autoral: o texto-base sai no idioma escolhido, comando e alternativas em português",
   buildDossieFonte(dossieAutoralIA({ ...iaS, pedeAutorOuObra: false, idioma: "espanhol" }, "m")).includes("escrito em espanhol; comando e alternativas em português"));
-const audAut = buildAuditoriaFontesPrompt({ ...questao({ tipoUso: "proprio" }), disciplina: "História" }, autS);
+const audAut = buildAuditoriaFontesPrompt({ ...questao({ tipoUso: "proprio" }), disciplina: "Geografia" }, autS);
 const audPar = buildAuditoriaFontesPrompt({ ...questao(fonteBoa()), disciplina: "Filosofia" }, parS);
 t("S9 auditor nos modos da IA: sabe que não houve internet nem validador, confere com o próprio conhecimento, e o bloco do dossiê da web não aparece",
   audAut.includes("CONHECIMENTO DA PRÓPRIA IA, SEM INTERNET") && audAut.includes("TODO dado factual") && !audAut.includes("com busca real na web")
@@ -1046,7 +1051,7 @@ t("S9 auditor nos modos da IA: sabe que não houve internet nem validador, confe
   && audPar.includes("PARÁFRASE desta obra") && audPar.includes(iaS.referencia) && audPar.includes("NÃO é falha nesta modalidade") && !audPar.includes("com busca real na web"));
 const proprioS = () => ({ tipoUso: "proprio", autor: "", instituicao: "", obra: "", ano: "", referencia: "", comoVerificou: "texto autoral com dados reais", conferidoNaFonte: false, urlVerificacao: "" });
 __stub.resposta = fichaBoa(); __stub.erro = null; __stub.chamadas = 0; __stub.buscaLigada = "nao-chamado";
-const qS10: any = { ...questao(proprioS()), disciplina: "História" };
+const qS10: any = { ...questao(proprioS()), disciplina: "Geografia" };   // v74.33: História passou ao fluxo direto (ver T) — o modo da IA segue em Geografia
 const dS10 = await roda(qS10, "humanas", 120_000, [], autS);
 t("S10 autoral com tipoUso proprio: vai ao auditor SEM busca na web e é aprovada",
   dS10.estado === "aprovado" && __stub.chamadas === 1 && __stub.buscaLigada === false, JSON.stringify(dS10));
@@ -1071,7 +1076,7 @@ const qS14: any = { ...questao(fonteBoa({ autor: "Michel Foucault", obra: "Vigia
 const dS14 = await roda(qS14, "humanas", 120_000, [], parS);
 t("S14 paráfrase de OUTRA obra que não a do material da IA: fonte trocada, reprovada sem auditor", dS14.estado === "reprovado" && dS14.dossie === "fonte_trocada" && __stub.chamadas === 0 && String(dS14.motivo).startsWith("o material do conhecimento da IA é \"Hannah Arendt\""), JSON.stringify(dS14));
 __stub.chamadas = 0;
-const qS15: any = { ...questao(proprioS()), disciplina: "História" };
+const qS15: any = { ...questao(proprioS()), disciplina: "Geografia" };   // v74.33: idem
 const dS15 = await roda(qS15, "humanas", 120_000, [], parS);
 t("S15 material de paráfrase, mas a questão saiu autoral (tipoUso proprio): permitido, vai ao auditor", dS15.estado === "aprovado" && __stub.chamadas === 1);
 t("S16 a ferramenta do pesquisador sem internet exige a decisão autor/obra, a segurança, a referência, a paráfrase, os fatos e a fonte deles",
@@ -1111,6 +1116,71 @@ __stub.chamadas = 0;
 const qT4: any = { ...questao(proprioS()), disciplina: "Língua Estrangeira (Inglês/Espanhol)", textoBase: textoEsT };
 const dT4 = await roda(qT4, "linguagens", 120_000, [], autS);
 t("T4 a chave antiga não confere o idioma (como antes)", dT4.estado === "aprovado" && __stub.chamadas === 1);
+
+/* ---------- U. v74.33 — FLUXO DIRETO em História e Artes (decisão do professor, 05/10/2026) ---------- */
+const rodaD = async (q: any, area: string, disciplina: string, buscas: any[] = [], dossie: any = null) => garantirFontesReais(q, [], [], 120_000, area, buscas, dossie, disciplina);
+t("U1 as duas disciplinas do fluxo direto, e só elas; teto de 1 reescrita e de 1 busca",
+  JSON.stringify(DISCIPLINAS_FLUXO_DIRETO) === JSON.stringify(["História", "Artes"]) && fluxoDireto("História") && fluxoDireto("Artes")
+  && ["Geografia", "Filosofia", "Literatura", "Língua Portuguesa", "Biologia", ""].every((d) => !fluxoDireto(d)) && REELABORACOES_FLUXO_DIRETO === 1 && BUSCAS_FLUXO_DIRETO === 1);
+t("U2 sem dossiê a geração de História e Artes busca como ÚLTIMO recurso (teto 1); com texto da biblioteca não busca",
+  buscaDaGeracao(null, "humanas", "História").max_uses === 1 && buscaDaGeracao(null, "linguagens", "Artes").max_uses === 1
+  && buscaDaGeracao(doss, "humanas", "História") === false && buscaDaGeracao(null, "humanas", "Geografia").max_uses === WEB_SEARCH_TOOL.max_uses);
+__stub.resposta = fichaBoa(); __stub.erro = null; __stub.chamadas = 0; __stub.buscaLigada = "nao-chamado";
+const qU3: any = questao(proprioS());
+const dU3 = await rodaD(qU3, "humanas", "História");
+t("U3 História autoral (sem dossiê), fonte 'proprio' coerente: aprovada pelas conferências em código, SEM chamada ao auditor",
+  dU3.estado === "aprovado" && dU3.auditor === "dispensado_fluxo_direto" && __stub.chamadas === 0 && dU3.fluxoDireto && dU3.fluxoDireto.modo === "autoral"
+  && dU3.fluxoDireto.auditor === "dispensado" && dU3.fluxoDireto.reelaboracoesMax === 1 && !qU3.fonteNaoVerificada, JSON.stringify(dU3));
+__stub.chamadas = 0;
+const qU4: any = questao({ ...proprioS(), autor: "Euclides da Cunha" });
+const dU4 = await rodaD(qU4, "humanas", "História");
+t("U4 fluxo direto: 'proprio' com autor preenchido continua reprovado pela conferência estrutural (vai para a reescrita única), sem auditor",
+  dU4.estado === "reprovado" && dU4.determinista === "incoerente" && __stub.chamadas === 0 && qU4.fonteNaoVerificada && dU4.fluxoDireto);
+__stub.chamadas = 0;
+const qU5: any = questao(fonteBoa({ tipoUso: "citacao", autor: "Euclides da Cunha", obra: "Os Sertões", referencia: "CUNHA, E. Os Sertões. 1902.", conferidoNaFonte: true, urlVerificacao: "" }));
+const dU5 = await rodaD(qU5, "humanas", "História");
+t("U5 fluxo direto autoral: citação literal SEM página devolvida pela busca é reprovada em código (regra 5) — de memória não se cita",
+  dU5.estado === "reprovado" && dU5.determinista === "citacao_sem_busca" && __stub.chamadas === 0 && /parafrase/.test(dU5.motivo) && qU5.fonteNaoVerificada, JSON.stringify(dU5));
+__stub.chamadas = 0;
+const urlU6 = "https://www.scielo.br/j/rbh/a/sertoes";
+const qU6: any = questao(fonteBoa({ tipoUso: "citacao", autor: "Euclides da Cunha", obra: "Os Sertões", referencia: "CUNHA, E. Os Sertões. 1902.", conferidoNaFonte: true, urlVerificacao: urlU6 }));
+const dU6 = await rodaD(qU6, "humanas", "História", [{ url: urlU6, title: "x" }]);
+t("U6 fluxo direto autoral: citação com a URL que a busca desta geração devolveu passa, sem auditor", dU6.estado === "aprovado" && __stub.chamadas === 0, JSON.stringify(dU6));
+__stub.chamadas = 0;
+const qU7: any = questao(fonteBoa({ tipoUso: "parafrase", conferidoNaFonte: false, urlVerificacao: "https://inventada.example.org/x" }));
+const dU7 = await rodaD(qU7, "linguagens", "Artes");
+t("U7 fluxo direto autoral: paráfrase com URL que nenhuma busca devolveu reprova em código (url_nao_confirmada) — a reescrita única apaga a URL",
+  dU7.estado === "reprovado" && dU7.determinista === "url_nao_confirmada" && __stub.chamadas === 0 && dU7.pesquisaPrevia === false);
+__stub.chamadas = 0;
+const qU8: any = questao(fonteBoa({ tipoUso: "parafrase", conferidoNaFonte: false }));
+const dU8 = await rodaD(qU8, "linguagens", "Artes");
+t("U8 fluxo direto autoral: paráfrase de obra real sem URL (conhecimento da IA) passa pelas conferências em código, sem auditor", dU8.estado === "aprovado" && __stub.chamadas === 0, JSON.stringify(dU8));
+__stub.chamadas = 0;
+const dossU: any = dossieDoTextoEnem({ id: 1, chave: "2015-regular-1", ano: 2015, numero: 1, prova: "ENEM", tipo_texto: "jornalistico", autor: "Euclides da Cunha", obra: "Os Sertões", referencia: "CUNHA, E. Os Sertões. 1902.", texto: "Texto da prova.", usos: 0 }, 3);
+const qU9: any = { ...questao(fonteBoa({ tipoUso: "citacao", autor: "Euclides da Cunha", obra: "Os Sertões", referencia: "CUNHA, E. Os Sertões. 1902.", conferidoNaFonte: true, urlVerificacao: "" })), textoBase: "Texto da prova.\n\nCUNHA, E. Os Sertões. 1902.", comando: "Que ideia o texto defende sobre o sertão?", alternativas: { A: "a1", B: "b2", C: "c3", D: "d4", E: "e5" } };
+const dU9 = await rodaD(qU9, "humanas", "História", [], dossU);
+t("U9 fluxo direto com texto da biblioteca: conferências do dossiê e do ineditismo rodam, e a questão é aprovada sem auditor (modo biblioteca_enem)",
+  dU9.estado === "aprovado" && __stub.chamadas === 0 && dU9.fluxoDireto.modo === "biblioteca_enem" && dU9.dossie !== "fonte_trocada", JSON.stringify(dU9));
+__stub.chamadas = 0;
+const qU10: any = { ...questao(fonteBoa({ tipoUso: "citacao", autor: "Outro Autor", obra: "Outra Obra", referencia: "OUTRO. Outra obra. 2000.", conferidoNaFonte: true })), textoBase: "Outro texto." };
+const dU10 = await rodaD(qU10, "humanas", "História", [], dossU);
+t("U10 fluxo direto com texto da biblioteca: fonte trocada continua reprovada em código", dU10.estado === "reprovado" && dU10.dossie === "fonte_trocada" && __stub.chamadas === 0);
+__stub.resposta = fichaBoa(); __stub.chamadas = 0; __stub.buscaLigada = "nao-chamado";
+const qU11: any = questao(proprioS());
+const dU11 = await rodaD(qU11, "humanas", "Geografia", [], autS);
+t("U11 Geografia (fora do fluxo direto) continua indo ao auditor", dU11.estado === "aprovado" && __stub.chamadas === 1 && !dU11.fluxoDireto);
+t("U12 modoFluxoDireto classifica a origem do material",
+  modoFluxoDireto(null) === "autoral" && modoFluxoDireto({ encontrou: false, bloqueado: true }) === "autoral" && modoFluxoDireto(dossU) === "biblioteca_enem"
+  && modoFluxoDireto({ ...dossU, doEnem: { ...dossU.doEnem, aproximado: true } }) === "biblioteca_proximo"
+  && modoFluxoDireto({ ...dossU, doEnem: { ...dossU.doEnem, prova: "Fuvest 2020" } }) === "biblioteca_professor"
+  && modoFluxoDireto({ encontrou: true, doBanco: { id: 7 } }) === "banco_fontes" && modoFluxoDireto({ encontrou: true, url: "u" }) === "dossie");
+t("U13 ligação no handler: gate não bloqueia o fluxo direto, a mensagem recebe o bloco autoral, URL fora da busca é corrigível na reescrita, e o log diz de onde veio o material",
+  handlerP.includes("if (fontesReaisEstrito(area) && !fluxoDireto(disciplina) && !(dossie && dossie.encontrou === true && dossie.validacao && dossie.validacao.libera === true))")
+  && handlerP.includes("fluxoDiretoSemTexto: fluxoDireto(disciplina) && !(dossie && dossie.encontrou === true) });")
+  && handlerP.includes('const corrigivelNoFluxoDireto = !!(fontesDiag.fluxoDireto) && fontesDiag.pesquisaPrevia === false && fontesDiag.determinista === "url_nao_confirmada"')
+  && handlerP.includes("if ((estrutural && !corrigivelNoFluxoDireto) || (motivoReelabAnterior && motivoAtual === motivoReelabAnterior)) {")
+  && handlerP.includes("validacao: fluxoDireto(disciplina) ? { ...((dossie && dossie.validacao) || {}), estado: `fluxo_direto:${modoFluxoDireto(dossie)}` }")
+  && fonte.includes("v7433_fluxoDireto: (() => {") && fonte.includes("BUSCA_FLUXO_DIRETO, fluxoDireto.toString(), modoFluxoDireto.toString(), buildBlocoFluxoDiretoAutoral.toString()"));
 
 console.log(`\n${ok} verificações passaram, ${bad} falharam.`);
 if (bad) Deno.exit(1);

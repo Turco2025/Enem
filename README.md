@@ -177,6 +177,60 @@ Teste: `verify_fontes_app.js` — 19 verificações; as seções B e C bis prova
 quatro marcas ligadas ao mesmo tempo nenhuma conferência bloqueia, e que nenhuma delas tem sequer um
 `return true` no corpo. `verify_gabarito_coerente.js` H1 passou a exigir o contrário do que exigia.
 
+## Fluxo direto em História e Artes (generate-question v74.33, 06/10/2026)
+
+Decisão do professor (05/10): **"história e artes igual a Biologia"** — uma única chamada de
+elaboração, sem pesquisador, sem validador e sem auditor —, "no entanto, o aplicativo deve buscar
+primeiro nas questões ENEM e depois na biblioteca de textos e depois elaboração autoral"; a
+internet "somente em último caso". Motivo medido (28/09–05/10): História custava **US$ 0,149** e
+Artes **US$ 0,135** por questão (3,4–3,7 chamadas e 0,32–0,50 reelaboração por questão) contra
+**US$ 0,062** em Biologia (1,4 chamada) — o custo estava no pesquisador, no auditor e nas
+reelaborações que ele pedia, não na escrita da questão.
+
+Ordem do material, toda em código e a custo zero (`pesquisarFonteReal`, `DISCIPLINAS_FLUXO_DIRETO`):
+
+1. texto das provas do ENEM / da biblioteca do professor que **casa com o tema** (camada zero, com o
+   rodízio de 3 h — que passa a valer também em Artes, já que agora ela tem a alternativa autoral);
+2. **banco de fontes já validadas**, sem as aprovadas "restritas ao confirmado" (não há auditor para
+   conferir que a questão ficou dentro do confirmado);
+3. o **texto mais próximo** da biblioteca, só com **relação temática** (ao menos uma palavra do pedido
+   nos temas, no autor ou na obra do texto, fora as genéricas — opção A do professor): "Grafite"
+   não traz o texto sobre Courbet; e o rodízio vale aqui também;
+4. **elaboração autoral** com o conhecimento da IA (`buildBlocoFluxoDiretoAutoral`: texto-base
+   próprio com dados reais, `tipoUso: "proprio"`; paráfrase de obra real só com segurança e
+   referência completa; citação literal só com página devolvida pela busca) — a internet é o
+   **último recurso, dentro da própria chamada**, com teto de **uma** busca (`BUSCA_FLUXO_DIRETO`,
+   `buscaDaGeracao`). A lista dos acervos não entra nessa mensagem (ela mandaria procurar).
+
+O que continua: todas as conferências em código (campo "fonte", dossiê, ineditismo, alternativas,
+gabarito, objeto da disciplina, texto da biblioteca intocável, idioma). Uma trava nova, só no fluxo
+direto sem texto: **citação literal sem URL devolvida pela busca reprova** (regra 5 do professor —
+de memória não se cita). O que foi dispensado: a chamada do auditor (`garantirFontesReais` aprova ao
+fim das conferências; `fontesDiag.auditor = "dispensado_fluxo_direto"`, `fontesDiag.fluxoDireto =
+{ modo, auditor, reelaboracoesMax }`). Reprovação em código → **uma** reescrita, não duas
+(`REELABORACOES_FLUXO_DIRETO = 1`, opção B do professor), com o bloco "REESCRITA ÚNICA … REPROVADA
+PELA CONFERÊNCIA EM CÓDIGO" (`buildCorrecaoAuditoria`); na questão autoral, URL que a busca não
+devolveu deixa de encerrar o laço (a reescrita apaga a URL). O portão "sem fonte validada = sem
+questão" (v74.21) não se aplica: sem texto na biblioteca, a questão é autoral — não bloqueio nem
+"último recurso" da v74.23. Artes sai de `DISCIPLINAS_SEM_PESQUISA_WEB` (Literatura e Língua
+Portuguesa continuam sem internet em etapa nenhuma); História continua em `DISCIPLINAS_ORDEM_IA` só
+pelo rodízio da camada zero (o ramo da IA nunca é alcançado). O log grava
+`validacao_status = fluxo_direto:<autoral | biblioteca_enem | biblioteca_professor |
+biblioteca_proximo | banco_fontes | dossie>`. Nada muda nas demais disciplinas, na Matriz, no método
+do Inep nem nas regras de qualidade das questões; o bloco fixo do prompt de História e Artes muda
+(regra de busca), então a primeira questão de cada leva regrava o cache.
+
+Esperado: 1 chamada na maioria das questões (≈ US$ 0,05–0,07 com cache lido; a 1ª da leva ≈ US$
+0,12), 2 chamadas quando uma conferência em código reprova. A medir nas próximas levas reais.
+
+Testes: `tests/verify_fontes_backend.ts` seção U (13: aprovação sem auditor, citação sem busca,
+URL inventada, texto da biblioteca, fonte trocada, Geografia ainda com auditor, ligação no handler),
+`verify_biblioteca_v7428.ts` C7–C7d (banco sem restritas, relação temática, autoral), `verify_ordem_ia_v7431.ts`
+seção F (6), `verify_validador_v7421.ts` (a lista do fluxo direto fica vazia ali, como as outras),
+selftest `v7433_fluxoDireto`, e um ensaio do handler com a API simulada (seis cenários: autoral,
+reescrita única, teto de uma reescrita, URL apagada, Artes, `ultimoRecurso`). Testes que
+exemplificavam o modo da IA com História passaram a usar Geografia.
+
 ## Inglês e Espanhol separados (generate-question v74.32 / app v18.34, 02/10/2026)
 
 Pedido do professor: no lugar da caixa "Língua Estrangeira (Inglês/Espanhol)", uma caixa de

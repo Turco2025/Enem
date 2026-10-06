@@ -4,9 +4,11 @@
      A. texto de outra prova (coluna "prova") é apresentado como tal — nunca como ENEM —
         e o texto do ENEM continua com os prompts de antes;
      B. a escolha do texto MAIS PRÓXIMO (palavra rara pesa mais; empate → menos usado);
-     C. o fluxo de pesquisarFonteReal: em Literatura, Língua Portuguesa e Artes nunca chega
-        ao pesquisador (zero chamadas ao modelo); em História continua pesquisando;
-     D. geração e auditoria sem busca na web nessas três; leitura da biblioteca em páginas
+     C. o fluxo de pesquisarFonteReal: em Literatura e Língua Portuguesa nunca chega ao
+        pesquisador (zero chamadas ao modelo); em Geografia continua pesquisando;
+        (v74.33: Artes e História passaram ao FLUXO DIRETO — banco sem restritas → texto
+        mais próximo só com relação temática → autoral, sem nenhuma chamada ao modelo);
+     D. geração e auditoria sem busca na web nessas duas; leitura da biblioteca em páginas
         de 1000 linhas; ligação no handler e no selftest.
    O código conferido é o do arquivo de produção: cada função é recortada dele (do
    "function nome(" até a primeira linha "}" na coluna zero) e só as dependências
@@ -43,7 +45,7 @@ const supabase: any = {
   },
 };
 async function consultarTextosEnem() { return __d.enem; }
-async function consultarBancoFontes() { return __d.banco; }
+async function consultarBancoFontes(_o: any, _evitar: string[], semRestritos = false) { __d.semRestritos = semRestritos; return __d.banco; }
 function fontesReaisEstrito(area: string) { return ["linguagens", "humanas"].includes(area); }
 function precisaFontesReais() { return true; }
 function webSearchTool(d: string) { return { type: "web_search", disciplina: d }; }
@@ -140,13 +142,23 @@ r = await pesquisa("Literatura", "Graciliano Ramos");
 t("C6 biblioteca fora do ar: Literatura NÃO cai na pesquisa na internet — devolve bloqueio com o motivo", r && r.encontrou === false && r.bloqueado === true && r.semPesquisaWeb === true && __d.chamadasModelo === 0 && /não se pesquisa na internet/.test(r.motivo));
 __d.erroBanco = false; __d.chamadasModelo = 0;
 r = await pesquisa("Artes", "Courbet e a autonomia do artista");
-t("C7 Artes e Língua Portuguesa também não pesquisam: Artes cai no texto mais próximo (o de Jorge Coli, prova Unesp 2026), com zero chamadas ao modelo",
-  r && r.encontrou === true && r.doEnem.chave === "sp-262494" && r.doEnem.prova === "Unesp 2026" && __d.chamadasModelo === 0);
+t("C7 Artes (v74.33: fluxo direto) cai no texto mais próximo COM relação temática (o de Jorge Coli, prova Unesp 2026: 'courbet' e 'artista'), com zero chamadas ao modelo, e o banco foi consultado SEM as fontes restritas",
+  r && r.encontrou === true && r.doEnem.chave === "sp-262494" && r.doEnem.prova === "Unesp 2026" && __d.chamadasModelo === 0 && __d.semRestritos === true);
+__d.chamadasModelo = 0;
+r = await pesquisa("Artes", "Grafite e arte urbana contemporânea");
+t("C7b Artes sem texto com relação temática (só há o de Courbet): NÃO vem texto aleatório — devolve null (elaboração autoral), sem chamada ao modelo e sem bloqueio",
+  r === null && __d.chamadasModelo === 0);
+__d.chamadasModelo = 0; __d.enem = null; __d.banco = { encontrou: true, doBanco: true, url: "https://x", validacao: { libera: true } };
+r = await pesquisa("História", "Revolução Francesa", [], "humanas");
+t("C7c História (fluxo direto): o banco de fontes validadas vale, sem as restritas, antes do texto mais próximo", r === __d.banco && __d.semRestritos === true && __d.chamadasModelo === 0);
+__d.banco = null;
+r = await pesquisa("História", "Revolução Francesa", [], "humanas");
+t("C7d História sem texto na biblioteca nem no banco: null (elaboração autoral na própria chamada de geração), zero chamadas ao modelo", r === null && __d.chamadasModelo === 0);
 __d.chamadasModelo = 0;
 r = await pesquisa("Língua Portuguesa", "Variação linguística");
 t("C8 Língua Portuguesa sem nenhum texto na biblioteca (neste dublê): bloqueio com o motivo, sem cair na internet", r && r.encontrou === false && r.semPesquisaWeb === true && __d.chamadasModelo === 0);
-r = await pesquisa("História", "Revolução Francesa", [], "humanas");
-t("C9 História (e as demais) passam para o conhecimento da IA quando não há texto nem banco (v74.31; o fluxo inteiro é provado em verify_ordem_ia_v7431.ts)", __d.chamadasModelo >= 1);
+r = await pesquisa("Geografia", "Urbanização brasileira", [], "humanas");
+t("C9 Geografia (e as demais fora do fluxo direto) passam para o conhecimento da IA quando não há texto nem banco (v74.31; o fluxo inteiro é provado em verify_ordem_ia_v7431.ts)", __d.chamadasModelo >= 1);
 __d.tabela = Array.from({ length: 2345 }, (_, i) => lit(1000 + i, ["tema " + i], "Autor " + i, "Obra " + i));
 __d.paginas = [];
 const todas = await M.linhasDaBiblioteca(["Literatura"]);
@@ -155,17 +167,18 @@ t("C10 a biblioteca é lida inteira em páginas de 1000 (2.345 linhas → 3 pág
 fala();
 
 /* ---------- D. geração, auditoria, handler e selftest ---------- */
-t("D1 a geração nunca busca na internet em Literatura, Língua Portuguesa e Artes; nas demais, sem dossiê, continua podendo buscar",
-  M.buscaDaGeracao(null, "linguagens", "Literatura") === false && M.buscaDaGeracao(null, "linguagens", "Artes") === false && M.buscaDaGeracao(null, "linguagens", "Língua Portuguesa") === false
-  && M.buscaDaGeracao(null, "humanas", "História") !== false && M.buscaDaGeracao(null, "humanas", "Geografia") !== false);
+t("D1 a geração nunca busca na internet em Literatura e Língua Portuguesa; em História e Artes (v74.33) busca só como último recurso, teto 1; nas demais, sem dossiê, continua podendo buscar",
+  M.buscaDaGeracao(null, "linguagens", "Literatura") === false && M.buscaDaGeracao(null, "linguagens", "Língua Portuguesa") === false
+  && M.buscaDaGeracao(null, "linguagens", "Artes").max_uses === 1 && M.buscaDaGeracao(null, "humanas", "História").max_uses === 1
+  && M.buscaDaGeracao({ encontrou: true, trecho: "t" }, "linguagens", "Artes") === false && M.buscaDaGeracao(null, "humanas", "Geografia") !== false);
 const garantir = recorta("garantirFontesReais", "async function ");
 t("D2 auditor: sem busca na web nessas disciplinas, mesmo sem dossiê (a disciplina chega do handler)",
   garantir.includes("dossiePrevio?: any, disciplina = \"\",") && garantir.includes("auditoriaSemWeb ? false : buscaDaAuditoria")
   && fonte.includes("area, buscasWeb, dossie, disciplina,\n") && fonte.includes("area, buscasWeb, dossie, disciplina);"));
 t("D3 a resposta ao app diz de que prova veio o texto e se foi o mais próximo (sem a questão original)",
   fonte.includes('if (textoEnem) Object.assign(textoEnem, { prova: String(dossie.doEnem.prova || "ENEM"), aproximado: dossie.doEnem.aproximado === true });'));
-t("D4 sem pesquisa na internet: Literatura, Língua Portuguesa e Artes (decisões do professor, 26/09); História, Geografia, Sociologia e Língua Estrangeira seguem pesquisando",
-  M.DISCIPLINAS_SEM_PESQUISA_WEB.join() === "Literatura,Língua Portuguesa,Artes" && M.semPesquisaWeb("Língua Portuguesa") && M.semPesquisaWeb("Artes")
+t("D4 sem pesquisa na internet: Literatura e Língua Portuguesa (decisões do professor, 26/09; v74.33: Artes saiu — fluxo direto); Geografia, Sociologia e Língua Estrangeira seguem pesquisando",
+  M.DISCIPLINAS_SEM_PESQUISA_WEB.join() === "Literatura,Língua Portuguesa" && M.semPesquisaWeb("Língua Portuguesa") && !M.semPesquisaWeb("Artes")
   && !M.semPesquisaWeb("História") && !M.semPesquisaWeb("Geografia") && !M.semPesquisaWeb("Sociologia") && !M.semPesquisaWeb("Língua Estrangeira (Inglês/Espanhol)"));
 t("D5 selftest confere a biblioteca e inclui as funções na impressão digital",
   fonte.includes("v7428_biblioteca: (() => {") && fonte.includes("semPesquisaWeb.toString(), provaDoTexto.toString(), escolheTextoMaisProximo.toString(), consultarTextoMaisProximo.toString()"));

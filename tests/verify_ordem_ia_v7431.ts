@@ -53,7 +53,7 @@ function cacheControlAtual() { return { type: "ephemeral" }; }
 const SISTEMA_PESQUISA_FONTE = "sistema do pesquisador";
 const FERRAMENTA_DOSSIE_FONTE = { name: "entregar_dossie_fonte" };
 export const __banco: any = { resposta: null, consultas: [] as any[], guardados: [] as any[] };
-async function consultarBancoFontes(o: any, evitar: string[]) { __banco.consultas.push({ o, evitar: [...evitar] }); return __banco.resposta; }
+async function consultarBancoFontes(o: any, evitar: string[], semRestritos = false) { __banco.consultas.push({ o, evitar: [...evitar], semRestritos }); return __banco.resposta; }
 async function guardarNoBancoFontes(o: any, d: any) { __banco.guardados.push({ o, d }); }
 export const __enem: any = { resposta: null, consultas: [] as any[] };
 async function consultarTextosEnem(o: any, evitar: string[]) { __enem.consultas.push({ o, evitar: [...evitar] }); return __enem.resposta; }
@@ -86,7 +86,7 @@ async function callClaudeForJSON(_s: any, userMsg: string, ferramentaServidor: a
   if (fetches && Array.isArray(passo.fetches)) fetches.push(...passo.fetches);
   return passo.resposta;
 }
-export { pesquisarFonteReal, DISCIPLINAS_ORDEM_IA, RODADAS_PESQUISA_UNICA };
+export { pesquisarFonteReal, DISCIPLINAS_ORDEM_IA, RODADAS_PESQUISA_UNICA, DISCIPLINAS_FLUXO_DIRETO };
 `;
 const tmp = await Deno.makeTempDir();
 await Deno.writeTextFile(`${tmp}/fluxo.ts`, moduloFluxo);
@@ -116,8 +116,8 @@ const fala = cala();
 /* O1 — tema sem autor nem obra */
 zera(); roteiro({ resposta: iaSemAutor });
 let buscas: any[] = [];
-let r = await pesquisarFonteReal({ area: "humanas", disciplina: "História", tema: "Era Vargas" }, [], buscas, muitoTempo);
-t("O1 História, tema sem autor nem obra e sem texto na biblioteca: UMA chamada à IA, SEM internet, e o dossiê é autoral com dados reais",
+let r = await pesquisarFonteReal({ area: "humanas", disciplina: "Geografia", tema: "Era Vargas" }, [], buscas, muitoTempo);   // v74.33: História passou ao fluxo direto (ver F); a ordem da IA segue em Geografia
+t("O1 Geografia, tema sem autor nem obra e sem texto na biblioteca: UMA chamada à IA, SEM internet, e o dossiê é autoral com dados reais",
   etapas() === "pesquisa-ia" && __stub.chamadas[0].ferramentaServidor === false && __stub.chamadas[0].ferramentaNome === "entregar_material_ia"
   && r && r.encontrou === true && r.origemIA === "autoral" && r.validacao.libera === true && r.validacao.estado === "ia_autoral"
   && r.autor === "" && r.referencia === "" && r.trecho.includes("1. Getúlio Vargas chegou ao poder") && buscas.length === 0, etapas());
@@ -156,7 +156,7 @@ r = await pesquisarFonteReal({ area: "humanas", disciplina: "Filosofia", tema: "
 t("O6c a pesquisa é ÚNICA: no 3º pedido do app não se pesquisa de novo — questão autoral, sem internet",
   etapas() === "pesquisa-ia" && r.origemIA === "autoral" && r.pesquisouNaInternet === false);
 zera(); roteiro({ resposta: iaSemAutor });
-r = await pesquisarFonteReal({ area: "humanas", disciplina: "História", tema: "Era Vargas", tentativaApp: 2 }, [], [], muitoTempo);
+r = await pesquisarFonteReal({ area: "humanas", disciplina: "Geografia", tema: "Era Vargas", tentativaApp: 2 }, [], [], muitoTempo);
 t("O6d tema sem autor nem obra nunca vai à internet, nem no 2º pedido do app", etapas() === "pesquisa-ia" && r.origemIA === "autoral" && !r.autorNaoConfirmado);
 zera(); roteiro({ resposta: iaArendt });
 r = await pesquisarFonteReal({ area: "humanas", disciplina: "Filosofia", tema: "Hannah Arendt", tentativaApp: 2 }, [], [], muitoTempo);
@@ -185,7 +185,7 @@ t("O10 Literatura (e Língua Portuguesa e Artes) NÃO chamam a IA: continuam só
   __stub.chamadas.length === 0 && r && r.encontrou === false && r.semPesquisaWeb === true);
 /* O11 — falha da IA e lista a evitar */
 zera(); roteiro({ erro: "API fora do ar" });
-r = await pesquisarFonteReal({ area: "humanas", disciplina: "História", tema: "Canudos" }, [], [], muitoTempo);
+r = await pesquisarFonteReal({ area: "humanas", disciplina: "Geografia", tema: "Canudos" }, [], [], muitoTempo);
 t("O11 a chamada à IA falhou: sem saber se o tema pede autor, NÃO pesquisa na internet — devolve o bloqueio e o app repete o pedido",
   etapas() === "pesquisa-ia" && r.encontrou === false && r.bloqueado === true);
 zera(); roteiro({ resposta: iaArendt });
@@ -195,6 +195,28 @@ t("O12 obra que o app mandou evitar (auditor reprovou antes) não volta como par
 zera(); roteiro();
 r = await pesquisarFonteReal({ area: "natureza", disciplina: "Biologia", tema: "t" }, [], [], muitoTempo);
 t("O13 fora de Linguagens e Humanas nada muda: null, sem chamada", r === null && __stub.chamadas.length === 0);
+/* ---------- F. v74.33 — FLUXO DIRETO em História e Artes ---------- */
+zera(); roteiro();
+buscas = [];
+r = await pesquisarFonteReal({ area: "humanas", disciplina: "História", tema: "Era Vargas" }, [], buscas, muitoTempo);
+t("F1 História sem texto na biblioteca nem no banco: NENHUMA chamada ao modelo (nem IA, nem pesquisador, nem validador) — null = elaboração autoral na própria geração",
+  r === null && __stub.chamadas.length === 0 && __enem.consultas.length === 1 && __banco.consultas.length === 1 && __banco.consultas[0].semRestritos === true && buscas.length === 0);
+zera(); roteiro();
+r = await pesquisarFonteReal({ area: "linguagens", disciplina: "Artes", tema: "Tarsila do Amaral", tentativaApp: 2 }, [], [], muitoTempo);
+t("F2 Artes idem, também no 2º pedido do app: nunca vai ao pesquisador nem ao validador", r === null && __stub.chamadas.length === 0 && __banco.consultas[0].semRestritos === true);
+zera(); roteiro(); __enem.resposta = { encontrou: true, doEnem: { chave: "k" }, referencia: "REF", validacao: { libera: true, estado: "aprovado_enem" } };
+r = await pesquisarFonteReal({ area: "humanas", disciplina: "História", tema: "Era Vargas" }, [], [], muitoTempo);
+t("F3 História com texto que casa na biblioteca: é ele, antes do banco e sem chamada", r === __enem.resposta && __banco.consultas.length === 0 && __stub.chamadas.length === 0);
+zera(); roteiro(); __banco.resposta = { encontrou: true, doBanco: { id: 2 }, url: "https://www.scielo.br/x", validacao: { libera: true, estado: "aprovado_banco" } };
+buscas = [];
+r = await pesquisarFonteReal({ area: "linguagens", disciplina: "Artes", tema: "Tarsila do Amaral" }, [], buscas, muitoTempo);
+t("F4 Artes com fonte no banco (sem restritas): é ela, a URL entra nas buscas reais da geração, sem chamada",
+  r === __banco.resposta && buscas.length === 1 && buscas[0].url === "https://www.scielo.br/x" && __stub.chamadas.length === 0);
+zera(); roteiro();
+r = await pesquisarFonteReal({ area: "natureza", disciplina: "Biologia", tema: "t" }, [], [], muitoTempo);
+t("F5 Biologia continua fora de tudo isso: null, sem consulta à biblioteca", r === null && __enem.consultas.length === 0);
+t("F6 as listas: História e Artes no fluxo direto; História continua em DISCIPLINAS_ORDEM_IA só pelo rodízio da camada zero (o ramo da IA nunca é alcançado)",
+  F.DISCIPLINAS_FLUXO_DIRETO.join() === "História,Artes" && F.DISCIPLINAS_ORDEM_IA.includes("História") && !F.DISCIPLINAS_ORDEM_IA.includes("Artes"));
 fala();
 
 /* ---------- B. consultarTextosEnem: Língua Estrangeira e rodízio ---------- */
@@ -264,8 +286,8 @@ t("H1 o handler devolve ao app de onde veio o material da IA e passa o número d
 t("H2 o selftest confere a ordem nova e inclui as funções novas na impressão digital",
   fonte.includes("v7431_ordemIA: (() => {") && fonte.includes("usaOrdemIA.toString(), usadoHaPouco.toString(), pedeEspanhol.toString()")
   && fonte.includes("buildBlocoConhecimentoIA.toString(), buildBlocoAuditoriaIA.toString(), consultarTextosEnem.toString()"));
-t("H3 nada mudou para Literatura, Língua Portuguesa e Artes",
-  fonte.includes('const DISCIPLINAS_SEM_PESQUISA_WEB = ["Literatura", "Língua Portuguesa", "Artes"];')
+t("H3 nada mudou para Literatura e Língua Portuguesa (v74.33: Artes saiu da lista sem internet — fluxo direto, provado em F e em verify_biblioteca_v7428.ts)",
+  fonte.includes('const DISCIPLINAS_SEM_PESQUISA_WEB = ["Literatura", "Língua Portuguesa"];')
   && !F.DISCIPLINAS_ORDEM_IA.some((d: string) => ["Literatura", "Língua Portuguesa", "Artes"].includes(d)) && F.RODADAS_PESQUISA_UNICA === 1);
 
 console.log(`\n${ok} verificações passaram, ${bad} falharam.`);

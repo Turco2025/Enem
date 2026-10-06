@@ -413,7 +413,7 @@ function buildMatrizInstrucoes(area: string, competenciaNum: number | null, habi
 // disponível na chamada) para verificar qualquer dado do qual não tenha certeza.
 function buildRegraFontesReais(disciplina: string, area?: string): string {
   // Áreas do pedido do professor: a regra literal dele, íntegra, substitui o texto antigo.
-  if (fontesReaisEstrito(area || "")) return REGRA_FONTES_PROFESSOR + "\n" + (ehBiologia(disciplina) ? BUSCA_BIOLOGIA : BUSCA_PADRAO);
+  if (fontesReaisEstrito(area || "")) return REGRA_FONTES_PROFESSOR + "\n" + (ehBiologia(disciplina) ? BUSCA_BIOLOGIA : fluxoDireto(disciplina) ? BUSCA_FLUXO_DIRETO : BUSCA_PADRAO);   // v74.33: fluxo direto
   if (!precisaFontesReais(disciplina)) return "";
   return `
 
@@ -433,6 +433,9 @@ ${ehBiologia(disciplina) ? BUSCA_BIOLOGIA : BUSCA_PADRAO} No campo "textoBase", 
    formulada pelo elaborador — sem autor inventado. */
 const BUSCA_PADRAO = `Se você tiver QUALQUER dúvida sobre a existência, autoria, título exato, data, conteúdo ou trecho de um texto/autor antes de usá-lo, USE A FERRAMENTA web_search para verificar em fontes confiáveis (sites de universidades, editoras, enciclopédias reconhecidas, artigos científicos/acadêmicos, acervos como Domínio Público, Fundação Biblioteca Nacional, Scielo) antes de escrever a questão — é sempre preferível pesquisar e confirmar a arriscar citar algo inexistente ou incorreto.`;
 const BUSCA_BIOLOGIA = `USO DA BUSCA NA WEB EM BIOLOGIA — regra de economia, sem abrir mão da veracidade: pesquise NO MÁXIMO UMA VEZ por questão, e SOMENTE quando for citar um estudo, uma pesquisa, um dado numérico, uma estatística ou uma publicação ESPECÍFICA cuja existência, autoria ou valor você não tenha certeza. Para conhecimento consolidado de Biologia (ciclos biogeoquímicos, anatomia, fisiologia, ecologia, genética, evolução, ciclos de vida, saúde pública básica) NÃO pesquise: escreva a partir do seu conhecimento. Se você não tiver certeza de uma fonte específica e a busca não for justificada, NÃO invente autor, instituição nem ano: escreva o texto-suporte como situação hipotética formulada pelo elaborador (permitida pelo Guia do Inep), com contexto real e verossímil, e SEM citação de fonte — isso é sempre preferível a uma citação inventada.`;
+/* v74.33 — História e Artes (fluxo direto): a internet é o ÚLTIMO recurso, dentro
+   da própria chamada de elaboração, com teto de uma busca (ver DISCIPLINAS_FLUXO_DIRETO). */
+const BUSCA_FLUXO_DIRETO = `USO DA BUSCA NA WEB — ÚLTIMO RECURSO (História e Artes, fluxo direto; decisão do professor de 05/10/2026): a questão nasce, nesta ordem, do texto da biblioteca que vier no início da mensagem do usuário (quando vier) ou do seu próprio conhecimento consolidado da disciplina; a internet é o ÚLTIMO recurso. Pesquise NO MÁXIMO UMA VEZ por questão, e SOMENTE para confirmar um autor, uma obra, um documento, uma data, um acontecimento ou um dado numérico ESPECÍFICO que a questão precise e de que você não tenha certeza. Para conhecimento consolidado (períodos, processos, movimentos, estilos, técnicas, conceitos, artistas e obras canônicas) NÃO pesquise: escreva a partir do que sabe. Nunca transcreva de memória uma citação literal entre aspas: citação só com o trecho conferido em página devolvida pela busca desta mesma geração (regra 5) — sem isso, paráfrase identificada ou texto próprio. Sem certeza de um dado e sem busca que o confirme, NÃO invente autor, obra, instituição, data nem endereço: escreva o texto-base como situação-problema de sua autoria ("tipoUso": "proprio"; autor, instituição, obra, ano, referência e URL vazios), com contexto real e verossímil — é sempre preferível a uma referência inventada. O backend confere em código o campo "fonte" (coerência com o tipo de uso; URL só a que a busca desta geração devolveu): uma falha aí custa uma reescrita inteira.`;
 
 // Posição do gabarito: o professor reserva, antes de gerar, qual letra é a
 // correta em cada questão, de modo que em cada bloco de cinco questões
@@ -1557,7 +1560,46 @@ function urlsDaReferencia(ref: string): string[] {
    3. A biblioteca é lida em páginas de 1000 linhas (limite da API do Supabase
       por consulta): com os textos da Fuvest, Língua Portuguesa e Literatura
       passam das 500 linhas que a camada zero lia antes. */
-const DISCIPLINAS_SEM_PESQUISA_WEB = ["Literatura", "Língua Portuguesa", "Artes"];
+const DISCIPLINAS_SEM_PESQUISA_WEB = ["Literatura", "Língua Portuguesa"];   // v74.33: Artes saiu — ver DISCIPLINAS_FLUXO_DIRETO
+/* ═══════════ v74.33 — FLUXO DIRETO EM HISTÓRIA E ARTES (05/10/2026) ═══════════
+   Decisão do professor: "história e artes igual a Biologia" — UMA chamada de
+   elaboração, sem pesquisador, sem validador e sem auditor —, "no entanto, o
+   aplicativo deve buscar primeiro nas questões ENEM e depois na biblioteca de
+   textos e depois elaboração autoral"; a internet "somente em último caso".
+   Medido de 28/09 a 05/10: História US$ 0,149 e Artes US$ 0,135 por questão
+   (3,4–3,7 chamadas, 0,32–0,50 reelaboração por questão) contra US$ 0,062 em
+   Biologia (1,4 chamada) — o custo estava no pesquisador, no auditor e nas
+   reelaborações pedidas por ele, não na escrita da questão.
+   Ordem do material, toda em código e a custo zero (ver pesquisarFonteReal):
+   1. texto das provas do ENEM / da biblioteca do professor que CASA com o tema
+      (camada zero, com o rodízio de 3 h da v74.31);
+   2. banco de fontes já validadas — sem as aprovadas "restritas ao confirmado"
+      (não há auditor para conferir que a questão ficou dentro do confirmado);
+   3. o texto MAIS PRÓXIMO da biblioteca, só com RELAÇÃO TEMÁTICA (ao menos uma
+      palavra do pedido nos temas/autor/obra do texto, fora as genéricas — opção A
+      do professor): "Barroco" não traz um texto sobre grafite;
+   4. ELABORAÇÃO AUTORAL com o conhecimento da IA (dossiê nulo; o bloco
+      buildBlocoFluxoDiretoAutoral vai na mensagem do usuário) — a internet é o
+      último recurso, DENTRO da própria chamada de elaboração, com teto de UMA
+      busca (BUSCA_FLUXO_DIRETO / buscaDaGeracao).
+   Conferências em código continuam todas (campo "fonte", dossiê, ineditismo,
+   alternativas, gabarito, objeto, texto da biblioteca intocável); o que foi
+   dispensado é a chamada do auditor (garantirFontesReais). Reprovação em
+   código → UMA reescrita, não duas (opção B do professor: REELABORACOES_FLUXO_DIRETO). */
+const DISCIPLINAS_FLUXO_DIRETO = ["História", "Artes"];
+const REELABORACOES_FLUXO_DIRETO = 1;   // reescrita única, só por falha detectada em código
+const BUSCAS_FLUXO_DIRETO = 1;          // teto de buscas na web dentro da elaboração (último recurso)
+function fluxoDireto(disciplina: string): boolean {
+  return DISCIPLINAS_FLUXO_DIRETO.includes(String(disciplina || "").trim());
+}
+/* De onde saiu o material da questão no fluxo direto (log e resposta ao app). */
+function modoFluxoDireto(dossie: any): string {
+  if (!dossie || dossie.encontrou !== true) return "autoral";
+  if (dossie.doEnem) return dossie.doEnem.aproximado === true ? "biblioteca_proximo" : (dossie.doEnem.prova && dossie.doEnem.prova !== "ENEM" ? "biblioteca_professor" : "biblioteca_enem");
+  if (dossie.doBanco) return "banco_fontes";
+  return "dossie";
+}
+/* ═══════════ FIM DO v74.33 ═══════════ */
 const BIBLIOTECA_LIMITE_LINHAS = 6000;
 const BIBLIOTECA_PAGINA = 1000;
 /* Todas as linhas aproveitáveis da biblioteca para estas disciplinas, só as colunas
@@ -1598,7 +1640,7 @@ function nomesDoPedido(pedido: string): string[] {
   const re = /[A-ZÁÉÍÓÚÂÊÔÃÕÇ][\p{L}'’-]+(?:\s+(?:d[aeo]s?\s+)?[A-ZÁÉÍÓÚÂÊÔÃÕÇ][\p{L}'’-]+)+/gu;
   return [...String(pedido || "").matchAll(re)].map((m) => m[0]);
 }
-function escolheTextoMaisProximo(pedido: string, rows: any[], sorteio: () => number = Math.random): { row: any; pontos: number } | null {
+function escolheTextoMaisProximo(pedido: string, rows: any[], sorteio: () => number = Math.random): { row: any; pontos: number; comuns: number } | null {
   if (!Array.isArray(rows) || !rows.length) return null;
   const radicais = (x: string) => new Set(tokensDeFonte(x).filter((w) => !TEXTOS_ENEM_TEMAS_GENERICOS.has(w)).map(radicalEnem));
   const doPedido = [...radicais(pedido)];
@@ -1616,23 +1658,36 @@ function escolheTextoMaisProximo(pedido: string, rows: any[], sorteio: () => num
     return new Set(nomes.filter((x) => !t.includes(x.frase)).flatMap((x) => x.rad));
   });
   const pontos = docs.map((d, i) => doPedido.reduce((soma, w) => soma + (d.has(w) && !bloqueados[i].has(w) ? (pesos.get(w) || 0) : 0), 0));
+  /* v74.33 — quantas palavras do pedido o texto tem de fato (a relação temática do fluxo
+     direto): o peso IDF é zero para uma palavra presente em TODOS os textos da disciplina,
+     então "pontos > 0" não serve de critério numa biblioteca pequena. */
+  const comuns = docs.map((d, i) => doPedido.filter((w) => d.has(w) && !bloqueados[i].has(w)).length);
   const melhor = Math.max(0, ...pontos);
-  let faixa = rows.map((row, i) => ({ row, p: pontos[i] })).filter((c) => c.p >= melhor - 1e-9);
+  let faixa = rows.map((row, i) => ({ row, p: pontos[i], n: comuns[i] })).filter((c) => c.p >= melhor - 1e-9);
   const menosUsos = Math.min(...faixa.map((c) => Number(c.row.usos) || 0));
   faixa = faixa.filter((c) => (Number(c.row.usos) || 0) === menosUsos);
   const c = faixa[Math.min(faixa.length - 1, Math.floor(sorteio() * faixa.length))];
-  return { row: c.row, pontos: Math.round(c.p * 100) / 100 };
+  return { row: c.row, pontos: Math.round(c.p * 100) / 100, comuns: c.n };
 }
-async function consultarTextoMaisProximo(o: { disciplina: string; tema: string; recorte?: string; eixoTematico?: string }, evitar: string[]): Promise<any | null> {
+async function consultarTextoMaisProximo(o: { disciplina: string; tema: string; recorte?: string; eixoTematico?: string }, evitar: string[], exigeRelacaoTematica = false): Promise<any | null> {
   try {
     const discs = DISCIPLINAS_TEXTOS_ENEM[o.disciplina];
     if (!discs) return null;
     const data = await linhasDaBiblioteca(discs);
     if (!data.length) return null;
+    const agora = Date.now();
     const validos = data.filter((row: any) => String(row.referencia || "").trim() && (String(row.autor || "").trim() || String(row.instituicao || "").trim())
-      && !evitar.includes(chaveEvitarEnem(row.chave)) && !fonteEstaNaListaDeEvitar({ url: "", obra: row.obra }, evitar));
+      && !evitar.includes(chaveEvitarEnem(row.chave)) && !fonteEstaNaListaDeEvitar({ url: "", obra: row.obra }, evitar)
+      && !(exigeRelacaoTematica && usadoHaPouco(row, agora)));   // v74.33 — fluxo direto: o rodízio de 3 h vale também aqui (senão desfaz o da camada zero)
     const escolha = escolheTextoMaisProximo(`${o.tema || ""} ${o.recorte || ""} ${o.eixoTematico || ""}`, validos);
     if (!escolha) return null;
+    /* v74.33 — fluxo direto: só com RELAÇÃO TEMÁTICA (ao menos uma palavra do pedido nos
+       temas, no autor ou na obra do texto — fora as genéricas). Sem ela, não vem texto
+       aleatório da biblioteca: a questão é elaborada de forma autoral (opção A do professor). */
+    if (exigeRelacaoTematica && !(escolha.comuns > 0)) {
+      console.log(`[biblioteca] ${o.disciplina}: nenhum texto com relação temática com o pedido (${validos.length} na biblioteca) — elaboração autoral`);
+      return null;
+    }
     const { data: t, error: e2 } = await supabase.from("textos_enem")
       .select("id, chave, ano, numero, prova, tipo_texto, autor, instituicao, obra, ano_obra, referencia, texto, comando_original, alternativas_originais, gabarito_original, habilidade_original, usos")
       .eq("id", escolha.row.id).maybeSingle();
@@ -1691,7 +1746,7 @@ async function consultarTextosEnem(o: { disciplina: string; tema: string; recort
     if (!data.length) return null;
     const doRecorte = new Set(tokensDeFonte(o.recorte || "").map(radicalEnem));
     const cands: { row: any; p: number; bonus: number }[] = [];
-    const rodizio = usaOrdemIA(o.disciplina), agora = Date.now();   // v74.31
+    const rodizio = usaOrdemIA(o.disciplina) || fluxoDireto(o.disciplina), agora = Date.now();   // v74.31; v74.33: Artes também (tem a alternativa autoral)
     let usadosHaPouco = 0;
     for (const row of data) {
       if (!String(row.referencia || "").trim() || (!String(row.autor || "").trim() && !String(row.instituicao || "").trim())) continue;
@@ -2007,6 +2062,28 @@ async function pesquisarFonteReal(
       return doEnem;
     }
   }
+  /* v74.33 — FLUXO DIRETO (História e Artes): banco de fontes validadas (sem as
+     restritas ao confirmado: não há auditor para conferir que a questão ficou dentro
+     do confirmado) → texto MAIS PRÓXIMO da biblioteca, só com relação temática →
+     elaboração AUTORAL (null: a própria chamada de elaboração escreve com o
+     conhecimento da IA, e a internet é o último recurso, dentro dela — ver
+     buscaDaGeracao). Nunca chega ao pesquisador nem ao validador. */
+  if (fluxoDireto(o.disciplina)) {
+    if (o.usarBanco !== false) {
+      const doBancoDireto = await consultarBancoFontes(o, evitar, true);
+      if (doBancoDireto) {
+        if (Array.isArray(buscas) && doBancoDireto.url) buscas.push({ url: String(doBancoDireto.url), title: "fonte validada — banco de fontes (validador localizou a página)" });
+        return doBancoDireto;
+      }
+    }
+    const proximoDireto = await consultarTextoMaisProximo(o, evitar, true);
+    if (proximoDireto) {
+      if (Array.isArray(buscas)) for (const u of urlsDaReferencia(proximoDireto.referencia)) buscas.push({ url: u, title: "referência impressa na prova — biblioteca de textos" });
+      return proximoDireto;
+    }
+    console.log(`[fluxo-direto] ${o.disciplina}: sem texto na biblioteca nem no banco — elaboração autoral com o conhecimento da IA (internet só como último recurso, dentro da elaboração)`);
+    return null;
+  }
   /* v74.23 — banco de fontes validadas primeiro: custo zero. */
   if (o.usarBanco !== false) {
     const doBanco = await consultarBancoFontes(o, evitar, semPesquisaWeb(o.disciplina));   // v74.29: sem web, sem fonte restrita
@@ -2205,11 +2282,44 @@ Por decisão do professor a questão SAI MESMO ASSIM, mas como SITUAÇÃO-PROBLE
 `;
 }
 
+/* v74.33 — FLUXO DIRETO SEM TEXTO NA BIBLIOTECA (História e Artes): a elaboração
+   escreve com o conhecimento da IA — texto-base autoral com dados reais — e a
+   internet é o último recurso, dentro desta mesma chamada (teto de uma busca).
+   Não é o "último recurso" da v74.23 (que vem depois de pesquisas reprovadas):
+   aqui é a modalidade normal da disciplina quando a biblioteca não tem o tema. */
+function buildBlocoFluxoDiretoAutoral(disciplina: string): string {
+  return `📖 SEM TEXTO NA BIBLIOTECA PARA ESTE TEMA — ELABORAÇÃO AUTORAL (${disciplina}, fluxo direto; decisão do professor).
+As provas do ENEM e a biblioteca de textos do professor não têm texto que case com o tema pedido. Escreva a questão a partir do seu conhecimento consolidado de ${disciplina}, nesta ordem de preferência:
+· TEXTO-BASE AUTORAL COM DADOS REAIS (preferido): um texto redigido por VOCÊ — a descrição de um processo, de um período, de uma obra, de uma técnica ou de uma prática; um pequeno cenário; um relato —, com fatos, nomes, datas e lugares REAIS que você conhece com segurança, SEM aspas e SEM atribuir o texto a pessoa, obra ou instituição. É a "situação-problema formulada pelo elaborador" que o Guia do Inep admite. Campo "fonte": "tipoUso": "proprio"; autor, instituicao, obra, ano, referencia e urlVerificacao VAZIOS; "conferidoNaFonte": false; "comoVerificou": "texto autoral do elaborador, com dados consolidados da disciplina".
+· PARÁFRASE DE OBRA REAL que você conhece COM SEGURANÇA (autor, obra, ano e ideia central certos): só quando o tema pede um autor ou uma obra. "tipoUso": "parafrase", sem aspas, com autor (ou instituição), obra, ano e referencia completos e corretos; nunca invente um dado para completar a referência — na dúvida sobre UM dado que seja, volte ao texto autoral.
+· CITAÇÃO LITERAL: SOMENTE se você usou a busca na web nesta geração e conferiu o trecho na página devolvida — então "tipoUso": "citacao", "conferidoNaFonte": true e "urlVerificacao" com a URL que a busca devolveu. De memória, NUNCA cite entre aspas.
+· INTERNET — ÚLTIMO RECURSO: no máximo UMA busca, e só para confirmar um dado específico de que você não tem certeza e de que a questão precisa. Conhecimento consolidado não se pesquisa.
+PROIBIDO, sem exceção: inventar autor, obra, documento, instituição, data, estatística, trecho ou endereço; atribuir a alguém real um texto seu; preencher a referência por suposição. O backend confere o campo "fonte" em código (coerência com o tipo de uso; URL só a que a busca devolveu) e uma falha custa uma reescrita inteira.
+Trabalhe o OBJETO DE CONHECIMENTO da Matriz e a habilidade pedida: o candidato lê o SEU texto e aplica a habilidade — a questão é inédita e não depende de ele conhecer uma fonte específica.
+
+`;
+}
+
 /* v74.23 — REELABORAÇÃO COM O MESMO DOSSIÊ. O auditor reprovou a questão (não a
    fonte): o elaborador recebe o motivo e reescreve, sem nova pesquisa. */
 function buildCorrecaoAuditoria(fontesDiag: any, n: number): string {
   if (!fontesDiag || fontesDiag.estado !== "reprovado") return "";
   const itens: string[] = Array.isArray(fontesDiag.itensReprovados) ? fontesDiag.itensReprovados : [];
+  /* v74.33 — fluxo direto (História e Artes): não há auditor; a reprovação veio da
+     conferência em código e a reescrita é única. Sem dossiê (questão autoral), o que se
+     corrige é o campo "fonte" e o uso que a questão faz do material. */
+  if (fontesDiag.fluxoDireto) {
+    const autoral = fontesDiag.pesquisaPrevia === false;
+    return `
+
+🔁 REESCRITA ÚNICA (${n} de ${REELABORACOES_FLUXO_DIRETO}) — A VERSÃO ANTERIOR DESTA QUESTÃO FOI REPROVADA PELA CONFERÊNCIA EM CÓDIGO (fluxo direto, sem auditor).
+Motivo: ${String(fontesDiag.motivo || "").slice(0, 600)}${itens.length ? `
+Itens reprovados: ${itens.join(", ")}` : ""}
+${autoral
+  ? `A questão é AUTORAL (sem texto da biblioteca). Reescreva-a inteira corrigindo exatamente o motivo acima e deixando o campo "fonte" coerente com o que você fez: texto seu → "tipoUso": "proprio", com autor, instituicao, obra, ano, referencia e urlVerificacao VAZIOS e "conferidoNaFonte": false; paráfrase de obra real que você conhece com segurança → "parafrase", com autor (ou instituição), obra, ano e referencia completos e corretos, sem aspas; citação literal → só com "urlVerificacao" devolvida pela busca desta geração e "conferidoNaFonte": true. URL que a busca não devolveu NÃO pode aparecer: apague-a. Nunca invente autor, obra, data ou referência para completar o campo — na dúvida, texto próprio.`
+  : `O texto-base e a referência continuam os MESMOS (texto da biblioteca ou fonte já validada): copie-os sem alterar e corrija só o que o motivo aponta — no campo "fonte", no comando, nas alternativas, no gabarito e na resolução.`}${itens.includes("questaoInedita") ? `
+⚠️ A versão anterior REPETIU a questão original da prova que usou este texto. Mantenha o texto-base, mas troque o ASPECTO cobrado: comando, resposta correta, alternativas e resolução novos, sem paráfrase da original.` : ""}`;
+  }
   return `
 
 🔁 REELABORAÇÃO ${n} DE ${REELABORACOES_MAX} — A VERSÃO ANTERIOR DESTA QUESTÃO FOI REPROVADA PELO AUDITOR DE FONTES.
@@ -2239,6 +2349,7 @@ function buildUserPrompt(opts: {
   eixoTematico?: string; temasEvitar?: string[]; recorte?: string;
   diversidade?: DiversidadeExtras; orientacoes?: string; dossie?: any;
   textoProprio?: { tentativa: number; motivo: string } | null;   // v74.23 — último recurso
+  fluxoDiretoSemTexto?: boolean;   // v74.33 — História/Artes sem texto na biblioteca: elaboração autoral
 }) {
   /* v74.17 — A MATRIZ E O RECURSO VISUAL VIAJAM AQUI, NÃO NO BLOCO CACHEADO.
      Os dois mudam de questão para questão e, dentro do bloco fixo, estragavam
@@ -2252,12 +2363,15 @@ function buildUserPrompt(opts: {
   /* v74.18 — sem dossiê é a geração que busca (ver buscaDaGeracao), e até aqui
      ela buscava sem a lista dos acervos do professor. Com dossiê não entra:
      seriam ~180 tokens por questão para uma etapa que nem vai buscar. */
-  const acervosDaGeracao = (buildDossieFonte(opts.dossie) || opts.textoProprio) ? "" : buildAcervosPrioritarios(opts.disciplina);
+  /* v74.33 — no fluxo direto autoral a lista dos acervos também não entra: ela manda
+     "procurar nos acervos" e aqui a internet é o último recurso, com teto de uma busca. */
+  const autoralDireto = opts.fluxoDiretoSemTexto === true && !opts.textoProprio && !buildDossieFonte(opts.dossie);
+  const acervosDaGeracao = (buildDossieFonte(opts.dossie) || opts.textoProprio || autoralDireto) ? "" : buildAcervosPrioritarios(opts.disciplina);
   /* v74.30 — texto da biblioteca: recorte e domínio não pedem cenário novo (ver
      buildDiversidadeTematica); texto mais próximo: aviso na própria linha do tema. */
   const textoDaBiblioteca = !opts.textoProprio && !!(opts.dossie && opts.dossie.encontrou === true && opts.dossie.doEnem);
   const textoAproximado = textoDaBiblioteca && opts.dossie.doEnem.aproximado === true;
-  return `${opts.textoProprio ? buildBlocoTextoProprio(opts.textoProprio) : buildDossieFonte(opts.dossie)}Elabore UMA questão inédita, original, no padrão ENEM, com os seguintes parâmetros definidos pelo professor:
+  return `${opts.textoProprio ? buildBlocoTextoProprio(opts.textoProprio) : autoralDireto ? buildBlocoFluxoDiretoAutoral(opts.disciplina) : buildDossieFonte(opts.dossie)}Elabore UMA questão inédita, original, no padrão ENEM, com os seguintes parâmetros definidos pelo professor:
 
 Área do conhecimento: ${AREA_LABELS[opts.area]}
 Disciplina: ${opts.disciplina}
@@ -2826,6 +2940,7 @@ function buscaDaGeracao(dossie: any, area: string, disciplina: string) {
   if (semPesquisaWeb(disciplina)) return false;   // v74.28 — Literatura não pesquisa na internet
   const temDossie = !!(dossie && dossie.encontrou === true && String(dossie.trecho || "").trim());
   if (temDossie) return false;
+  if (fluxoDireto(disciplina)) return { ...webSearchTool(disciplina), max_uses: BUSCAS_FLUXO_DIRETO };   // v74.33 — último recurso: UMA busca, dentro da elaboração
   return (fontesReaisEstrito(area) || precisaFontesReais(disciplina)) ? webSearchTool(disciplina) : false;
 }
 
@@ -5096,6 +5211,8 @@ async function garantirFontesReais(
   // v74.21 — o veredito do validador segue para o app e para o log
   diag.validacao = dossiePrevio && dossiePrevio.validacao ? dossiePrevio.validacao : null;
   if (!diag.aplicavel) { diag.estado = "nao_se_aplica"; return diag; }
+  /* v74.33 — fluxo direto (História e Artes): conferências em código, sem a chamada do auditor. */
+  if (fluxoDireto(disciplina || String((data && data.disciplina) || ""))) diag.fluxoDireto = { modo: modoFluxoDireto(dossiePrevio), auditor: "dispensado", reelaboracoesMax: REELABORACOES_FLUXO_DIRETO };
 
   /* v74.32 — Inglês e Espanhol: o texto-base tem de estar no idioma da disciplina. */
   const discIdioma = disciplina || String((data && data.disciplina) || "");
@@ -5192,6 +5309,27 @@ async function garantirFontesReais(
     diag.itensReprovados = ["questaoInedita"];
     data.fonteNaoVerificada = { motivo: ined.motivo, mensagem: MENSAGEM_FONTE_BLOQUEIO, etapa: "ineditismo", itens: ["questaoInedita"] };
     console.error(`[fontes] BLOQUEADA no ineditismo: ${ined.motivo}`);
+    return diag;
+  }
+
+  /* v74.33 — FLUXO DIRETO: passou nas conferências em código → aprovada, sem a chamada
+     do auditor. Uma trava a mais, só aqui: sem dossiê (questão autoral), "citacao" exige a
+     URL devolvida pela busca desta geração — citação literal só conferida no documento
+     (regra 5 do professor); de memória, não. */
+  if (diag.fluxoDireto) {
+    const urlDeclarada = String((data && data.fonte && data.fonte.urlVerificacao) || "").trim();
+    if (!dossiePrevio && det.tipoUso === "citacao" && !urlDeclarada) {
+      diag.estado = "reprovado";
+      diag.determinista = "citacao_sem_busca";
+      diag.motivo = 'citação literal ("tipoUso": "citacao") sem página conferida: no fluxo direto a citação só vale com o trecho conferido em página devolvida pela busca desta geração (urlVerificacao). Sem isso, use "parafrase" identificada (sem aspas) ou texto próprio ("proprio")';
+      data.fonteNaoVerificada = { motivo: diag.motivo, mensagem: MENSAGEM_FONTE_BLOQUEIO, etapa: "conferência estrutural" };
+      console.error(`[fontes] BLOQUEADA (fluxo direto): ${diag.motivo}`);
+      return diag;
+    }
+    diag.estado = "aprovado";
+    diag.auditor = "dispensado_fluxo_direto";
+    delete data.fonteNaoVerificada;
+    console.log(`[fontes] fluxo direto (${diag.fluxoDireto.modo}): conferências em código ok — auditor dispensado`);
     return diag;
   }
 
@@ -5434,6 +5572,8 @@ function selfTestResponse() {
     buildSystemVisual.toString(),
     BUSCA_PADRAO,
     BUSCA_BIOLOGIA,
+    BUSCA_FLUXO_DIRETO, fluxoDireto.toString(), modoFluxoDireto.toString(), buildBlocoFluxoDiretoAutoral.toString(),   // v74.33
+    JSON.stringify([DISCIPLINAS_FLUXO_DIRETO, REELABORACOES_FLUXO_DIRETO, BUSCAS_FLUXO_DIRETO]),
   ].join(String.fromCharCode(0));
   return jsonResponse({
     selftest: true,
@@ -6004,7 +6144,7 @@ function selfTestResponse() {
             { id: 3, temas: ["romantismo", "indianismo"], autor: "José de Alencar", obra: "Iracema", usos: 0 },
           ];
           const zero = () => 0;
-          return semPesquisaWeb("Literatura") && semPesquisaWeb("Língua Portuguesa") && semPesquisaWeb("Artes") && !semPesquisaWeb("História") && !semPesquisaWeb("Geografia") && !semPesquisaWeb("Sociologia") && !semPesquisaWeb("Língua Estrangeira (Inglês/Espanhol)")
+          return semPesquisaWeb("Literatura") && semPesquisaWeb("Língua Portuguesa") && !semPesquisaWeb("Artes") /* v74.33: Artes → fluxo direto */ && !semPesquisaWeb("História") && !semPesquisaWeb("Geografia") && !semPesquisaWeb("Sociologia") && !semPesquisaWeb("Língua Estrangeira (Inglês/Espanhol)")
             && provaDoTexto({ prova: "Unesp 2026" }) === "Unesp 2026" && provaDoTexto({ prova: "ENEM" }) === "" && provaDoTexto({}) === ""
             && unesp.doEnem.prova === "Unesp 2026" && unesp.validacao.afirmacoesComSuporte[0].includes("na prova Unesp 2026") && !unesp.validacao.afirmacoesComSuporte[0].includes("INEP")
             && enem.doEnem.prova === "ENEM" && semColuna.doEnem.prova === "ENEM" && JSON.stringify(enem.validacao) === JSON.stringify(semColuna.validacao)
@@ -6017,13 +6157,50 @@ function selfTestResponse() {
             && escolheTextoMaisProximo("Indianismo romântico", rows, zero)!.row.id === 3
             && escolheTextoMaisProximo("Literatura", rows, zero)!.row.id === 2 && escolheTextoMaisProximo("Literatura", rows, zero)!.pontos === 0
             && escolheTextoMaisProximo("x", [], zero) === null
-            && buscaDaGeracao(null, "linguagens", "Literatura") === false && buscaDaGeracao(null, "linguagens", "Artes") === false && buscaDaGeracao(null, "humanas", "História") !== false
+            && buscaDaGeracao(null, "linguagens", "Literatura") === false && buscaDaGeracao(null, "linguagens", "Língua Portuguesa") === false && buscaDaGeracao(null, "humanas", "História") !== false
             && pesquisarFonteReal.toString().indexOf("if (semPesquisaWeb(o.disciplina))") > pesquisarFonteReal.toString().indexOf("await consultarBancoFontes(o, evitar")
             && pesquisarFonteReal.toString().indexOf("await consultarBancoFontes(o, evitar") > 0
             && pesquisarFonteReal.toString().indexOf("if (semPesquisaWeb(o.disciplina))") < pesquisarFonteReal.toString().indexOf("SISTEMA_PESQUISA_FONTE")
             && garantirFontesReais.toString().includes("auditoriaSemWeb ? false : buscaDaAuditoria")
-            && DISCIPLINAS_SEM_PESQUISA_WEB.join() === "Literatura,Língua Portuguesa,Artes" && DISCIPLINAS_TEXTOS_ENEM["Literatura"][0] === "Literatura"
+            && DISCIPLINAS_SEM_PESQUISA_WEB.join() === "Literatura,Língua Portuguesa" && DISCIPLINAS_TEXTOS_ENEM["Literatura"][0] === "Literatura"
             && linhasDaBiblioteca.toString().includes(".range(de, de + BIBLIOTECA_PAGINA - 1)") && BIBLIOTECA_PAGINA === 1000;
+        })(),
+        /* v74.33 — FLUXO DIRETO em História e Artes (decisão do professor, 05/10/2026). */
+        v7433_fluxoDireto: (() => {
+          const p = pesquisarFonteReal.toString(), g = garantirFontesReais.toString(), c = buildCorrecaoAuditoria.toString(), bup = buildUserPrompt.toString();
+          const base = { area: "humanas", disciplina: "História", tema: "Canudos", dificuldade: "médio", recurso: "nenhum", competenciaNum: null, habilidadeCod: null };
+          const texto = dossieDoTextoEnem({ id: 1, chave: "k", ano: 2015, numero: 1, prova: "ENEM", tipo_texto: "jornalistico", autor: "A", obra: "O", referencia: "A. O. 2015.", texto: "Texto.", usos: 0 }, 2);
+          const semTexto = buildUserPrompt({ ...base, fluxoDiretoSemTexto: true });
+          const comTexto = buildUserPrompt({ ...base, dossie: texto, fluxoDiretoSemTexto: false });
+          const normal = buildUserPrompt({ ...base, disciplina: "Geografia" });
+          const corrAut = buildCorrecaoAuditoria({ estado: "reprovado", motivo: "m", fluxoDireto: { modo: "autoral" }, pesquisaPrevia: false }, 1);
+          const corrBib = buildCorrecaoAuditoria({ estado: "reprovado", motivo: "m", fluxoDireto: { modo: "biblioteca_enem" }, pesquisaPrevia: true, itensReprovados: ["questaoInedita"] }, 1);
+          const corrNormal = buildCorrecaoAuditoria({ estado: "reprovado", motivo: "m" }, 1);
+          const busca: any = buscaDaGeracao(null, "humanas", "História"), buscaArtes: any = buscaDaGeracao(null, "linguagens", "Artes");
+          return DISCIPLINAS_FLUXO_DIRETO.join() === "História,Artes" && fluxoDireto("História") && fluxoDireto("Artes") && !fluxoDireto("Geografia") && !fluxoDireto("Literatura") && !fluxoDireto("Biologia") && !fluxoDireto("")
+            && REELABORACOES_FLUXO_DIRETO === 1 && BUSCAS_FLUXO_DIRETO === 1
+            && !semPesquisaWeb("Artes") && semPesquisaWeb("Literatura") && semPesquisaWeb("Língua Portuguesa")
+            && busca && busca.max_uses === 1 && buscaArtes && buscaArtes.max_uses === 1 && buscaDaGeracao(texto, "humanas", "História") === false && buscaDaGeracao(texto, "linguagens", "Artes") === false
+            && (buscaDaGeracao(null, "humanas", "Geografia") as any).max_uses === 3
+            && buildRegraFontesReais("História", "humanas").includes("USO DA BUSCA NA WEB — ÚLTIMO RECURSO") && buildRegraFontesReais("Artes", "linguagens").includes("USO DA BUSCA NA WEB — ÚLTIMO RECURSO")
+            && !buildRegraFontesReais("Geografia", "humanas").includes("USO DA BUSCA NA WEB — ÚLTIMO RECURSO") && buildRegraFontesReais("Geografia", "humanas").includes("USE A FERRAMENTA web_search")
+            && buildRegraFontesReais("Biologia", "natureza").includes("USO DA BUSCA NA WEB EM BIOLOGIA") && !buildRegraFontesReais("Biologia", "natureza").includes("ÚLTIMO RECURSO")
+            && BUSCA_FLUXO_DIRETO.includes("NO MÁXIMO UMA VEZ") && BUSCA_FLUXO_DIRETO.includes('"tipoUso": "proprio"')
+            && semTexto.includes("SEM TEXTO NA BIBLIOTECA PARA ESTE TEMA — ELABORAÇÃO AUTORAL (História") && !semTexto.includes("ACERVOS DE PRIORIDADE") && !semTexto.includes("MATERIAL JÁ PESQUISADO")
+            && !comTexto.includes("ELABORAÇÃO AUTORAL") && comTexto.includes("MATERIAL JÁ PESQUISADO E VERIFICADO") && !normal.includes("ELABORAÇÃO AUTORAL")
+            && modoFluxoDireto(null) === "autoral" && modoFluxoDireto({ encontrou: false }) === "autoral" && modoFluxoDireto(texto) === "biblioteca_enem"
+            && modoFluxoDireto({ ...texto, doEnem: { ...texto.doEnem, aproximado: true } }) === "biblioteca_proximo" && modoFluxoDireto({ ...texto, doEnem: { ...texto.doEnem, prova: "Unesp 2026" } }) === "biblioteca_professor"
+            && modoFluxoDireto({ encontrou: true, doBanco: { id: 1 } }) === "banco_fontes" && modoFluxoDireto({ encontrou: true, url: "u" }) === "dossie"
+            && corrAut.includes("REESCRITA ÚNICA (1 de 1)") && corrAut.includes("A questão é AUTORAL") && !corrAut.includes("AUDITOR DE FONTES")
+            && corrBib.includes("continuam os MESMOS") && corrBib.includes("REPETIU a questão original") && corrNormal.includes("REELABORAÇÃO 1 DE 2") && corrNormal.includes("AUDITOR DE FONTES")
+            && p.indexOf("if (fluxoDireto(o.disciplina))") > p.indexOf("await consultarTextosEnem(o, evitar)") && p.indexOf("if (fluxoDireto(o.disciplina))") < p.indexOf("await consultarBancoFontes(o, evitar, semPesquisaWeb(o.disciplina))")
+            && p.includes("await consultarBancoFontes(o, evitar, true)") && p.includes("await consultarTextoMaisProximo(o, evitar, true)")
+            && consultarTextoMaisProximo.toString().includes("if (exigeRelacaoTematica && !(escolha.comuns > 0))")
+            && escolheTextoMaisProximo("Barroco mineiro", [{ id: 1, temas: ["barroco", "aleijadinho"], autor: "", obra: "", usos: 0 }], () => 0)!.comuns === 1
+            && escolheTextoMaisProximo("Grafite urbano", [{ id: 1, temas: ["barroco", "aleijadinho"], autor: "", obra: "", usos: 0 }], () => 0)!.comuns === 0 && consultarTextoMaisProximo.toString().includes("exigeRelacaoTematica && usadoHaPouco(row, agora)")
+            && consultarTextosEnem.toString().includes("usaOrdemIA(o.disciplina) || fluxoDireto(o.disciplina)")
+            && g.includes('diag.auditor = "dispensado_fluxo_direto"') && g.includes('diag.determinista = "citacao_sem_busca"') && g.indexOf("if (diag.fluxoDireto) {") > g.indexOf("conferenciaIneditismo(data, dossiePrevio)") && g.indexOf("if (diag.fluxoDireto) {") < g.indexOf("if (restanteMs < 30_000)")
+            && c.includes("if (fontesDiag.fluxoDireto) {");
         })(),
         /* v74.31 — BIBLIOTECA → CONHECIMENTO DA IA → INTERNET (decisões do professor, 01/10/2026). */
         v7431_ordemIA: (() => {
@@ -6702,7 +6879,7 @@ ATENÇÃO — sua resposta anterior não pôde ser usada: o argumento da ferrame
        log e o app recebe a mensagem de bloqueio com o motivo — o professor
        regenera ou envia a fonte. Antes, a geração seguia sem dossiê e o auditor
        decidia no fim, depois da chamada mais cara. */
-    if (fontesReaisEstrito(area) && !(dossie && dossie.encontrou === true && dossie.validacao && dossie.validacao.libera === true)) {
+    if (fontesReaisEstrito(area) && !fluxoDireto(disciplina) && !(dossie && dossie.encontrou === true && dossie.validacao && dossie.validacao.libera === true)) {   // v74.33: no fluxo direto, sem dossiê = elaboração autoral
       const motivo = String((dossie && (dossie.motivo || (dossie.validacao && dossie.validacao.motivo))) || "nenhuma fonte real foi localizada e validada").slice(0, 300);
       if (!ultimoRecursoPedido) {
         const uso = resumoUso(usos);
@@ -6721,7 +6898,9 @@ ATENÇÃO — sua resposta anterior não pôde ser usada: o argumento da ferrame
       dossie = null;
       console.warn(`[fontes] ÚLTIMO RECURSO (tentativa ${tentativaApp} do app): texto próprio — ${motivo}`);
     }
-    const userMsg = buildUserPrompt({ area, disciplina, tema, dificuldade, recurso, competenciaNum, habilidadeCod, instrucoesVisual, gabaritoAlvo, eixoTematico, temasEvitar, recorte, diversidade, orientacoes, dossie, textoProprio });
+    const userMsg = buildUserPrompt({ area, disciplina, tema, dificuldade, recurso, competenciaNum, habilidadeCod, instrucoesVisual, gabaritoAlvo, eixoTematico, temasEvitar, recorte, diversidade, orientacoes, dossie, textoProprio,
+      fluxoDiretoSemTexto: fluxoDireto(disciplina) && !(dossie && dossie.encontrou === true) });   // v74.33
+    if (fluxoDireto(disciplina)) console.log(`[fluxo-direto] ${disciplina}: material = ${modoFluxoDireto(dossie)} · auditor dispensado · reescrita máxima ${REELABORACOES_FLUXO_DIRETO}`);
     // v74.13 — com dossiê validado a geração não busca (ver buscaDaGeracao).
     // v74.23 — no último recurso também não: não há fonte a procurar.
     const webSearch = textoProprio ? false : buscaDaGeracao(dossie, area, disciplina);
@@ -6853,20 +7032,24 @@ ATENÇÃO — sua resposta anterior não pôde ser usada: o argumento da ferrame
     let reelaboracoes = 0;
     let objetoDiagFinal = objetoDiag;
     let motivoReelabAnterior = "";
-    while (fontesDiag && fontesDiag.estado === "reprovado" && reelaboracoes < REELABORACOES_MAX
+    const reelabMax = fluxoDireto(disciplina) ? REELABORACOES_FLUXO_DIRETO : REELABORACOES_MAX;   // v74.33 — fluxo direto: reescrita única
+    while (fontesDiag && fontesDiag.estado === "reprovado" && reelaboracoes < reelabMax
            && (LIMITE_FUNCAO_MS - (Date.now() - inicioReq)) > MS_MINIMO_PARA_REELABORAR) {
       /* Reprovação estrutural que o elaborador não corrige (URL fora da busca,
          tempo, erro) ou o MESMO motivo de novo: parar, não gastar a 2ª. */
       const motivoAtual = String(fontesDiag.motivo || "");
       const etapaRep = String((data && data.fonteNaoVerificada && data.fonteNaoVerificada.etapa) || "");
-      if (fontesDiag.determinista === "url_nao_confirmada" || ["tempo", "erro"].includes(etapaRep)
-          || (motivoReelabAnterior && motivoAtual === motivoReelabAnterior)) {
+      const estrutural = fontesDiag.determinista === "url_nao_confirmada" || ["tempo", "erro"].includes(etapaRep);
+      /* v74.33 — fluxo direto autoral: URL fora da busca se corrige na reescrita (apagar a
+         URL; "parafrase" ou "proprio") — não é a URL de um dossiê que a busca não trouxe. */
+      const corrigivelNoFluxoDireto = !!(fontesDiag.fluxoDireto) && fontesDiag.pesquisaPrevia === false && fontesDiag.determinista === "url_nao_confirmada" && !["tempo", "erro"].includes(etapaRep);
+      if ((estrutural && !corrigivelNoFluxoDireto) || (motivoReelabAnterior && motivoAtual === motivoReelabAnterior)) {
         console.warn(`[fontes] reelaboração não ajudaria (${fontesDiag.determinista || etapaRep || "mesmo motivo"}) — parando`);
         break;
       }
       motivoReelabAnterior = motivoAtual;
       reelaboracoes++;
-      console.warn(`[fontes] reelaboração ${reelaboracoes}/${REELABORACOES_MAX} — ${String(fontesDiag.motivo || "").slice(0, 160)}`);
+      console.warn(`[fontes] reelaboração ${reelaboracoes}/${reelabMax} — ${String(fontesDiag.motivo || "").slice(0, 160)}`);
       let nova = await callClaudeForJSON(system, userMsg + buildCorrecaoAuditoria(fontesDiag, reelaboracoes), false, usos, ferramentaQ, buscasWeb, `geracao/reelaboracao-${reelaboracoes}`, undefined, undefined, familiaQ);
       nova = normalizarCamposEstruturados(nova);
       if (!nova || typeof nova !== "object") break;
@@ -6893,6 +7076,7 @@ ATENÇÃO — sua resposta anterior não pôde ser usada: o argumento da ferrame
     if (textoEnem) fontesDiag.doEnem = textoEnem;   // v74.25
     if (dossie && dossie.origemIA) fontesDiag.conhecimentoIA = { modo: String(dossie.origemIA), autorNaoConfirmado: String(dossie.autorNaoConfirmado || "") };   // v74.31
     if (textoProprio) fontesDiag.ultimoRecurso = textoProprio;
+    if (fluxoDireto(disciplina) && !fontesDiag.fluxoDireto) fontesDiag.fluxoDireto = { modo: modoFluxoDireto(dossie), auditor: "dispensado", reelaboracoesMax: REELABORACOES_FLUXO_DIRETO };   // v74.33
     if (reelaboracoes) console.log(`[fontes] após ${reelaboracoes} reelaboração(ões): ${fontesDiag.estado}`);
 
     const diversidadeDiag = {
@@ -6917,7 +7101,8 @@ ATENÇÃO — sua resposta anterior não pôde ser usada: o argumento da ferrame
     await logGeneration(area, disciplina, tema, {
       recurso, uso,
       fonteUrl: data && typeof data === "object" && data.fonte ? String(data.fonte.urlVerificacao || "") : "",
-      validacao: dossie && dossie.validacao ? dossie.validacao : (textoProprio ? { estado: "texto_proprio" } : undefined),   // v74.21 / v74.23
+      validacao: fluxoDireto(disciplina) ? { ...((dossie && dossie.validacao) || {}), estado: `fluxo_direto:${modoFluxoDireto(dossie)}` }   // v74.33 — de onde veio o material
+        : (dossie && dossie.validacao ? dossie.validacao : (textoProprio ? { estado: "texto_proprio" } : undefined)),   // v74.21 / v74.23
       rodadas: dossie && dossie.rodadas ? dossie.rodadas : undefined,
       tentativa: tentativaApp, reelaboracoes, fonteDoBanco, ultimoRecurso: !!textoProprio,   // v74.23
       fonteEnem: !!textoEnem, textoEnemChave: textoEnem ? textoEnem.chave : "",                // v74.25

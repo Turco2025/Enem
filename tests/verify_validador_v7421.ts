@@ -93,8 +93,12 @@ const moduloComPesquisa = modulo.replace(/const DISCIPLINAS_SEM_PESQUISA_WEB = \
 if (moduloComPesquisa === modulo) { console.error("FALHA: não achei DISCIPLINAS_SEM_PESQUISA_WEB no trecho recortado"); Deno.exit(1); }
 /* v74.31 — o mesmo vale para a ordem biblioteca → IA → internet (provada em verify_ordem_ia_v7431.ts):
    aqui a lista fica vazia, para que este arquivo continue provando a máquina de pesquisa de 3 rodadas. */
-const moduloMaquina = moduloComPesquisa.replace(/const DISCIPLINAS_ORDEM_IA = \[[^\]]*\];/, "const DISCIPLINAS_ORDEM_IA: string[] = [];");
-if (moduloMaquina === moduloComPesquisa) { console.error("FALHA: não achei DISCIPLINAS_ORDEM_IA no trecho recortado"); Deno.exit(1); }
+const moduloSemIA = moduloComPesquisa.replace(/const DISCIPLINAS_ORDEM_IA = \[[^\]]*\];/, "const DISCIPLINAS_ORDEM_IA: string[] = [];");
+if (moduloSemIA === moduloComPesquisa) { console.error("FALHA: não achei DISCIPLINAS_ORDEM_IA no trecho recortado"); Deno.exit(1); }
+/* v74.33 — e para o fluxo direto de História e Artes (provado em verify_biblioteca_v7428.ts, verify_ordem_ia_v7431.ts
+   e verify_fontes_backend.ts): aqui a lista fica vazia, para que Artes continue servindo de exemplo da máquina. */
+const moduloMaquina = moduloSemIA.replace(/const DISCIPLINAS_FLUXO_DIRETO = \[[^\]]*\];/, "const DISCIPLINAS_FLUXO_DIRETO: string[] = [];");
+if (moduloMaquina === moduloSemIA) { console.error("FALHA: não achei DISCIPLINAS_FLUXO_DIRETO no trecho recortado"); Deno.exit(1); }
 const tmp = await Deno.makeTempDir();
 await Deno.writeTextFile(`${tmp}/mod.ts`, moduloMaquina);
 const M: any = await import("file://" + `${tmp}/mod.ts`);
