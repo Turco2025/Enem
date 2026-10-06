@@ -51,6 +51,7 @@ const supabase: any = {
 ${constObjeto("FERRAMENTA_ALTERNATIVAS")}
 ${constObjeto("FERRAMENTA_GABARITO")}
 ${constObjeto("FERRAMENTA_IDIOMA")}
+${constObjeto("FERRAMENTA_DADOS")}
 ${recorta("montaFerramentas")}${recorta("ferramentasDaQuestao")}
 ${entre("function tokensDeFonte(", "\n/* Palavras que aparecem")}
 ${entre("const PALAVRAS_VAZIAS_FONTE", "\n]);\n")}
@@ -74,8 +75,8 @@ const Q = { name: "entregar_questao", description: "q", input_schema: { type: "o
 const fam = M.ferramentasDaQuestao(Q);
 const ger = M.montaFerramentas(false, Q, fam), alt = M.montaFerramentas(false, M.FERRAMENTA_ALTERNATIVAS, fam);
 const gab = M.montaFerramentas(false, M.FERRAMENTA_GABARITO, fam), idi = M.montaFerramentas(false, M.FERRAMENTA_IDIOMA, fam);
-t("A1 a família é questão + alternativas + gabarito + idioma, nesta ordem",
-  fam.map((f: any) => f.name).join() === "entregar_questao,entregar_alternativas,entregar_gabarito,entregar_item_em_portugues");
+t("A1 a família é questão + alternativas + gabarito + idioma + coerência com os dados (v74.35), nesta ordem",
+  fam.map((f: any) => f.name).join() === "entregar_questao,entregar_alternativas,entregar_gabarito,entregar_item_em_portugues,entregar_coerencia_dados");
 t("A2 geração, alternativas, gabarito e idioma mandam a MESMA lista (mesmo JSON = mesmo prefixo de cache)",
   JSON.stringify(ger.tools) === JSON.stringify(alt.tools) && JSON.stringify(ger.tools) === JSON.stringify(gab.tools) && JSON.stringify(ger.tools) === JSON.stringify(idi.tools));
 t("A3 só o tool_choice muda, e ele continua OBRIGANDO a ferramenta da etapa",
@@ -130,9 +131,11 @@ t("D2 a geração declara a família só sem busca na web",
 t("D3 reescrita pedida pelo auditor, gabarito e alternativas (antes e depois da reescrita) declaram a família",
   fonte.includes("usos, ferramentaQ, buscasWeb, `geracao/reelaboracao-${reelaboracoes}`, undefined, undefined, familiaQ);")
   && fonte.includes("data, system, usos, LIMITE_FUNCAO_MS - (Date.now() - inicioReq), familiaQ,\n    );")
-  && (fonte.match(/data, system, usos, LIMITE_FUNCAO_MS - \(Date\.now\(\) - inicioReq\), familiaQ,/g) || []).length === 2
+  && (fonte.match(/data, system, usos, LIMITE_FUNCAO_MS - \(Date\.now\(\) - inicioReq\), familiaQ,/g) || []).length === 4   // v74.35/v74.36: gabarito, distratores, alternativas e coerência com os dados
   && fonte.includes("const gd2 = await garantirGabaritoCoerente(nova, system, usos, LIMITE_FUNCAO_MS - (Date.now() - inicioReq), familiaQ);")
-  && fonte.includes("const ad2 = await garantirAlternativasConformes(nova, system, usos, LIMITE_FUNCAO_MS - (Date.now() - inicioReq), familiaQ);"));
+  && fonte.includes("const ad2 = await garantirAlternativasConformes(nova, system, usos, LIMITE_FUNCAO_MS - (Date.now() - inicioReq), familiaQ);")
+  && fonte.includes("const dd2 = await garantirDadosCoerentes(nova, system, usos, LIMITE_FUNCAO_MS - (Date.now() - inicioReq), familiaQ, recurso);")   // v74.35
+  && fonte.includes("const rd2 = await garantirDistratoresPlausiveis(nova, system, usos, LIMITE_FUNCAO_MS - (Date.now() - inicioReq), familiaQ, disciplina);"));   // v74.36
 t("D4 as correções repassam a lista até a chamada (alternativas, idioma e gabarito)",
   fonte.includes("FERRAMENTA_ALTERNATIVAS, undefined, `alternativas-${tentativa}`, undefined, undefined, declaradas);")
   && fonte.includes("FERRAMENTA_IDIOMA, undefined, `idioma-${tentativa}`, undefined, undefined, declaradas);")

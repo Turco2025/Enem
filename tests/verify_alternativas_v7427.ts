@@ -201,7 +201,7 @@ t("C2 na reelaboração: a versão nova passa pela mesma conferência antes do a
   p("const ad2 = await garantirAlternativasConformes(nova,") > p("const gd2 = await garantirGabaritoCoerente(nova,")
   && p("const ad2 = await garantirAlternativasConformes(nova,") < p("const fd2 = await garantirFontesReais(nova,") && handler.includes("alternativasDiag.aposReelaboracao = ad2;"));
 t("C3 a resposta ao app carrega alternativasDiag; o selftest confere o bloco e o inclui na impressão digital",
-  fonte.includes("gabaritoDiag, alternativasDiag, fontesDiag, objetoDiag: objetoDiagFinal })") && fonte.includes("v7427_conferenciaAlternativas: (() => {")
+  fonte.includes("gabaritoDiag, distratoresDiag, alternativasDiag, dadosDiag, fontesDiag, objetoDiag: objetoDiagFinal })")   // v74.35: + dadosDiag; v74.36: + distratoresDiag && fonte.includes("v7427_conferenciaAlternativas: (() => {")
   && fonte.includes("conferenciaAlternativas.toString(), termosAbsolutosEm.toString()") && fonte.includes("garantirAlternativasConformes.toString(), JSON.stringify(FERRAMENTA_ALTERNATIVAS)"));
 t("C4 os limites de tamanho são os mesmos da REGRA DAS CINCO ALTERNATIVAS e da auditoria local do app",
   M.CORRETA_DOMINANTE_RAZAO === 1.25 && M.CORRETA_DOMINANTE_CARACTERES === 25
@@ -335,7 +335,7 @@ t("D12 regra no prompt de geração SÓ em Língua Estrangeira (nas demais disci
   M.buildRegraIdiomaLinguaEstrangeira("Língua Estrangeira (Inglês/Espanhol)").includes("SEMPRE em PORTUGUÊS do Brasil")
   && M.buildRegraIdiomaLinguaEstrangeira("Língua Estrangeira (Inglês/Espanhol)").includes("sem tradução e sem paráfrase para outro idioma")
   && ["Artes", "Língua Portuguesa", "Literatura", "Práticas Corporais", "História", "Química", "Matemática", ""].every((x) => M.buildRegraIdiomaLinguaEstrangeira(x) === "")
-  && fonte.includes("${buildRegraAlternativas()}${buildRegraIdiomaLinguaEstrangeira(opts.disciplina)}\n\n${JSON_SCHEMA_TXT}`"));
+  && fonte.includes("${buildRegraAlternativas()}${buildRegraIdiomaLinguaEstrangeira(opts.disciplina)}\n\n${buildRegraDistratores()}\n\n${JSON_SCHEMA_TXT}`"));   // v74.36: + REGRA DOS DISTRATORES
 t("D13 selftest confere o idioma e inclui as funções na impressão digital",
   fonte.includes("v7427_idiomaDoItem: (() => {") && fonte.includes("contaMarcasIdioma.toString(), linguaEstrangeiraEm.toString(), idiomaDoItem.toString()")
   && fonte.includes("passarItemParaPortugues.toString(), ehLinguaEstrangeira.toString(), buildRegraIdiomaLinguaEstrangeira.toString(), JSON.stringify(FERRAMENTA_IDIOMA)"));

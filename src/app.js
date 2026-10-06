@@ -2994,6 +2994,27 @@ async function generateQuestion(q){
         (gd.erro ? ` · erro: ${gd.erro}` : "") +
         (gd.chamadas ? ` · ${gd.chamadas} chamada(s) extra(s)` : ""));
     }
+    /* v18.40 — conferência em código da coerência entre o texto e os dados do gráfico/tabela
+       (backend v74.35). Só aparece quando houve algo a conferir; o aviso ao professor está
+       em auditaQuestaoLocal (q.data.dadosVisual, que vai junto com o simulado arquivado). */
+    if(payload.dadosDiag && payload.dadosDiag.aplicavel){
+      const dd = payload.dadosDiag;
+      diagImagem(q, "dados", `conferência texto × dados: ${dd.estado}` +
+        (Array.isArray(dd.problemas) && dd.problemas.length ? ` · detectado: ${dd.problemas.join(" | ")}` : "") +
+        (dd.campos && dd.campos.length ? ` · corrigido: ${dd.campos.join("; ")}` : "") +
+        (dd.justificativa ? ` · IA: ${dd.justificativa}` : "") +
+        (dd.pulado ? ` · ${dd.pulado}` : "") + (dd.erro ? ` · erro: ${dd.erro}` : "") + (dd.motivoRecusa ? ` · recusa: ${dd.motivoRecusa}` : "") +
+        (dd.chamadas ? ` · ${dd.chamadas} chamada(s) extra(s)` : ""));
+    }
+    /* v18.41 — revisão dos distratores por IA (backend v74.36): teste do candidato mediano em
+       cada distrator; os que falham viram quase-acertos. Só aparece quando houve revisão. */
+    if(payload.distratoresDiag && payload.distratoresDiag.aplicavel){
+      const rd = payload.distratoresDiag;
+      diagImagem(q, "distratores", `revisão dos distratores: ${rd.estado}` +
+        (rd.letrasReescritas && rd.letrasReescritas.length ? ` · reescritos: ${rd.letrasReescritas.join(", ")}` : "") +
+        (rd.pulado ? ` · ${rd.pulado}` : "") + (rd.erro ? ` · erro: ${rd.erro}` : "") + (rd.motivoRecusa ? ` · recusa: ${rd.motivoRecusa}` : "") +
+        (rd.chamadas ? ` · ${rd.chamadas} chamada(s)` : ""));
+    }
     const vd = payload.visualDiag || null;
     diagImagem(q, "questao_recebida", `recurso pedido "${q.recurso}" · visual entregue ${q.data.visual ? `tipo "${q.data.visual.tipo}"` : "nulo"} · promptImagem ${imgTextoDeEspecificacao(q.data.visual && q.data.visual.promptImagem, 0).length} chars` + (vd ? ` · backend: refeito ${vd.refeito}x, conforme ${vd.conforme}${vd.motivo ? ", " + vd.motivo : ""}` : "") + (q.data.visualPendente ? ` · visualPendente: ${q.data.visualPendente.motivo}` : ""));
     let conf = visualConformeApp(q.data, q.recurso);
@@ -4326,6 +4347,8 @@ function radicaisEmHtml(texto, esc){
    notação química (Natureza). É informativa: aparece no card do professor e
    NUNCA bloqueia geração nem exportação. Devolve [{nivel, texto}]. */
 const ABSOLUTISTAS_RE = /\b(sempre|nunca|jamais|todos|todas|completamente|totalmente|exclusivamente|sem exce[çc][ãa]o|em absoluto)\b/i;
+/* v18.41 — exageros (pista de tom; backend v74.36): o distrator "extremado" que o candidato elimina sem saber o conteúdo. */
+const EXAGEROS_RE = /\b(total|totais|permanentes?|permanentemente|definitiv[oa]s?|irrevers[ií]ve(?:l|is)|irreversivelmente|imediat[oa]s?|exclusiv[oa]s?|aleat[oó]ri[oa]s?|aleatoriamente|em excesso|imposs[ií]ve(?:l|is)|impossibilita(?:ndo)?|ilimitad[oa]s?|incondicional(?:mente)?|invariavelmente|sem outras? altera[çc][ãa]o(?:es)?|nenhum|nenhuma|nenhuns|nenhumas|por si s[oó]|em sua totalidade|na totalidade)\b/i;
 const SECOES_PROTOCOLO_IMAGEM = [
   ["SCENE AND VIEWPOINT", /scene\s+and\s+viewpoint/i],
   ["ELEMENT INVENTORY", /element\s+inventory/i],
@@ -4442,6 +4465,27 @@ function auditaQuestaoLocal(q){
     }
   }
 
+  /* v18.40 — COERÊNCIA ENTRE O TEXTO E OS DADOS DO GRÁFICO/TABELA (backend v74.35). Caso real
+     (06/10/2026): questão 4 do simulado de Biologia dizia "quatro horários" com cinco colunas e
+     "menor volume às 14h" com 8h menor. O backend confere em código (contagem, extremo, valor)
+     e, quando falha, pede uma correção dirigida do texto — os dados são a referência. O resultado
+     vem em d.dadosVisual (só existe quando houve algo a conferir) e fica no simulado arquivado. */
+  if(d.dadosVisual && typeof d.dadosVisual === "object"){
+    const dv = d.dadosVisual;
+    const oVisual = d.visual && d.visual.tipo === "tabela" ? "da tabela" : "do gráfico";
+    const detectado = Array.isArray(dv.problemas) && dv.problemas.length ? " Detectado: " + dv.problemas.map(p => String(p).slice(0, 220)).join(" | ") + "." : "";
+    if(dv.estado === "corrigido"){
+      info("Conferência dos dados " + oVisual + ": o texto afirmava algo que os números não mostram e foi ajustado aos dados (" +
+           (Array.isArray(dv.campos) && dv.campos.length ? dv.campos.join("; ") : "texto") + ")." + detectado);
+    } else if(dv.estado === "justificado"){
+      info("Conferência dos dados " + oVisual + ": a conferência em código apontou uma possível inconsistência e a IA manteve o texto, justificando: " +
+           String(dv.justificativa || "").slice(0, 240) + "." + detectado + " Vale uma conferida sua.");
+    } else {
+      aviso("Conferência dos dados " + oVisual + ": o texto pode não corresponder aos dados e a correção automática não foi possível" +
+            (dv.motivo ? " (" + String(dv.motivo).slice(0, 160) + ")" : "") + "." + detectado + ' Confira a questão ou use "Regenerar".');
+    }
+  }
+
   /* v18.18 — recorte da disciplina e extensão medida nas provas reais. */
   if(d.objetoForaDoRecorte){
     aviso("Objeto de conhecimento fora do recorte da disciplina. " + String(d.objetoForaDoRecorte.motivo || "") +
@@ -4519,6 +4563,22 @@ function auditaQuestaoLocal(q){
   // Linguagem absolutista nas alternativas
   const absol = L.filter(k => ABSOLUTISTAS_RE.test(txt(k)));
   if(absol.length) info("Linguagem absolutista em " + absol.join(", ") + " — confira se não entrega/denuncia a resposta.");
+  /* v18.41 — exagero (pista de tom): só quando NÃO está nas cinco (termo nas cinco é estrutura do item). */
+  const exag = L.filter(k => EXAGEROS_RE.test(txt(k)));
+  if(exag.length && exag.length < L.length) info("Termo de exagero (total, permanente, definitivo, irreversível, imediato, exclusivo…) em " + exag.join(", ") + " — o distrator extremado se elimina pelo tom; confira.");
+
+  /* v18.41 — REVISÃO DOS DISTRATORES POR IA (backend v74.36, pedido do professor de 06/10/2026):
+     cada distrator passa pelo teste do candidato mediano; os que falham são reescritos como
+     quase-acertos da correta. O resultado vem em d.distratores (só quando houve reescrita ou
+     pendência) e fica no simulado arquivado. */
+  if(d.distratores && typeof d.distratores === "object"){
+    const dv = d.distratores;
+    if(dv.estado === "revisado"){
+      info("Distratores revisados pela IA (teste do candidato mediano): " + (Array.isArray(dv.letras) && dv.letras.length ? "alternativa(s) " + dv.letras.join(", ") + " reescrita(s) como quase-acerto(s) da correta" : "reescrita") + ". A correta não foi alterada.");
+    } else if(dv.estado === "pendente"){
+      aviso("Revisão dos distratores não concluída" + (dv.motivo ? " (" + String(dv.motivo).slice(0, 160) + ")" : "") + ". Confira se algum distrator se elimina por bom senso, exagero ou por fugir do assunto — se sim, use \"Regenerar\".");
+    }
+  }
 
   /* PARIDADE DAS ALTERNATIVAS (Guia do Inep) — v18.3. O critério anterior (correta acima
      de 1,6x a MÉDIA das outras) nunca disparava: nas 20 questões reais das levas de 14/09
@@ -8491,6 +8551,12 @@ if(document.fonts && document.fonts.ready) document.fonts.ready.then(calibraBarr
    v18.39 — (06/10/2026) gráfico com séries em escalas incompatíveis ganha um segundo eixo
    (eixosDoGrafico); impressão/PDF/Word pintam todas as escalas. A entrada de automação
    não muda.
+   v18.40 — (06/10/2026) aviso no cartão da conferência texto × dados do gráfico/tabela
+   (backend v74.35: d.dadosVisual corrigido / justificado / pendente). A entrada de
+   automação não muda.
+   v18.41 — (06/10/2026) aviso no cartão da revisão dos distratores por IA (backend v74.36:
+   d.distratores revisado / pendente) e termos de exagero na auditoria local. A entrada de
+   automação não muda.
 
    O pedido feito pelo WhatsApp (formulário de 6 perguntas, etapa B1) fica na fila
    `wa_trabalhos`. Quem o executa é um robô (robo/operario.mjs, rodando no GitHub
@@ -8515,7 +8581,7 @@ if(document.fonts && document.fonts.ready) document.fonts.ready.then(calibraBarr
    parametros = { area, disciplina, quantidade, temas_texto, contagem, recurso }
    (os mesmos gravados em wa_trabalhos.parametros por supabase/functions/whatsapp-webhook).
    ====================================================================================== */
-const AUTOMACAO_VERSAO = "18.39";
+const AUTOMACAO_VERSAO = "18.41";
 let automacaoPronta = false;
 let automacaoFase = "carregando";   // carregando | pronto | configurando | gerando | exportando | concluido | erro
 let automacaoErro = "";

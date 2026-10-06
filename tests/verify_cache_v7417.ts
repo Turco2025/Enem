@@ -57,9 +57,9 @@ t("A6 o que é fixo de verdade continua lá",
   && blocoFixo.includes("JSON_SCHEMA_TXT"));
 t("A7 nenhuma chamada usa mais a assinatura antiga",
   !/buildBlocoFixo\(\{[^}]*recurso/.test(src) && !/buildBlocoFixo\(\{[^}]*habilidadeCod/.test(src));
-// 5 no código (aquecimento, handler e três do autoteste) + 2 do bloco v7417
+// 5 no código (aquecimento, handler e três do autoteste) + 2 do bloco v7417 + 1 do autoteste v7436 (regra dos distratores)
 t("A8 todas as chamadas de buildBlocoFixo passam só área e disciplina",
-  (src.match(/buildBlocoFixo\(\{ area/g) || []).length === 7,
+  (src.match(/buildBlocoFixo\(\{ area/g) || []).length === 8,
   String((src.match(/buildBlocoFixo\(\{ area/g) || []).length));
 
 /* ---------- B. recurso e Matriz na mensagem do usuário ---------- */

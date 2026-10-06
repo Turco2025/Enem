@@ -177,6 +177,122 @@ Teste: `verify_fontes_app.js` — 19 verificações; as seções B e C bis prova
 quatro marcas ligadas ao mesmo tempo nenhuma conferência bloqueia, e que nenhuma delas tem sequer um
 `return true` no corpo. `verify_gabarito_coerente.js` H1 passou a exigir o contrário do que exigia.
 
+## Distratores plausíveis: regra do quase-acerto, conferência ampliada e revisão por IA (generate-question v74.36 / app v18.41, 06/10/2026)
+
+Pedido do professor, com o Guia do Inep na mão: *"os itens das questões de qualquer disciplina estão
+absurdamente errados, facilitando a identificação da alternativa correta; um distrator deve ser muito
+semelhante ao item correto; o texto não pode conter termos que ajudem a identificar a resposta"*.
+
+**Medido antes de mexer** (503 questões arquivadas de 20/09 a 06/10; 208 desde a v74.27, de 27/09):
+em **19%** das questões dois ou mais distratores são negação/rebaixamento da ideia ("reduz-se a um
+entretenimento sem relação…", "eliminar o vínculo…", "inexistência de distinções") e a correta é a
+única formulação equilibrada; **85 adjetivos de exagero em distratores contra 4 na correta** (total,
+permanente, definitivo, irreversível, imediato, isolado, exclusivo, aleatório, em excesso); em **14%** a
+correta é a única a repetir duas ou mais palavras características do texto-base; absurdos factuais
+("conversão direta do oxigênio em gás carbônico nos alvéolos", "contração direta do músculo pela luz do
+painel") que só julgamento pega. O prompt já proibia distrator absurdo em termos gerais — o modelo não
+obedece a adjetivo, obedece a procedimento e a exemplo. Decisão do professor: as três camadas, com a
+revisão por IA ligada.
+
+- **A. REGRA DOS DISTRATORES (`buildRegraDistratores`, no bloco cacheado, depois da REGRA DAS CINCO
+  ALTERNATIVAS):** cada distrator é um **quase-acerto** (nasce da correta trocando UM elemento: agente,
+  direção, etapa, causa↔efeito, contexto, parte pelo todo; o resto igual em registro e vocabulário);
+  **teste do candidato mediano** obrigatório antes de entregar (toda alternativa que quem leu o texto mas
+  não estudou o conteúdo descarta por impossibilidade, contradição com o texto, outro assunto,
+  rebaixamento grosseiro ou exagero tem de ser reescrita); sem pista de tom (lista de exageros); sem pista
+  de classe (a correta não pode ser a única equilibrada, a única com termo técnico, a única alteração
+  entre normalidades, a única afirmativa entre negações); sem eco do texto-base; justificativa nomeável
+  por distrator; alternativas numéricas com um erro de etapa por distrator. Com exemplos ✗/✓ tirados das
+  questões do próprio app. ≈ 4,8 mil caracteres no bloco cacheado: ≈ US$ 0,0003 por questão.
+- **B. `conferenciaAlternativas` ganha dois tipos (custo zero; correção dirigida só quando falha):**
+  **exagero** — lista `EXAGEROS_ALTERNATIVAS` (total, permanente, definitivo, irreversível, imediato,
+  exclusivo, aleatório, em excesso, impossível, ilimitado, incondicional, invariavelmente, "sem outras
+  alterações", nenhum(a), "por si só", "na totalidade"; fora, de propósito, termos técnicos em alguma
+  disciplina: isolado, absoluto, infinito, invariável, direta); termo nas cinco é estrutura do item, não
+  pista; **ecoTexto** — a correta como a única a repetir duas ou mais palavras características do
+  texto-base (palavra também no comando fica com o eco do comando). A ordem de reescrita do exagero pede o
+  quase-acerto; a do eco do texto-base prefere levar as palavras a dois distratores (ou parafrasear a
+  correta). Na base real, dispararia em 34% das questões recentes (ecoTexto 23%, exagero 13%) — com A e C
+  no ar, bem menos.
+- **C. Revisão dos distratores por IA (`garantirDistratoresPlausiveis`, `REVISAO_DISTRATORES = true`):**
+  em toda questão de alternativas de TEXTO (numéricas não: lá o distrator é um valor de erro de etapa),
+  logo depois da coerência do gabarito e **antes** da conferência em código: uma chamada curta (a 2ª só
+  se a proposta for recusada), lendo o mesmo cache (ferramenta `entregar_alternativas`, da família
+  v74.29), que aplica o teste do candidato mediano a cada distrator e reescreve só os que falham, como
+  quase-acertos. **A correta nunca é tocada** (a montagem só aceita mudança nas letras dos distratores).
+  A proposta só entra se: cada reescrito ficar entre 0,75× e 1,3× do que substitui e sem crescer além do
+  teto da disciplina; as cinco continuarem distintas; a conferência em código não ganhar problema novo;
+  gabarito e análise continuarem na mesma letra. "Os quatro passaram" = aprovado, sem mudança. Recusada
+  duas vezes, sem tempo ou com erro: a questão segue como estava, marcada (`distratores: pendente`).
+- **App:** auditoria do cartão mostra `d.distratores` (revisado → observação com as letras; pendente →
+  aviso com o motivo e "Regenerar") e passa a apontar termos de exagero (`EXAGEROS_RE`), como já faz com
+  os absolutos. Log técnico: entrada "distratores".
+
+**Custo:** C ≈ US$ 0,015 por questão de texto (cache lido ≈ US$ 0,005 + questão ≈ US$ 0,005 + saída ≈
+US$ 0,005), ≈ US$ 0,30 numa leva de 20; B ≈ US$ 0,02–0,03 só na questão que falhar; A ≈ US$ 0,0003. A
+família de ferramentas e o bloco fixo mudaram: a primeira questão da próxima leva regrava o cache uma
+vez (como após qualquer publicação).
+
+Testes: `deno run -A tests/verify_distratores_v7436.ts supabase/functions/generate-question/index.ts` (31:
+regra no bloco fixo, exagero/eco do texto-base com flexões e exclusões, montagem da proposta com todas as
+recusas, fluxo com IA simulada — revisa, aprova, recusa problema novo, pendente, relógio, numéricas —,
+ligação, selftest, impressão digital); `node tests/verify_distratores_v1841.mjs` (8, Chromium real).
+Selftest de produção: `v7436_distratores` (54 verificações). Smoke do handler com API simulada: 26
+cenários (3 novos: revisão reescreve D; numéricas sem revisão; exagero corrigido em código).
+
+## Coerência entre o texto e os dados do gráfico/tabela (generate-question v74.35 / app v18.40, 06/10/2026)
+
+Pergunta do professor depois da questão 4 do simulado de Biologia: *"o que eu posso fazer para evitar
+esse tipo de erro?"*. Além do gráfico ilegível (resolvido na v18.39), a questão tinha dois erros de
+**conteúdo**: o texto-base falava em "quatro horários" e o gráfico tinha cinco colunas; a resolução dizia
+que às 14h o usuário tinha ingerido o **menor** volume do dia, e os dados mostravam 8h = 300 mL < 14h =
+350 mL. Gabarito, alternativas, fontes, extensão e notação eram conferidos; o que o texto **afirma sobre
+os dados**, contra os números do visual, não era conferido por ninguém. Decisão do professor: só a camada
+em código (custo zero), com correção dirigida quando falhar.
+
+- **Conferência em código (`conferenciaDadosVisual`), só em questão com gráfico ou tabela:**
+  1. **contagem** — "quatro horários", "cinco regiões", "3 amostras" (número por extenso ou dígito +
+     substantivo de categoria) tem de bater com o número de rótulos (ou de linhas/colunas da tabela; com
+     duas ou mais séries, também com o número de séries). Substantivo de duração só conta com
+     determinante ("nos quatro anos"), porque "em dois anos" é prazo;
+  2. **extremo** — a oração que diz que um rótulo é o menor/maior/mais alto/mais baixo/máximo/mínimo/pico
+     de uma série tem de apontar o rótulo em que a série de fato atinge o mínimo/máximo (empate conta;
+     linha "Total"/"Média" fica de fora). A série é reconhecida pelas palavras do nome dela na oração
+     (sigla como "LH" inteira), pela grandeza + unidade ("volume" → a série em mL) ou, se a frase inteira
+     menciona uma série só, por ela. Não contam: comparativo ("maior que"), ordinal ("segundo maior"),
+     variação ("maior aumento"), negação ("não é o menor"), relação temporal ("após o pico"), marcador
+     que faz parte do nome da série ("Temperatura máxima"), objeto que não é a série ("maior reabsorção
+     renal") e grandeza que o visual não traz ("maior concentração de solutos");
+  3. **valor** — número com a unidade da série, na mesma oração de um único rótulo ("às 14h, 350 mL"),
+     tem de ser o valor da série naquele rótulo (tolerância de arredondamento; "aumentou 50 mL", "cerca
+     de", "de 300 a 1400 mL" não contam).
+  Só se lê o que aluno e professor tomam como verdadeiro: texto-base, comando, resolução e comentário da
+  alternativa **correta** — os distratores e seus comentários dizem coisas erradas de propósito.
+- **Correção dirigida (`garantirDadosCoerentes`, ferramenta `entregar_coerencia_dados`), só quando a
+  conferência falha:** uma chamada curta (até duas) que lê o **mesmo cache** da geração (a ferramenta entrou
+  na família da v74.29) e devolve o texto ajustado — **os dados do visual são a referência e nunca mudam**.
+  A proposta só entra se a conferência passar, gabarito/análise/resolução continuarem na mesma letra e as
+  alternativas continuarem conformes. A IA pode, em vez de alterar, declarar que a frase apontada não se
+  refere aos dados do visual — a justificativa fica registrada. Sem correção possível, a questão sai marcada
+  (`dadosVisual.estado = "pendente"`). Roda depois da conferência das alternativas e antes do auditor (que
+  julga a versão final), e de novo em cada reelaboração.
+- **App:** a auditoria local do cartão mostra o resultado (`d.dadosVisual`, que vai junto com o simulado
+  arquivado): corrigido → observação com os campos e o que foi detectado; justificado → observação com a
+  justificativa e o pedido de uma conferida; pendente → aviso com o motivo e o pedido de "Regenerar". Nada
+  é bloqueado. Log técnico do cartão: entrada "dados".
+- **Medido nas 26 questões com gráfico ou tabela já arquivadas:** a conferência acusa exatamente a questão
+  4 (4 problemas: 2 contagens, 2 extremos) e nenhuma das outras 25 — zero falso positivo na base real.
+
+**Custo:** zero na questão sã (é só leitura). Na que falha, ≈ US$ 0,02 a 0,03 pela correção (leitura do
+cache ≈ US$ 0,005 + saída). Como a família de ferramentas mudou, a primeira questão da próxima leva regrava
+o cache uma vez (como após qualquer publicação).
+
+Testes: `deno run -A tests/verify_dados_visual_v7435.ts supabase/functions/generate-question/index.ts` (43:
+a questão 4 real acusada, 20 frases legítimas não acusadas, montagem da proposta, fluxo com IA simulada —
+corrige, justifica, recusa, pendente, relógio, família —, ligação com o handler, selftest e impressão
+digital); `node tests/verify_dados_visual_v1840.mjs` (10, Chromium real: os três avisos do cartão, log
+técnico, versão). Selftest de produção: `v7435_coerenciaDados` (53 verificações).
+
 ## Gráfico com séries em escalas incompatíveis ganha um segundo eixo (app v18.39 / generate-question v74.34b, 06/10/2026)
 
 Caso real: simulado de Biologia "Sistema urinário humano" (20 questões, misto), **questão 4** — gráfico de

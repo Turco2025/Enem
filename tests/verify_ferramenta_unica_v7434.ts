@@ -39,7 +39,7 @@ function textoDeEspecificacao(x: any) { return typeof x === "string" ? x : JSON.
 ${recorta("normalizarVisual")}
 ${recorta("visualConforme")}
 ${recorta("ferramentasDaQuestao")}
-const FERRAMENTA_ALTERNATIVAS = { name: "entregar_alternativas" }, FERRAMENTA_GABARITO = { name: "entregar_gabarito" }, FERRAMENTA_IDIOMA = { name: "entregar_item_em_portugues" };
+const FERRAMENTA_ALTERNATIVAS = { name: "entregar_alternativas" }, FERRAMENTA_GABARITO = { name: "entregar_gabarito" }, FERRAMENTA_IDIOMA = { name: "entregar_item_em_portugues" }, FERRAMENTA_DADOS = { name: "entregar_coerencia_dados" };   // v74.35
 export { ferramentaQuestaoPara, ferramentaVisualPara, visualSchemaUnico, visualSchemaPara, normalizarVisual, visualConforme, ferramentasDaQuestao, RECURSOS_VISUAIS_TODOS };
 `;
 const tmp = await Deno.makeTempDir();

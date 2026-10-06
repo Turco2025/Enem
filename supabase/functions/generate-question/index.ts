@@ -612,6 +612,41 @@ function buildRegraAlternativas(): string {
 7. COERÊNCIA DA RESPOSTA — conferida antes da entrega. A alternativa a que a sua resolução chega, a letra do campo "gabarito", a alternativa com "status":"correta" em "analiseAlternativas" (exatamente UMA das cinco) e a alternativa citada no fecho da resolução comentada têm de ser A MESMA. Releia a resolução antes de responder e confira as quatro contra ela: se a conta levar a outra letra, é a LETRA que muda, nunca a conta — e as outras quatro alternativas ficam "incorreta". Questão em que essas marcações discordam é devolvida para conferência de conteúdo e não chega ao professor.`;
 }
 
+/* v74.36 — REGRA DOS DISTRATORES (06/10/2026). Pedido do professor, com o Guia do Inep na mão:
+   "os distratores estão absurdamente errados, facilitando a identificação da alternativa
+   correta; um distrator deve ser muito semelhante ao item correto; o texto não pode conter
+   termos que ajudem a identificar a resposta". Medido nas 208 questões geradas de 27/09 a
+   06/10: em 19% delas dois ou mais distratores são negação/rebaixamento da ideia ("reduz-se a
+   um entretenimento sem relação…", "eliminar o vínculo…", "inexistência de distinções") e a
+   correta é a única formulação equilibrada; 85 adjetivos de exagero em distratores contra 4
+   na correta; em 14% a correta é a única a repetir duas ou mais palavras do texto-base. O
+   prompt já proibia distrator absurdo em termos gerais e o modelo não obedecia a adjetivo —
+   obedece a PROCEDIMENTO e a EXEMPLO. Este bloco dá os dois. Entra no bloco cacheado (lido a
+   US$ 0,20/M: ≈ US$ 0,0002 por questão). Vale para a geração e para a revisão dos distratores
+   (garantirDistratoresPlausiveis), que leem o mesmo prompt do sistema. */
+function buildRegraDistratores(): string {
+  return `REGRA DOS DISTRATORES (Guia de Elaboração e Revisão de Itens do Inep — plausível, coerente com o comando, homogêneo, livre de pistas, justificável)
+
+Medição das questões já geradas por este app: em boa parte delas um candidato que NÃO estudou o conteúdo elimina dois ou três distratores só por bom senso ("conversão direta do oxigênio em gás carbônico nos alvéolos", "contração direta do músculo pela luz do painel", "variou de forma aleatória, sem relação com os rins", "reduz-se a um entretenimento sem relação com o público") e a correta sobra sozinha como a única frase equilibrada, específica e técnica. É exatamente o que o Guia proíbe: o item deixa de medir a habilidade e passa a medir bom senso.
+
+1. CADA DISTRATOR É UM QUASE-ACERTO. Ele nasce da alternativa correta trocando UM só elemento: o agente (ADH ↔ aldosterona; linfócito B ↔ T; Modernismo ↔ Parnasianismo), a direção (aumenta ↔ diminui; reabsorção ↔ filtração), a etapa (liberação ↔ recaptação de cálcio), a causa pelo efeito, o contexto (verdade em outro sistema, período ou escala) ou a parte pelo todo (generaliza o que vale só em parte). O resto da frase fica IGUAL à correta em registro, especificidade, vocabulário técnico e estrutura. Distrator que precisa de uma afirmação sem relação com a situação, fisicamente impossível ou que contradiz o texto-base às claras não é distrator: é erro de propósito, e não serve.
+2. TESTE DO CANDIDATO MEDIANO (obrigatório antes de entregar). Releia as cinco como alguém que leu o texto-base mas não estudou o conteúdo. Toda alternativa que essa pessoa descarta SEM saber o conteúdo — porque é impossível, porque contradiz o texto, porque fala de outro assunto, porque rebaixa ou nega a ideia de modo grosseiro ("reduz-se a", "sem relação", "elimina", "inexistência", "documenta de modo neutro") ou porque soa exagerada — tem de ser REESCRITA até só ser descartável por quem domina a habilidade. Meta do Inep: cada distrator atrai parte dos candidatos; nenhum fica com zero.
+3. SEM PISTA DE TOM. Além da linguagem absolutista já proibida, nenhum distrator pode ser o "exagerado" do conjunto por adjetivos como total, permanente, definitivo, irreversível, imediato, isolado, exclusivo, aleatório, direto, "em excesso", "sem outras alterações", "elimina o risco"; nem o único a negar o que o texto afirma. Se a correta é a única alternativa comedida, ou a única com termo técnico, o item está denunciado: distribua a medida e o termo técnico por pelo menos três alternativas.
+4. SEM PISTA DE CLASSE. A correta não pode ser a única de uma categoria: a única alteração entre quatro normalidades, a única que menciona o mecanismo descrito no texto-base, a única do mesmo sistema/órgão/período das demais, a única com número ou unidade, a única afirmativa entre quatro negações. Pelo menos dois distratores pertencem à MESMA categoria da correta.
+5. SEM ECO DO TEXTO-BASE. A correta não repete palavra ou expressão característica do texto-base que os distratores não repetem (o candidato acha a resposta por casamento de palavras). Ou parafraseie na correta, ou leve a expressão também a dois distratores. A conferência em código reprova a correta que for a única a repetir duas ou mais palavras do texto-base ou qualquer palavra do comando.
+6. JUSTIFICÁVEL. No comentário de cada distrator, nomeie o erro numa frase que um professor reconheceria na sala ("confunde o hormônio que retém água com o que retém sódio"; "toma a consequência pela causa"). Se o único comentário possível é "a alternativa é absurda" ou "não tem relação com o texto", o distrator está errado e tem de ser refeito.
+7. ALTERNATIVAS NUMÉRICAS. Cada distrator é o resultado de UM erro de etapa específico (sinal trocado, unidade não convertida, fórmula vizinha, etapa pulada, dado lido na linha errada) — nunca um número arbitrário nem de ordem de grandeza impossível para a situação. Os cinco valores ficam na mesma escala e com o mesmo número de casas.
+
+EXEMPLOS (tirados das questões deste app) — correta: "eleva a reabsorção de água no túbulo renal via ADH."
+   ✗ "aumenta a sudorese, compensando a perda de água pela urina." (outro assunto; eliminável por bom senso)
+   ✓ "eleva a reabsorção de sódio no túbulo renal via aldosterona." (troca do agente — erro clássico)
+   ✗ "inibe a sede, diminuindo a ingestão hídrica do trabalhador." (contradiz a situação)
+   ✓ "aumenta a filtração glomerular para concentrar a urina." (inversão do mecanismo)
+Correta: "reconfigura padrões culturais de julgamento ao tornar aceitável quem antes era só monstro."
+   ✗ "reduz-se a um entretenimento sem relação entre forma audiovisual e percepção do público." (rebaixamento grosseiro)
+   ✓ "reafirma padrões culturais de julgamento ao manter o psicopata como figura monstruosa." (direção invertida, mesmo registro)`;
+}
+
 /* v74.17 — O BLOCO CACHEADO VOLTOU A SER FIXO (19/09/2026).
    Medição da leva de 18/09 (10 questões de Artes, ids 1108–1117): ~18 mil
    tokens de cache GRAVADOS em cada questão, nunca lidos. A causa estava aqui:
@@ -633,6 +668,8 @@ ${buildRecorteDaDisciplina(opts.area, opts.disciplina)}${buildRegraFontesReais(o
 ${buildCalibracaoExtensao(opts.disciplina)}
 
 ${buildRegraAlternativas()}${buildRegraIdiomaLinguaEstrangeira(opts.disciplina)}
+
+${buildRegraDistratores()}
 
 ${JSON_SCHEMA_TXT}`;
 }
@@ -2693,7 +2730,7 @@ function montaFerramentas(enableWebSearch: FerramentaServidor, ferramenta: any, 
   return { tools, tool_choice };
 }
 function ferramentasDaQuestao(ferramentaQuestao: any): any[] {
-  return [ferramentaQuestao, FERRAMENTA_ALTERNATIVAS, FERRAMENTA_GABARITO, FERRAMENTA_IDIOMA];
+  return [ferramentaQuestao, FERRAMENTA_ALTERNATIVAS, FERRAMENTA_GABARITO, FERRAMENTA_IDIOMA, FERRAMENTA_DADOS];   // v74.35 — + coerência com os dados
 }
 async function callClaude(system: SistemaPrompt, userMsg: string, maxTokens: number, enableWebSearch: FerramentaServidor = false, ferramenta: any = null, timeoutMs = 240_000, declaradas: any[] | null = null): Promise<{ text: string; truncated: boolean; usage: any; ferramentaJSON: string; buscas: { url: string; title: string }[]; fetches: FetchRegistro[] }> {
   let lastErr: any;
@@ -4064,6 +4101,21 @@ const ABSOLUTOS_ALTERNATIVAS: string[] = [
   "apenas", "por completo", "absolutamente", "inteiramente", "obrigatoriamente", "automaticamente", "definitivamente",
 ];
 const ABSOLUTOS_EXIBICAO = `"sempre", "nunca", "jamais", "todo(s)/toda(s)", "qualquer/quaisquer", "totalmente", "completamente", "integralmente", "exclusivamente", "unicamente", "somente", "apenas", "drasticamente", "sem exceção", "em absoluto", "de forma alguma", "irrestrito", "rejeição completa", "por completo", "absolutamente", "inteiramente", "obrigatoriamente", "automaticamente", "definitivamente"`;
+/* v74.36 — EXAGEROS (pista de tom). Depois da v74.27 o modelo trocou os absolutos por adjetivos
+   que fazem o mesmo serviço: o distrator vira o "exagerado" do conjunto e o candidato o elimina
+   sem saber o conteúdo. Medido nas 208 questões geradas de 27/09 a 06/10: 85 ocorrências em
+   distratores contra 4 na correta. Fora da lista, de propósito, termos que são técnicos em
+   alguma disciplina ("isolado" — sistema isolado; "absoluto" — zero absoluto; "infinitas" —
+   soluções; "invariável" — palavra invariável; "direta" — razão direta, troca direta). */
+const EXAGEROS_ALTERNATIVAS: string[] = [
+  "total", "totais", "permanente", "permanentes", "permanentemente", "definitivo", "definitiva", "definitivos", "definitivas",
+  "irreversivel", "irreversiveis", "irreversivelmente", "imediato", "imediata", "imediatos", "imediatas", "exclusivo", "exclusiva", "exclusivos", "exclusivas",
+  "aleatorio", "aleatoria", "aleatorios", "aleatorias", "aleatoriamente", "em excesso", "impossivel", "impossiveis", "impossibilita", "impossibilitando",
+  "ilimitado", "ilimitada", "ilimitados", "ilimitadas", "incondicional", "incondicionalmente", "invariavelmente", "sem outras alteracoes", "sem outra alteracao",
+  "nenhum", "nenhuma", "nenhuns", "nenhumas", "por si so", "em sua totalidade", "na totalidade",
+];
+const EXAGEROS_EXIBICAO = `"total", "permanente(mente)", "definitivo(a)", "irreversível", "imediato(a)", "exclusivo(a)", "aleatório(a)", "em excesso", "impossível/impossibilita", "ilimitado(a)", "incondicional", "invariavelmente", "sem outras alterações", "nenhum(a)", "por si só", "em sua totalidade"`;
+const ECO_TEXTO_MIN_RADICAIS = 2;   // v74.36 — eco do texto-base: a correta como a única a repetir DUAS ou mais palavras características do texto
 /* Palavras de comando que não entregam resposta nenhuma (verbos de tarefa,
    rótulos do suporte). Só entram no eco palavras de 6 letras ou mais. */
 const PALAVRAS_VAZIAS_ECO = new Set<string>([
@@ -4095,6 +4147,10 @@ function normalizaAlternativa(s: unknown): string {
 function termosAbsolutosEm(s: unknown): string[] {
   const t = " " + normalizaAlternativa(s) + " ";
   return ABSOLUTOS_ALTERNATIVAS.filter((w) => t.includes(" " + w + " "));
+}
+function termosExageradosEm(s: unknown): string[] {   // v74.36
+  const t = " " + normalizaAlternativa(s) + " ";
+  return EXAGEROS_ALTERNATIVAS.filter((w) => t.includes(" " + w + " "));
 }
 /* Alternativa "de número": curta e com algarismo (valor, fração, fórmula,
    medida). Com quatro ou mais assim, tamanho e eco não se aplicam. */
@@ -4366,6 +4422,17 @@ function conferenciaAlternativas(d: any): { estado: string; problemas: { tipo: s
     problemas.push({ tipo: "absoluto", letras: letrasAbs, termos,
       detalhe: letrasAbs.map((k) => `${k} (${porLetra[k].filter((w) => !nasCinco.has(w)).map((w) => `"${w}"`).join(", ")})`).join("; ") });
   }
+  /* 1b. v74.36 — Exagero (pista de tom): "total", "permanente", "definitivo", "irreversível",
+     "imediato", "exclusivo", "aleatório"… Mesma regra: termo nas cinco é estrutura, fica. */
+  const exagPorLetra: Record<string, string[]> = {};
+  for (const k of LETRAS_ALTERNATIVAS) exagPorLetra[k] = termosExageradosEm(alts[k]);
+  const exagNasCinco = new Set(EXAGEROS_ALTERNATIVAS.filter((w) => LETRAS_ALTERNATIVAS.every((k) => exagPorLetra[k].includes(w))));
+  const letrasExag = LETRAS_ALTERNATIVAS.filter((k) => exagPorLetra[k].some((w) => !exagNasCinco.has(w)));
+  if (letrasExag.length) {
+    const termos = [...new Set(letrasExag.flatMap((k) => exagPorLetra[k].filter((w) => !exagNasCinco.has(w))))];
+    problemas.push({ tipo: "exagero", letras: letrasExag, termos,
+      detalhe: letrasExag.map((k) => `${k} (${exagPorLetra[k].filter((w) => !exagNasCinco.has(w)).map((w) => `"${w}"`).join(", ")})`).join("; ") });
+  }
 
   const deNumero = LETRAS_ALTERNATIVAS.filter((k) => alternativaDeNumero(alts[k])).length >= 4;
   if (!deNumero) {
@@ -4387,6 +4454,22 @@ function conferenciaAlternativas(d: any): { estado: string; problemas: { tipo: s
       if (eco.length) {
         const palavras = [...new Set(eco.map((r) => palavrasCmd.find((w) => w.length >= ECO_MIN_LETRAS && w.startsWith(r)) || r))];
         problemas.push({ tipo: "eco", letras: [gab], termos: palavras, detalhe: `a correta (${gab}) é a única que repete do comando: ${palavras.map((w) => `"${w}"`).join(", ")}` });
+      }
+    }
+    /* 4. v74.36 — A correta não pode ser a ÚNICA a repetir DUAS ou mais palavras
+       características do TEXTO-BASE (acerta-se por casamento de palavras). Medido nas 503
+       questões de 20/09 a 06/10: 14%. Palavras que também estão no comando ficam com o
+       item 3. */
+    const doTexto = radicaisEco(d.textoBase);
+    if (doTexto.size) {
+      const daCorreta = radicaisEco(alts[gab]);
+      const dosDistratores = new Set<string>();
+      for (const k of LETRAS_ALTERNATIVAS) if (k !== gab) for (const r of radicaisEco(alts[k])) dosDistratores.add(r);
+      const ecoT = [...doTexto].filter((r) => daCorreta.has(r) && !dosDistratores.has(r) && !doComando.has(r));
+      if (ecoT.length >= ECO_TEXTO_MIN_RADICAIS) {
+        const palavrasTxt = normalizaAlternativa(d.textoBase).split(" ");
+        const palavras = [...new Set(ecoT.map((r) => palavrasTxt.find((w) => w.length >= ECO_MIN_LETRAS && w.startsWith(r)) || r))];
+        problemas.push({ tipo: "ecoTexto", letras: [gab], termos: palavras, detalhe: `a correta (${gab}) é a única que repete do texto-base: ${palavras.map((w) => `"${w}"`).join(", ")}` });
       }
     }
   }
@@ -4426,9 +4509,11 @@ function buildCorrecaoAlternativasPrompt(data: any, conf: { problemas: { tipo: s
     if (p.tipo === "absoluto") ordens.push(`· LINGUAGEM ABSOLUTISTA em ${p.detalhe}. Reescreva cada uma dessas alternativas SEM esses termos e sem nenhum equivalente (${ABSOLUTOS_EXIBICAO}). O distrator continua com o MESMO erro de raciocínio (o mesmo tipo de distrator), agora posto no CONTEÚDO da afirmação — uma relação, uma causa, um conceito ou uma conclusão errados — e não no tom. Se a apontada for a correta, ela continua dizendo a mesma coisa certa, sem o termo.`);
     if (p.tipo === "dominante") ordens.push(`· CORRETA MAIOR QUE AS DEMAIS: ${p.detalhe}. ENCURTE a correta até, no máximo, o tamanho da segunda maior — sem alongar as outras, sem perder o sentido e sem ficar vaga.`);
     if (p.tipo === "eco") ordens.push(`· ECO DO COMANDO: ${p.detalhe}. Reescreva a CORRETA sem essa(s) palavra(s), com formulação equivalente e o mesmo sentido. Se for termo técnico indispensável, mantenha-o na correta e faça-o aparecer também, com naturalidade, em pelo menos dois distratores (reescrevendo-os só o necessário).`);
+    if (p.tipo === "exagero") ordens.push(`· EXAGERO (pista de tom) em ${p.detalhe}. Reescreva cada uma dessas alternativas SEM esses termos e sem equivalentes (${EXAGEROS_EXIBICAO}; nem os absolutos ${ABSOLUTOS_EXIBICAO}). O distrator continua errado pelo CONTEÚDO, como QUASE-ACERTO da correta — a mesma frase com UM elemento trocado (agente, direção, etapa, causa↔efeito, contexto) — e não como negação, rebaixamento ou versão extrema da ideia. Se a apontada for a correta, ela continua dizendo a mesma coisa certa, sem o termo.`);   // v74.36
+    if (p.tipo === "ecoTexto") ordens.push(`· ECO DO TEXTO-BASE: ${p.detalhe}. O candidato acha a resposta por casamento de palavras. Preferência: reescreva DOIS distratores para que também usem essas palavras com naturalidade (cada um mantendo o seu erro de raciocínio); se não ficar natural, parafraseie a CORRETA sem essas palavras, com o mesmo sentido.`);   // v74.36
   }
   const linhas = LETRAS_ALTERNATIVAS.map((k) => `${k}) ${String(alts[k] || "")}${k === gab ? "   ← CORRETA" : ""}${conf.letras.includes(k) ? "   ← CORRIGIR" : ""}`).join("\n");
-  const coments = LETRAS_ALTERNATIVAS.filter((k) => conf.letras.includes(k) || conf.problemas.some((p) => p.tipo === "eco"))
+  const coments = LETRAS_ALTERNATIVAS.filter((k) => conf.letras.includes(k) || conf.problemas.some((p) => p.tipo === "eco" || p.tipo === "ecoTexto"))
     .map((k) => `${k}: ${String((an as any)[k]?.comentario || "").slice(0, 400)}`).join("\n");
   return `CORREÇÃO DAS ALTERNATIVAS${tentativa > 1 ? ` — TENTATIVA ${tentativa}` : ""} — a questão abaixo está pronta; só as alternativas apontadas desrespeitam regras do professor e do Guia do Inep que valem para toda questão (REGRA DAS CINCO ALTERNATIVAS e a proibição de linguagem absolutista, no prompt do sistema).${recusaAnterior ? `\nA proposta anterior foi recusada pela conferência automática: ${recusaAnterior}.` : ""}
 
@@ -4439,7 +4524,7 @@ EM TODA ALTERNATIVA QUE VOCÊ REESCREVER: uma única oração; mesmo registro, m
 NÃO MEXA: no texto-base, no comando, na letra correta (continua ${gab}), na ordem das alternativas e nas alternativas que não foram apontadas — devolva-as IDÊNTICAS, caractere por caractere.
 
 TEXTO-BASE (só para contexto)
-${String(data?.textoBase || "").slice(0, 2500)}
+${String(data?.textoBase || "").slice(0, conf.problemas.some((p) => p.tipo === "ecoTexto") ? 4000 : 2500)}
 
 COMANDO
 ${String(data?.comando || "")}
@@ -4516,7 +4601,7 @@ async function garantirAlternativasConformes(data: any, system: SistemaPrompt, u
   if (conf.estado !== "corrigir") { diag.estado = conf.estado; return diag; }
   diag.problemas = conf.problemas.map((p) => `${p.tipo}: ${p.detalhe}`);
   console.warn(`[alternativas] conferência: ${diag.problemas.join(" | ")}`);
-  const permitidas = conf.problemas.some((p) => p.tipo === "eco") ? LETRAS_ALTERNATIVAS : conf.letras;
+  const permitidas = conf.problemas.some((p) => p.tipo === "eco" || p.tipo === "ecoTexto") ? LETRAS_ALTERNATIVAS : conf.letras;   // v74.36: eco do texto-base também
   let recusa = "";
   for (let tentativa = 1; tentativa <= CORRECOES_ALTERNATIVAS_MAX; tentativa++) {
     const restante = prazo - Date.now();
@@ -4548,6 +4633,731 @@ async function garantirAlternativasConformes(data: any, system: SistemaPrompt, u
   return diag;
 }
 /* ═══════════ FIM DA CONFERÊNCIA DAS ALTERNATIVAS ═══════════ */
+
+/* ═══════════ v74.35 — COERÊNCIA ENTRE O TEXTO E OS DADOS DO GRÁFICO/TABELA (06/10/2026) ═══════════
+
+   DEFEITO RELATADO (06/10/2026): simulado de Biologia, questão 4 — o texto-base
+   falava em "quatro horários" e o gráfico tinha cinco colunas; a resolução dizia
+   que às 14h o usuário tinha ingerido o MENOR volume do dia, e os dados mostravam
+   8h = 300 mL < 14h = 350 mL. O gabarito, as alternativas, as fontes, a extensão e
+   a notação eram conferidos; o que o texto AFIRMA sobre os dados, contra os
+   números que estão no visual, não era conferido por ninguém.
+
+   O que passa a acontecer aqui, só em questão com gráfico ou tabela:
+   1. CONTAGEM — "quatro horários", "cinco regiões", "3 amostras" (número por
+      extenso ou dígito + substantivo de categoria) tem de bater com o número de
+      rótulos do gráfico (ou de linhas/colunas da tabela; com duas ou mais séries,
+      também com o número de séries). Substantivo de duração ("anos", "meses",
+      "dias"...) só conta com determinante ("nos quatro anos"), porque "em dois
+      anos" é prazo, não contagem.
+   2. EXTREMO — a oração que diz que um rótulo é o menor/maior/mais alto/mais
+      baixo/máximo/mínimo/pico de uma série tem de apontar o rótulo em que a série
+      de fato atinge o mínimo/máximo (empate conta; linha "Total"/"Média" fica de
+      fora). A série é reconhecida pelas palavras do nome dela na oração (ou, se
+      só uma série aparece na frase, por ela); comparativo ("maior que"), ordinal
+      ("segundo maior"), variação ("maior aumento"), negação ("não é o menor") e
+      marcador que faz parte do nome de uma série ("Temperatura máxima") não
+      contam.
+   3. VALOR — número com a unidade da série, na mesma oração de um único rótulo
+      ("às 14h, 350 mL"), tem de ser o valor da série naquele rótulo (tolerância
+      de arredondamento pelas casas escritas; "aumentou 50 mL", "cerca de", "de
+      300 a 1400 mL" não contam).
+   Só se lê texto que o aluno e o professor tomam como verdadeiro: texto-base,
+   comando, resolução e comentário da alternativa correta — os distratores e seus
+   comentários dizem coisas erradas de propósito.
+
+   Tudo em código, sem chamar a IA. Só quando algo falha o backend faz UMA chamada
+   curta (até duas), que lê o cache da geração (família de ferramentas, v74.29) e
+   devolve o TEXTO ajustado — os dados do visual são a referência e não mudam. A
+   proposta só entra se: a conferência dos dados passar; gabarito, análise e
+   resolução continuarem na mesma letra; as alternativas continuarem conformes
+   (v74.27). A IA pode, em vez de alterar, declarar que a frase apontada não se
+   refere aos dados do visual — a justificativa fica registrada e aparece na tela.
+   Sem correção possível (tempo, recusas), a questão sai marcada ("dadosVisual",
+   estado "pendente") e o app avisa o professor. */
+const CORRECOES_DADOS_MAX = 2;
+const MS_MINIMO_PARA_CORRIGIR_DADOS = 40_000;   // reescrita (~10 s) + auditoria que vem depois (~8 s) + margem
+const DADOS_CONTAGEM_MAX = 20;                   // acima disso é quantidade, não contagem de categorias
+const DADOS_NUMEROS_EXTENSO: Record<string, number> = { dois: 2, duas: 2, tres: 3, quatro: 4, cinco: 5, seis: 6, sete: 7, oito: 8, nove: 9, dez: 10, onze: 11, doze: 12, quinze: 15, vinte: 20 };
+const DADOS_SUBSTANTIVOS_CONTAGEM = [
+  "horario", "momento", "instante", "ponto", "medicao", "medida", "leitura", "registro", "observacao", "coleta", "amostra", "ensaio", "experimento",
+  "tratamento", "grupo", "turma", "especie", "populacao", "bioma", "regiao", "pais", "estado", "cidade", "municipio", "bairro", "local", "localidade",
+  "setor", "categoria", "classe", "faixa", "intervalo", "periodo", "etapa", "fase", "estagio", "ano", "mes", "dia", "semana", "decada", "hora", "minuto",
+  "trimestre", "semestre", "bimestre", "safra", "colheita", "produto", "cultura", "combustivel", "material", "substancia",
+  "estacao", "usina", "fonte", "item", "opcao", "cenario", "situacao", "condicao", "nivel", "geracao", "candidato",
+  "partido", "empresa", "marca", "rio", "bacia", "lago", "parcela", "lote", "hospital", "escola", "modelo", "tipo", "variedade", "cultivar", "linhagem",
+  "organismo", "individuo", "planta", "animal", "paciente", "voluntario", "participante", "atleta", "corredor", "veiculo", "carro", "serie", "coluna", "barra",
+];
+const DADOS_SUBSTANTIVOS_DURACAO = ["ano", "mes", "dia", "semana", "decada", "hora", "minuto", "trimestre", "semestre", "bimestre", "periodo"];
+const DADOS_DETERMINANTES = "(?:os|as|nos|nas|dos|das|aos|pelos|pelas|esses|essas|estes|estas|desses|dessas|nesses|nessas|aqueles|aquelas|naqueles|naquelas|todos os|todas as|ambos os|ambas as)";
+const DADOS_PALAVRAS_VAZIAS = new Set(["de", "da", "do", "das", "dos", "em", "no", "na", "nos", "nas", "por", "para", "com", "sem", "sobre", "entre", "ate", "a", "o", "as", "os", "um", "uma", "e", "ou", "que", "se", "ao", "aos", "cada", "dia", "ano", "mes", "hora"]);
+const DADOS_OBJETO_GENERICO = /^(?:valor|valores|quantidade|quantidades|numero|numeros|nivel|niveis|indice|indices|nota|notas|pontuacao|media|medias|resultado|resultados|registro|registros|medida|medidas|medicao|leitura|leituras|frequencia|intensidade|grau|graus|patamar|ponto|pontos|teor|teores|total|totais|dado|dados|marca|marcas|incidencia|ocorrencia|ocorrencias|numero|percentual|proporcao|taxa|taxas|volume|volumes|montante|soma)$/;
+const DADOS_ROTULOS_AGREGADOS = new Set(["total", "totais", "soma", "media", "mediana", "geral", "todos", "todas", "brasil total", "total geral"]);
+const DADOS_UNIDADES_CURTAS = "%|ml|l|g|kg|mg|km|m|cm|mm|s|min|mol|t|ha|hab|w|kw|kwh|j|v|pa|atm|mmhg|ppm|hz|cal|kcal|db|°c|ºc|graus|reais|r\\$";
+const DADOS_MARCA_MIN = /\b(menor|menores|minim[oa]s?|mais baix[oa]s?|menos elevad[oa]s?|mais reduzid[oa]s?|mais escass[oa]s?)\b/gu;
+const DADOS_MARCA_MAX = /\b(maior|maiores|maxim[oa]s?|mais alt[oa]s?|mais elevad[oa]s?|pico|auge|recorde|mais intens[oa]s?)\b/gu;
+const DADOS_VARIACAO = "(?:crescimento|aumento|queda|reducao|diminuicao|variacao|diferenca|salto|ganho|perda|elevacao|avanco|recuo|ritmo|velocidade|aceleracao|oscilacao|amplitude|mudanca|alteracao|incremento|acrescimo|decrescimo|intervalo|distancia|tempo|parte|parcela|fatia)";
+/* Palavra de grandeza na oração → a série que tem essa unidade. Grandeza que nenhuma série tem
+   (ex.: "concentração de solutos" num gráfico de mL e nota) não é afirmação conferível. */
+const DADOS_GRANDEZA_UNIDADES: [RegExp, string[]][] = [
+  [/\bvolumes?\b/u, ["ml", "l", "m3", "cm3", "dm3", "litro", "litros"]],
+  [/\btemperaturas?\b/u, ["°c", "ºc", "c", "k", "°f"]],
+  [/\b(?:percentu\p{L}*|porcentagem|proporc\p{L}*|participac\p{L}*|frac\p{L}*|taxas?|indices?)\b/u, ["%"]],
+  [/\b(?:massas?|pesos?)\b/u, ["g", "kg", "mg", "t", "ton", "toneladas"]],
+  [/\b(?:distancias?|comprimentos?|alturas?|profundidades?|altitudes?|espessuras?|deslocamentos?)\b/u, ["m", "km", "cm", "mm"]],
+  [/\b(?:tempos?|duracao|duracoes)\b/u, ["s", "min", "h", "ms", "horas", "minutos", "segundos"]],
+  [/\bvelocidades?\b/u, ["km/h", "m/s"]],
+  [/\bpress(?:ao|oes)\b/u, ["atm", "pa", "kpa", "mmhg", "bar"]],
+  [/\bconcentrac\p{L}*\b/u, ["mol/l", "g/l", "mg/l", "ppm", "mg/dl", "g/dl"]],
+  [/\b(?:populac\p{L}*|habitantes)\b/u, ["hab", "habitantes", "pessoas", "mil", "milhoes", "milhares"]],
+  [/\b(?:energias?|consumos?)\b/u, ["j", "kj", "kwh", "mwh", "gwh", "cal", "kcal", "tep"]],
+  [/\bpotencias?\b/u, ["w", "kw", "mw"]],
+  [/\bareas?\b/u, ["ha", "km2", "m2", "hectares"]],
+  [/\b(?:custos?|precos?|gastos?|receitas?|rendas?|salarios?|faturamento|lucros?)\b/u, ["r$", "us$", "reais", "dolares", "u$"]],
+  [/\b(?:producao|producoes|producoes|colheitas?|safras?)\b/u, ["t", "ton", "toneladas", "kg", "sacas", "mil t", "milhoes de t"]],
+];
+function normalizaUnidade(u: string): string {
+  return normalizaParaComparar(u).replace(/\s+/g, "").replace(/²/g, "2").replace(/³/g, "3");
+}
+const DADOS_ANTES_DO_VALOR = /\b(?:aument\p{L}*|cresc\p{L}*|queda|cai\p{L}*|reduc\p{L}*|reduz\p{L}*|diminu\p{L}*|diferenca|varia\p{L}*|subi\p{L}*|elev\p{L}*|dobr\p{L}*|triplic\p{L}*|cerca de|aproximadamente|quase|em torno de|mais de|menos de|acima de|abaixo de|superior a|inferior a|ate|entre|media de|total de|soma de|ganh\p{L}*|perd\p{L}*|a mais|a menos)\s*(?:\p{L}+\s+){0,2}$|\d[\d.,]*\s+(?:a|para|ate)\s+$/u;
+
+type SerieVisual = { nome: string; unidade: string; valores: (number | null)[] };
+type DadosVisual = { tipo: "grafico" | "tabela"; titulo: string; rotulos: string[]; series: SerieVisual[]; contagens: number[] };
+type ProblemaDados = { tipo: string; campo: string; detalhe: string };
+
+/* "1.400" → 1400; "1 400" → 1400; "12,5" → 12.5; "350 mL" → 350; "3.5" → 3.5; "8h" → 8. */
+function numeroDeTexto(s: unknown): number | null {
+  if (typeof s === "number") return Number.isFinite(s) ? s : null;
+  const bruto = String(s ?? "").trim();
+  const m = bruto.match(/-?\d[\d.\s]*(?:,\d+)?/);
+  if (!m) return null;
+  let t = m[0].replace(/\s+/g, "").replace(/\.$/, "");
+  if (/^-?\d{1,3}(\.\d{3})+(,\d+)?$/.test(t)) t = t.replace(/\./g, "");
+  t = t.replace(",", ".");
+  const n = Number(t);
+  return Number.isFinite(n) ? n : null;
+}
+function celulaNumerica(c: string): boolean {
+  return /^\s*[~≈]?\s*-?\d[\d.\s]*(?:,\d+)?\s*(?:%|[\p{L}°µ]{1,6}(?:\/[\p{L}²³]{1,4})?[²³]?)?\s*$/u.test(String(c ?? ""));
+}
+function unidadeDoNome(nome: string): string {
+  const n = String(nome || "").trim();
+  const m = n.match(/\(([^()]{1,10})\)\s*$/);
+  if (m && !/\s/.test(m[1]) && !/^\d+$/.test(m[1]) && /[\p{L}%°]/u.test(m[1])) return m[1];
+  const e = n.match(/\bem\s+(%|[\p{L}°µ\/²³]{1,8})\s*$/u);
+  if (e) return e[1];
+  if (/%/.test(n)) return "%";
+  return "";
+}
+function nomeSemUnidade(nome: string): string {
+  return String(nome || "").replace(/\s*\([^()]{1,10}\)\s*$/, "").trim();
+}
+function unidadeDasCelulas(celulas: string[]): string {
+  const contagem = new Map<string, number>();
+  let numericas = 0;
+  for (const c of celulas) {
+    if (!celulaNumerica(c)) continue;
+    numericas++;
+    const m = String(c).match(/\d\s*(%|[\p{L}°µ]{1,6}(?:\/[\p{L}²³]{1,4})?[²³]?)\s*$/u);
+    if (m) contagem.set(m[1], (contagem.get(m[1]) || 0) + 1);
+  }
+  let melhor = "", n = 0;
+  for (const [u, k] of contagem) if (k > n) { melhor = u; n = k; }
+  return numericas && n >= Math.ceil(0.6 * numericas) ? melhor : "";
+}
+/* Rótulos, séries (nome, unidade, valores) e contagens válidas de um gráfico ou tabela. */
+function dadosDoVisual(visual: any): DadosVisual | null {
+  if (!visual || typeof visual !== "object") return null;
+  const tipo = String(visual.tipo || "").trim().toLowerCase();
+  const titulo = String(visual.titulo || "").trim();
+  if (tipo === "grafico") {
+    const rotulos = (Array.isArray(visual.labels) ? visual.labels : []).map((l: any) => String(l ?? "").trim());
+    if (rotulos.length < 2) return null;
+    const series: SerieVisual[] = (Array.isArray(visual.datasets) ? visual.datasets : [])
+      .map((ds: any) => {
+        const nome = String((ds && ds.label) || "").trim();
+        const valores: (number | null)[] = (Array.isArray(ds && ds.data) ? ds.data : []).map((x: any) => numeroDeTexto(x));
+        return { nome: nomeSemUnidade(nome) || nome, unidade: unidadeDoNome(nome), valores };
+      })
+      .filter((s: SerieVisual) => s.valores.some((v) => v !== null));
+    const ativos = rotulos.filter((r: string) => !DADOS_ROTULOS_AGREGADOS.has(normalizaParaComparar(r))).length;
+    return { tipo: "grafico", titulo, rotulos, series, contagens: [...new Set([rotulos.length, ativos, ...(series.length >= 2 ? [series.length] : [])])] };
+  }
+  if (tipo === "tabela") {
+    const colunas = (Array.isArray(visual.colunas) ? visual.colunas : []).map((c: any) => String(c ?? "").trim());
+    const linhas: string[][] = (Array.isArray(visual.linhas) ? visual.linhas : []).filter((l: any) => Array.isArray(l)).map((l: any[]) => l.map((c) => String(c ?? "").trim()));
+    if (colunas.length < 2 || linhas.length < 2) return null;
+    const rotulos = linhas.map((l) => l[0] || "");
+    const series: SerieVisual[] = [];
+    for (let j = 1; j < colunas.length; j++) {
+      const celulas = linhas.map((l) => l[j] ?? "");
+      const valores = celulas.map((c) => (celulaNumerica(c) ? numeroDeTexto(c) : null));
+      const validos = valores.filter((n) => n !== null).length;
+      if (validos < Math.max(2, Math.ceil(0.6 * celulas.length))) continue;
+      const nome = nomeSemUnidade(colunas[j]) || colunas[j] || `coluna ${j + 1}`;
+      series.push({ nome, unidade: unidadeDoNome(colunas[j]) || unidadeDasCelulas(celulas), valores });
+    }
+    const ativos = rotulos.filter((r) => !DADOS_ROTULOS_AGREGADOS.has(normalizaParaComparar(r))).length;
+    return { tipo: "tabela", titulo, rotulos, series, contagens: [...new Set([linhas.length, ativos, colunas.length - 1])] };
+  }
+  return null;
+}
+function dadosEscapaRegex(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+function dadosFormata(n: number | null): string {
+  if (n === null) return "—";
+  return String(Math.round(n * 1e6) / 1e6).replace(".", ",");
+}
+/* Índices dos rótulos presentes num trecho (normalizado), como palavra inteira. Rótulo só
+   numérico não casa quando vem seguido de unidade ("10 mL" não é o rótulo "10"). */
+function rotulosNoTrecho(trecho: string, rotulosNorm: string[]): number[] {
+  const achados: number[] = [];
+  rotulosNorm.forEach((r, i) => {
+    if (r.length < 2 || DADOS_PALAVRAS_VAZIAS.has(r) || !/[\p{L}\p{N}]/u.test(r)) return;
+    const soNumero = /^[\d.,]+$/.test(r);
+    const re = new RegExp(`(?<![\\p{L}\\p{N}])${dadosEscapaRegex(r)}(?![\\p{L}\\p{N}])${soNumero ? `(?!\\s?(?:${DADOS_UNIDADES_CURTAS})(?![\\p{L}]))` : ""}`, "u");
+    if (re.test(trecho)) achados.push(i);
+  });
+  return achados;
+}
+/* Radicais das palavras significativas do nome de uma série, já como fonte de regex: prefixo de 5
+   letras para palavra de 4+ letras ("acumu" casa "acumulada" e "acumulado"); sigla ou código curto
+   (LH, FSH, pH, CO2) inteiro, como palavra. */
+function radicaisDaSerie(nome: string): string[] {
+  const out: string[] = [];
+  for (const original of String(nome || "").split(/[^\p{L}\p{N}]+/u)) {
+    const w = normalizaParaComparar(original);
+    if (!w || DADOS_PALAVRAS_VAZIAS.has(w)) continue;
+    if (w.length >= 4) out.push(`(?<![\\p{L}])${dadosEscapaRegex(w.slice(0, 5))}`);
+    else if (w.length >= 2 && (/^[A-Z][A-Za-z0-9]{1,3}$/.test(original) && /[A-Z].*[A-Z0-9]|[A-Z]{2}/.test(original) || /\d/.test(original))) out.push(`(?<![\\p{L}\\p{N}])${dadosEscapaRegex(w)}(?![\\p{L}\\p{N}])`);
+  }
+  return out;
+}
+function pontuaSerieNoTrecho(trecho: string, radicais: string[]): number {
+  let n = 0;
+  for (const r of radicais) if (new RegExp(r, "u").test(trecho)) n++;
+  return n;
+}
+/* A série de que a oração fala: a de melhor pontuação, sem empate, ou -1. */
+function serieDoTrecho(trecho: string, radicais: string[][]): number {
+  let melhor = -1, nota = 0, empate = false;
+  radicais.forEach((rs, i) => {
+    const p = pontuaSerieNoTrecho(trecho, rs);
+    if (p > nota) { melhor = i; nota = p; empate = false; } else if (p === nota && p > 0) empate = true;
+  });
+  return nota > 0 && !empate ? melhor : -1;
+}
+/* No nível da FRASE a exigência é maior: a frase tem de mencionar UMA série só — se menciona duas
+   ("a ingestão de água era baixa e a nota, a mais alta"), uma oração sem nome de série não herda
+   nenhuma delas. */
+function serieUnicaNoTrecho(trecho: string, radicais: string[][]): number {
+  const mencionadas = radicais.map((rs, i) => (pontuaSerieNoTrecho(trecho, rs) > 0 ? i : -1)).filter((i) => i >= 0);
+  return mencionadas.length === 1 ? mencionadas[0] : -1;
+}
+/* A série de que a oração fala: pelo nome; senão pela grandeza + unidade; senão a única série
+   da frase inteira (se a oração não nomeia grandeza nenhuma). -1 = não dá para saber: não confere. */
+function serieDaOracao(oracao: string, dados: DadosVisual, radicais: string[][], serieDaFrase: number): number {
+  const porNome = serieDoTrecho(oracao, radicais);
+  if (porNome >= 0) return porNome;
+  for (const [re, unidades] of DADOS_GRANDEZA_UNIDADES) {
+    if (!re.test(oracao)) continue;
+    const cand = dados.series.map((s, i) => i).filter((i) => unidades.includes(normalizaUnidade(dados.series[i].unidade)));
+    return cand.length === 1 ? cand[0] : -1;
+  }
+  return serieDaFrase;
+}
+function singularDeContagem(forma: string): string {
+  for (const s of DADOS_SUBSTANTIVOS_CONTAGEM) if (forma === s || forma === pluralDeContagem(s)) return s;
+  return forma;
+}
+function pluralDeContagem(s: string): string {
+  if (/ao$/.test(s)) return s.replace(/ao$/, "oes");
+  if (/m$/.test(s)) return s.replace(/m$/, "ns");
+  if (/l$/.test(s)) return s.replace(/l$/, "is");
+  if (/[rsz]$/.test(s)) return s + "es";
+  return s + "s";
+}
+let DADOS_RE_CONTAGEM_CACHE: RegExp | null = null;
+function dadosRegexContagem(): RegExp {
+  if (DADOS_RE_CONTAGEM_CACHE) { DADOS_RE_CONTAGEM_CACHE.lastIndex = 0; return DADOS_RE_CONTAGEM_CACHE; }
+  const formas = DADOS_SUBSTANTIVOS_CONTAGEM.flatMap((s) => [s, pluralDeContagem(s)]).sort((a, b) => b.length - a.length).map(dadosEscapaRegex).join("|");
+  const numeros = Object.keys(DADOS_NUMEROS_EXTENSO).join("|");
+  DADOS_RE_CONTAGEM_CACHE = new RegExp(`(?<![\\p{L}\\p{N}])(${DADOS_DETERMINANTES}\\s+)?(${numeros}|\\d{1,2})\\s+(?:\\p{L}+\\s+)?(${formas})(?![\\p{L}])(?!\\s+percentu)`, "gu");
+  return DADOS_RE_CONTAGEM_CACHE;
+}
+/* 1. CONTAGEM — "quatro horários" × 5 rótulos. */
+function problemasDeContagem(campo: string, texto: string, dados: DadosVisual): ProblemaDados[] {
+  const out: ProblemaDados[] = [];
+  const re = dadosRegexContagem();
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(texto)) !== null) {
+    const n = DADOS_NUMEROS_EXTENSO[m[2]] ?? Number(m[2]);
+    if (!Number.isFinite(n) || n < 2 || n > DADOS_CONTAGEM_MAX) continue;
+    const singular = singularDeContagem(m[3]);
+    if (DADOS_SUBSTANTIVOS_DURACAO.includes(singular) && !m[1]) continue;   // "em dois anos" é prazo
+    if (/(?:marc|fez|faz|ganh|perd|som|obt|conquist|anot|regist|acumul)\p{L}*\s+$/u.test(texto.slice(Math.max(0, m.index - 30), m.index))) continue;   // "marcou cinco pontos"
+    if (dados.contagens.includes(n)) continue;
+    const oQue = dados.tipo === "grafico" ? `${dados.rotulos.length} rótulos` : `${dados.rotulos.length} linhas e ${dados.series.length} coluna(s) de dados`;
+    out.push({ tipo: "contagem", campo, detalhe: `${campo} fala em "${m[0].trim()}" e ${dados.tipo === "grafico" ? "o gráfico" : "a tabela"} tem ${oQue} (${dados.rotulos.slice(0, 8).join(", ")}${dados.rotulos.length > 8 ? ", …" : ""})${dados.series.length >= 2 ? ` e ${dados.series.length} séries` : ""}` });
+  }
+  return out;
+}
+/* 2. EXTREMO — "às 14h ... o menor volume de água" × argmin da série. */
+function problemasDeExtremo(campo: string, texto: string, dados: DadosVisual, rotulosNorm: string[], radicais: string[][], marcasProibidas: Set<string>): ProblemaDados[] {
+  const out: ProblemaDados[] = [];
+  const ativos = dados.rotulos.map((_, i) => i).filter((i) => !DADOS_ROTULOS_AGREGADOS.has(rotulosNorm[i]));
+  const sentencas = texto.split(/(?<=[.!?;:])\s+|\n+/);
+  for (const sent of sentencas) {
+    const rotulosSent = rotulosNoTrecho(sent, rotulosNorm);
+    if (!rotulosSent.length) continue;
+    const serieSent = serieUnicaNoTrecho(sent, radicais);
+    const oracoes = sent.split(/,|;|\(|\)|\s[-–—]\s|\be\b|\bmas\b|\bporem\b|\benquanto\b|\bao passo que\b|\bja\b/u).map((o) => o.trim()).filter(Boolean);
+    for (const oracao of oracoes) {
+      if (/\b(nao|nem|nunca|jamais)\b/.test(oracao)) continue;   // negação: não é afirmação sobre o extremo
+      for (const [re, modo] of [[DADOS_MARCA_MIN, "min"], [DADOS_MARCA_MAX, "max"]] as [RegExp, "min" | "max"][]) {
+        re.lastIndex = 0;
+        let m: RegExpExecArray | null;
+        while ((m = re.exec(oracao)) !== null) {
+          const marca = m[1];
+          if (marcasProibidas.has(marca)) continue;
+          const antes = oracao.slice(Math.max(0, m.index - 40), m.index);
+          const depois = oracao.slice(m.index + marca.length, m.index + marca.length + 70);
+          if (/\b(segund[oa]|terceir[oa]|quart[oa]|quint[oa]|penultim[oa])\s*$/.test(antes)) continue;        // ordinal
+          if (/^\s+(?:d[oa]\s+)?que\b/.test(depois) || /^\s+ou\s+igual/.test(depois)) continue;                  // comparativo
+          if (new RegExp(`^\\s+(?:\\p{L}+\\s+){0,2}?${DADOS_VARIACAO}\\b`, "u").test(depois)) continue;          // variação, parte
+          /* O objeto do marcador ("maior REABSORÇÃO renal de água", "menor VOLUME acumulado") diz de que
+             se fala: palavra de série ou genérica → segue; grandeza → a série com essa unidade; outra
+             coisa → a afirmação não é sobre os dados. */
+          if (/(?:apos|antes d[oa]|depois d[oa]|ate|desde|a partir d[oa]|em torno d[oa]|proximo a[oa]?|perto d[oa]|em relacao a[oa]|comparad[oa]s? a[oa]|precede|segue|sucede|antecede|durante)\s+(?:o|a|os|as)?\s*$/.test(antes)) continue;   // relação temporal ("após o pico"), não afirmação sobre o rótulo
+          const mObj = depois.match(/^\s+(?:(de|da|do|dos|das)\s+)?(\p{L}+)/u);
+          const objeto = mObj ? mObj[2] : "", comPreposicao = !!(mObj && mObj[1]);
+          const objetoDeSerie = !!objeto && radicais.some((rs) => pontuaSerieNoTrecho(objeto, rs) > 0);
+          const grandeza = objeto && !objetoDeSerie ? DADOS_GRANDEZA_UNIDADES.find(([re]) => re.test(objeto)) : undefined;
+          let serie = -1;
+          if (grandeza) { const cand = dados.series.map((_, i) => i).filter((i) => grandeza[1].includes(normalizaUnidade(dados.series[i].unidade))); serie = cand.length === 1 ? cand[0] : -1; }
+          else if (!objeto || objetoDeSerie || comPreposicao || DADOS_OBJETO_GENERICO.test(objeto) || /^(?:que|ou|quando|onde|para|com|pela|pelo|entre|a|o|as|os|e|se|ate|em|no|na)$/.test(objeto)) serie = serieDaOracao(oracao, dados, radicais, serieSent);
+          /* objeto direto que não é série, nem grandeza, nem palavra genérica ("maior REABSORÇÃO"): não é sobre os dados */
+          if (serie < 0) continue;
+          let rot = rotulosNoTrecho(oracao, rotulosNorm);
+          if (!rot.length) rot = rotulosSent;
+          if (rot.length !== 1) continue;
+          const idx = rot[0];
+          if (!ativos.includes(idx)) continue;
+          const s = dados.series[serie];
+          const v = s.valores[idx];
+          if (v === null) continue;
+          const candidatos = ativos.filter((i) => s.valores[i] !== null);
+          if (candidatos.length < 2) continue;
+          const extremo = candidatos.reduce((acc, i) => (modo === "min" ? Math.min(acc, s.valores[i] as number) : Math.max(acc, s.valores[i] as number)), modo === "min" ? Infinity : -Infinity);
+          if (v === extremo) continue;
+          const onde = candidatos.find((i) => s.valores[i] === extremo) as number;
+          out.push({ tipo: "extremo", campo, detalhe: `${campo} diz que ${dados.rotulos[idx]} tem o ${modo === "min" ? "menor" : "maior"} valor de "${s.nome}" ("${oracao.slice(0, 120)}"), mas o ${modo === "min" ? "mínimo" : "máximo"} é em ${dados.rotulos[onde]} (${dadosFormata(extremo)}${s.unidade ? " " + s.unidade : ""}); em ${dados.rotulos[idx]} o valor é ${dadosFormata(v)}${s.unidade ? " " + s.unidade : ""}` });
+        }
+      }
+    }
+  }
+  return out;
+}
+/* 3. VALOR — "às 14h, 350 mL" × valor da série em 14h. */
+function problemasDeValor(campo: string, texto: string, dados: DadosVisual, rotulosNorm: string[]): ProblemaDados[] {
+  const out: ProblemaDados[] = [];
+  const comUnidade = dados.series.map((s, i) => ({ s, i, un: normalizaParaComparar(s.unidade) })).filter((x) => x.un);
+  if (!comUnidade.length) return out;
+  const sentencas = texto.split(/(?<=[.!?;:])\s+|\n+/);
+  for (const sent of sentencas) {
+    const oracoes = sent.split(/;|\(|\)|\s[-–—]\s|\bmas\b|\bporem\b|\benquanto\b|\bao passo que\b/u).map((o) => o.trim()).filter(Boolean);
+    for (const oracao of oracoes) {
+      const rot = rotulosNoTrecho(oracao, rotulosNorm);
+      if (rot.length !== 1) continue;
+      const idx = rot[0];
+      for (const { s, un } of comUnidade) {
+        const re = new RegExp(`(?<![\\p{L}\\p{N},.])(-?\\d{1,3}(?:[.\\s]\\d{3})+|-?\\d+)(?:,(\\d+))?\\s*${dadosEscapaRegex(un)}${/\p{L}$/u.test(un) ? "(?![\\p{L}])" : ""}`, "gu");
+        let m: RegExpExecArray | null;
+        while ((m = re.exec(oracao)) !== null) {
+          const antes = oracao.slice(Math.max(0, m.index - 60), m.index);
+          if (DADOS_ANTES_DO_VALOR.test(antes)) continue;
+          const n = numeroDeTexto(m[1] + (m[2] ? "," + m[2] : ""));
+          const v = s.valores[idx];
+          if (n === null || v === null) continue;
+          const tol = 0.5 * Math.pow(10, -(m[2] ? m[2].length : 0)) + 1e-9;
+          if (Math.abs(n - v) <= tol) continue;
+          if (comUnidade.some((o) => o.un === un && o.s.valores[idx] !== null && Math.abs(n - (o.s.valores[idx] as number)) <= tol)) continue;
+          out.push({ tipo: "valor", campo, detalhe: `${campo} diz "${m[0].trim()}" para ${dados.rotulos[idx]}, mas "${s.nome}" em ${dados.rotulos[idx]} é ${dadosFormata(v)} ${s.unidade}` });
+        }
+      }
+    }
+  }
+  return out;
+}
+/* A conferência inteira, sem chamar a IA. Estado: "ok" | "corrigir" | "indefinido" (sem dados utilizáveis). */
+function conferenciaDadosVisual(d: any): { estado: string; problemas: ProblemaDados[] } {
+  if (!d || typeof d !== "object") return { estado: "indefinido", problemas: [] };
+  const dados = dadosDoVisual(d.visual);
+  if (!dados) return { estado: "indefinido", problemas: [] };
+  const gab = LETRAS_ALTERNATIVAS.includes(d.gabarito) ? String(d.gabarito) : "";
+  const an = d.analiseAlternativas && typeof d.analiseAlternativas === "object" ? d.analiseAlternativas : {};
+  const comentarioCorreta = gab && (an as any)[gab] && typeof (an as any)[gab] === "object" ? String((an as any)[gab].comentario || "") : "";
+  const trechos = ([["o texto-base", d.textoBase], ["o comando", d.comando], ["a resolução", d.resolucaoComentada], ["o comentário da alternativa correta", comentarioCorreta]] as [string, unknown][])
+    .map(([campo, t]) => ({ campo, texto: normalizaParaComparar(String(t || "")) })).filter((x) => x.texto);
+  const rotulosNorm = dados.rotulos.map((r) => normalizaParaComparar(r));
+  const radicais = dados.series.map((s) => radicaisDaSerie(s.nome));
+  const marcasProibidas = new Set<string>();
+  for (const s of dados.series) {
+    const nome = normalizaParaComparar(s.nome);
+    for (const re of [DADOS_MARCA_MIN, DADOS_MARCA_MAX]) { re.lastIndex = 0; let m: RegExpExecArray | null; while ((m = re.exec(nome)) !== null) marcasProibidas.add(m[1]); }
+  }
+  const problemas: ProblemaDados[] = [];
+  for (const tr of trechos) {
+    problemas.push(...problemasDeContagem(tr.campo, tr.texto, dados));
+    if (dados.series.length) {
+      problemas.push(...problemasDeExtremo(tr.campo, tr.texto, dados, rotulosNorm, radicais, marcasProibidas));
+      problemas.push(...problemasDeValor(tr.campo, tr.texto, dados, rotulosNorm));
+    }
+  }
+  const vistos = new Set<string>();
+  const unicos = problemas.filter((p) => { const k = p.tipo + "|" + p.detalhe; if (vistos.has(k)) return false; vistos.add(k); return true; }).slice(0, 6);
+  return { estado: unicos.length ? "corrigir" : "ok", problemas: unicos };
+}
+/* Os dados do visual, por extenso, para a correção dirigida (e para quem ler o log). */
+function listaDadosDoVisual(visual: any): string {
+  const dados = dadosDoVisual(visual);
+  if (!dados) return "";
+  const linhas = [`Título: ${dados.titulo || "(sem título)"}`];
+  if (dados.tipo === "grafico") {
+    linhas.push(`Tipo: ${String(visual.chartType || "")} · Rótulos (${dados.rotulos.length}): ${dados.rotulos.join(", ")}`);
+    for (const s of dados.series) linhas.push(`Série "${s.nome}${s.unidade ? ` (${s.unidade})` : ""}": ${dados.rotulos.map((r, i) => `${r} = ${dadosFormata(s.valores[i])}`).join("; ")}`);
+  } else {
+    const colunas = (Array.isArray(visual.colunas) ? visual.colunas : []).map((c: any) => String(c ?? ""));
+    linhas.push(`Colunas (${colunas.length}): ${colunas.join(" | ")}`);
+    linhas.push(`Linhas (${dados.rotulos.length}):`);
+    for (const l of (Array.isArray(visual.linhas) ? visual.linhas : [])) if (Array.isArray(l)) linhas.push("  " + l.map((c: any) => String(c ?? "")).join(" | "));
+  }
+  return linhas.join("\n");
+}
+
+/* ─────────── v74.35 (b) — CORREÇÃO DIRIGIDA, SÓ QUANDO A CONFERÊNCIA FALHA ─────────── */
+const FERRAMENTA_DADOS = {
+  name: "entregar_coerencia_dados",
+  description: "Entrega a questão com o texto ajustado aos dados do gráfico/tabela — ou idêntica, com justificativa, quando a frase apontada não se refere aos dados do visual.",
+  input_schema: {
+    type: "object",
+    properties: {
+      semAlteracao: { type: "boolean", description: "true SOMENTE quando a frase apontada não se refere aos dados do gráfico/tabela e nada precisa mudar. Nunca para deixar passar um erro." },
+      justificativa: { type: "string", description: "Uma frase: o que foi corrigido e por quê — ou, com semAlteracao = true, por que a frase apontada não se refere aos dados." },
+      textoBase: { type: "string", description: "O texto-base inteiro, corrigido ou idêntico." },
+      comando: { type: "string", description: "O comando inteiro, corrigido ou idêntico." },
+      alternativas: {
+        type: "object",
+        description: "As cinco, na MESMA ordem e com a MESMA letra correta. As que não precisam mudar voltam idênticas.",
+        properties: { A: { type: "string" }, B: { type: "string" }, C: { type: "string" }, D: { type: "string" }, E: { type: "string" } },
+        required: ["A", "B", "C", "D", "E"],
+      },
+      comentarios: {
+        type: "object",
+        description: 'Só as letras cujo comentário mudou (porque a alternativa foi reescrita ou porque o comentário afirmava algo que os dados não mostram): {"B": "..."}.',
+        properties: { A: { type: "string" }, B: { type: "string" }, C: { type: "string" }, D: { type: "string" }, E: { type: "string" } },
+      },
+      resolucaoComentada: { type: "string", description: "A resolução inteira, corrigida ou idêntica. Tem de concluir pela MESMA letra." },
+    },
+    required: ["semAlteracao", "justificativa", "textoBase", "comando", "alternativas", "comentarios", "resolucaoComentada"],
+  },
+};
+
+function buildCorrecaoDadosPrompt(data: any, conf: { problemas: ProblemaDados[] }, tentativa = 1, recusaAnterior = ""): string {
+  const alts = (data && data.alternativas) || {};
+  const gab = String(data?.gabarito || "");
+  const an = (data && data.analiseAlternativas) || {};
+  const visual = data && data.visual;
+  const ehTabela = !!visual && String(visual.tipo || "").toLowerCase() === "tabela";
+  const nomeVisual = ehTabela ? "a tabela" : "o gráfico", doVisual = ehTabela ? "da tabela" : "do gráfico";
+  const linhas = LETRAS_ALTERNATIVAS.map((k) => `${k}) ${String(alts[k] || "")}${k === gab ? "   ← CORRETA" : ""}`).join("\n");
+  const coments = LETRAS_ALTERNATIVAS.map((k) => `${k}: ${String((an as any)[k]?.comentario || "").slice(0, 400)}`).join("\n");
+  return `CORREÇÃO DE COERÊNCIA COM OS DADOS${tentativa > 1 ? ` — TENTATIVA ${tentativa}` : ""} — a questão abaixo está pronta e ${nomeVisual} é a REFERÊNCIA: é o texto que tem de afirmar exatamente o que os dados mostram. A conferência automática, em código, encontrou:
+${conf.problemas.map((p) => `· ${p.tipo.toUpperCase()}: ${p.detalhe}`).join("\n")}${recusaAnterior ? `\nA proposta anterior foi recusada pela conferência automática: ${recusaAnterior}.` : ""}
+
+DADOS ${doVisual.toUpperCase()} (NÃO ALTERE — são a referência)
+${listaDadosDoVisual(visual)}
+
+O QUE FAZER
+1. Corrija SOMENTE o necessário para que texto-base, comando, alternativas, resolução e comentários afirmem exatamente o que os dados mostram: a quantidade de pontos/categorias, qual rótulo tem o menor e o maior valor de cada série, os valores citados. Mexa no mínimo: a frase apontada e o que depende dela.
+2. NÃO altere os dados ${doVisual}, a letra correta (continua ${gab}), a ordem das alternativas nem as alternativas que não precisam mudar — devolva-as IDÊNTICAS, caractere por caractere.
+3. A resolução tem de continuar concluindo pela letra ${gab}. Se o raciocínio apontado era o que sustentava a resposta, reconstrua-o a partir dos dados certos (por exemplo: a resposta se apoia na série em que aquele rótulo é de fato o extremo, e não na outra).
+4. Se, depois de reler, a frase apontada NÃO se refere aos dados ${doVisual} (fala de outra grandeza, de outra contagem, de um comparativo), devolva tudo IDÊNTICO com "semAlteracao": true e explique em "justificativa" (uma frase). Isso NÃO serve para deixar passar um erro: se a frase fala dos dados e não bate, corrija.
+5. Regras de sempre: nenhuma linguagem absolutista; alternativas com uma só oração, paralelas e de extensão próxima; nada no texto-base ou no comando que entregue a resposta.
+
+TEXTO-BASE
+${String(data?.textoBase || "")}
+
+COMANDO
+${String(data?.comando || "")}
+
+ALTERNATIVAS
+${linhas}
+
+COMENTÁRIOS ATUAIS
+${coments}
+
+RESOLUÇÃO ATUAL
+${String(data?.resolucaoComentada || "")}
+
+Devolva pela ferramenta "entregar_coerencia_dados": "semAlteracao", "justificativa", "textoBase", "comando", "alternativas" (as cinco), "comentarios" (só as letras cujo comentário mudou) e "resolucaoComentada" (inteira).`;
+}
+
+/* Monta a questão proposta sem confiar na resposta: o visual NUNCA é tocado; textos
+   vazios ou de tamanho absurdo são recusados; alternativa reescrita exige comentário;
+   "semAlteracao" exige justificativa; proposta que não muda nada e não justifica é recusada. */
+function aplicaCorrecaoDados(data: any, bruto: any): { ok: boolean; motivo: string; nova: any; campos: string[]; semAlteracao: boolean; justificativa: string } {
+  const falha = (motivo: string) => ({ ok: false, motivo, nova: null, campos: [] as string[], semAlteracao: false, justificativa: "" });
+  if (!bruto || typeof bruto !== "object") return falha("a resposta veio vazia");
+  const justificativa = String(bruto.justificativa ?? "").trim();
+  if (bruto.semAlteracao === true) {
+    if (justificativa.length < 20) return falha('"semAlteracao" sem justificativa');
+    return { ok: true, motivo: "", nova: data, campos: [], semAlteracao: true, justificativa };
+  }
+  const nova: any = { ...data };
+  const campos: string[] = [];
+  for (const campo of ["textoBase", "comando", "resolucaoComentada"]) {
+    const original = String(data[campo] ?? "").trim();
+    const t = String(bruto[campo] ?? "").trim();
+    if (!t) return falha(`o campo "${campo}" voltou vazio`);
+    if (t === original) continue;
+    if (original.length >= 80 && (t.length < 0.5 * original.length || t.length > 1.6 * original.length)) return falha(`o campo "${campo}" mudou de tamanho demais (${original.length} → ${t.length} caracteres)`);
+    nova[campo] = t;
+    campos.push(campo);
+  }
+  if (!bruto.alternativas || typeof bruto.alternativas !== "object") return falha("a resposta veio sem as alternativas");
+  const antes: any = data.alternativas || {};
+  const novas: any = {};
+  const mudadas: string[] = [];
+  for (const k of LETRAS_ALTERNATIVAS) {
+    const original = String(antes[k] ?? "").trim();
+    const t = String(bruto.alternativas[k] ?? "").trim();
+    if (!t) return falha(`a alternativa ${k} voltou vazia`);
+    novas[k] = t;
+    if (t !== original) {
+      if (original.length >= 20 && (t.length < 0.4 * original.length || t.length > 1.6 * original.length)) return falha(`a alternativa ${k} mudou de tamanho demais (${original.length} → ${t.length} caracteres)`);
+      mudadas.push(k);
+    }
+  }
+  const coments: any = (bruto.comentarios && typeof bruto.comentarios === "object") ? bruto.comentarios : {};
+  const semComentario = mudadas.filter((k) => !String(coments[k] ?? "").trim());
+  if (semComentario.length) return falha(`faltou o comentário da(s) alternativa(s) reescrita(s): ${semComentario.join(", ")}`);
+  const anAntes: any = (data.analiseAlternativas && typeof data.analiseAlternativas === "object") ? data.analiseAlternativas : {};
+  const an: any = {};
+  const comentariosMudados: string[] = [];
+  for (const k of LETRAS_ALTERNATIVAS) {
+    const v = anAntes[k] && typeof anAntes[k] === "object" ? { ...anAntes[k] } : {};
+    const c = String(coments[k] ?? "").trim();
+    if (c && c !== String(v.comentario ?? "").trim()) { v.comentario = c; comentariosMudados.push(k); }
+    an[k] = v;
+  }
+  if (mudadas.length) { nova.alternativas = novas; campos.push(`alternativas ${mudadas.join(", ")}`); }
+  if (comentariosMudados.length) { nova.analiseAlternativas = an; campos.push(`comentários ${comentariosMudados.join(", ")}`); }
+  if (!campos.length) return falha("nada foi alterado e não houve justificativa");
+  return { ok: true, motivo: "", nova, campos, semAlteracao: false, justificativa };
+}
+
+/* Marca na própria questão (vai junto com o simulado arquivado; o app mostra na auditoria do cartão). */
+function marcaDadosVisual(data: any, diag: any): void {
+  if (!data || typeof data !== "object") return;
+  data.dadosVisual = { estado: diag.estado, problemas: diag.problemas || [], campos: diag.campos || [], justificativa: diag.justificativa || "", motivo: diag.pulado || diag.erro || diag.motivoRecusa || "" };
+}
+
+/* Roda a conferência e, só quando ela falha, a correção dirigida. A questão é alterada no
+   lugar SÓ quando a proposta passa em tudo. */
+async function garantirDadosCoerentes(data: any, system: SistemaPrompt, usos: any[], restanteMs: number, declaradas: any[] | null, recurso: string) {
+  const prazo = Date.now() + restanteMs;
+  const diag: any = { aplicavel: false, chamadas: 0, corrigido: false };
+  if (!["grafico", "tabela"].includes(recurso) || !data || typeof data !== "object" || !data.visual || !visualConforme(data.visual, recurso).ok) { diag.estado = "nao_aplicavel"; return diag; }
+  diag.aplicavel = true;
+  const conf = conferenciaDadosVisual(data);
+  diag.estadoInicial = conf.estado;
+  if (conf.estado !== "corrigir") { diag.estado = conf.estado; return diag; }
+  diag.problemas = conf.problemas.map((p) => `${p.tipo}: ${p.detalhe}`);
+  console.warn(`[dados] conferência do ${recurso}: ${diag.problemas.join(" | ")}`);
+  const gabAntes = String(data.gabarito || "");
+  const alternativasAntes = conferenciaAlternativas(data).estado;
+  let recusa = "";
+  for (let tentativa = 1; tentativa <= CORRECOES_DADOS_MAX; tentativa++) {
+    const restante = prazo - Date.now();
+    if (restante < MS_MINIMO_PARA_CORRIGIR_DADOS) { diag.pulado = `sem tempo para a correção (restavam ${Math.round(restante / 1000)} s)`; break; }
+    try {
+      const bruto = await callClaudeForJSON(system, buildCorrecaoDadosPrompt(data, conf, tentativa, recusa), false, usos, FERRAMENTA_DADOS, undefined, `dados-${tentativa}`, undefined, undefined, declaradas);
+      diag.chamadas++;
+      const p = aplicaCorrecaoDados(data, bruto);
+      if (!p.ok) { recusa = p.motivo; continue; }
+      if (p.semAlteracao) {
+        diag.estado = "justificado"; diag.justificativa = p.justificativa; diag.tentativas = tentativa;
+        console.log(`[dados] a IA manteve o texto e justificou: ${p.justificativa.slice(0, 200)}`);
+        marcaDadosVisual(data, diag);
+        return diag;
+      }
+      const conf2 = conferenciaDadosVisual(p.nova);
+      if (conf2.estado === "corrigir") { recusa = `ainda há ${conf2.problemas.map((x) => `${x.tipo} (${x.detalhe.slice(0, 160)})`).join("; ")}`; continue; }
+      const gab2 = conferenciaGabarito(p.nova);
+      const naResolucao = letraNaResolucao(p.nova.resolucaoComentada);
+      if (gab2.estado !== "ok" || gab2.letra !== gabAntes || (naResolucao && naResolucao !== gabAntes)) { recusa = `a resposta deixou de ser coerente (${gab2.motivo || `a resolução conclui pela ${naResolucao}`})`; continue; }
+      const alt2 = conferenciaAlternativas(p.nova);
+      if (alt2.estado === "corrigir" && alternativasAntes !== "corrigir") { recusa = `as alternativas deixaram de estar conformes (${alt2.problemas.map((x) => x.tipo).join(", ")})`; continue; }
+      for (const campo of ["textoBase", "comando", "resolucaoComentada", "alternativas", "analiseAlternativas"]) if (p.nova[campo] !== data[campo]) data[campo] = p.nova[campo];
+      diag.corrigido = true; diag.estado = "corrigido"; diag.campos = p.campos; diag.tentativas = tentativa; diag.justificativa = p.justificativa;
+      console.log(`[dados] corrigida na tentativa ${tentativa}: ${p.campos.join("; ")}`);
+      marcaDadosVisual(data, diag);
+      return diag;
+    } catch (e) {
+      diag.erro = String((e as any)?.message || e).slice(0, 200);
+      break;
+    }
+  }
+  diag.estado = "pendente";
+  if (recusa) diag.motivoRecusa = recusa;
+  console.warn(`[dados] ficou como estava (${diag.pulado || diag.erro || recusa || "sem correção"})`);
+  marcaDadosVisual(data, diag);
+  return diag;
+}
+/* ═══════════ FIM DA COERÊNCIA DOS DADOS ═══════════ */
+
+/* ═══════════ v74.36 — REVISÃO DOS DISTRATORES POR IA (06/10/2026) ═══════════
+
+   Pedido do professor, com o Guia do Inep na mão: "os itens das questões de qualquer
+   disciplina estão absurdamente errados, facilitando a identificação da alternativa
+   correta; um distrator deve ser muito semelhante ao item correto". Medido nas 208
+   questões geradas de 27/09 a 06/10 (ver buildRegraDistratores): distrator "do desprezo"
+   em 19% das questões, 85 exageros em distratores contra 4 na correta, eco do texto-base
+   em 14%. As duas camadas em código (REGRA DOS DISTRATORES no prompt; exagero e eco do
+   texto-base em conferenciaAlternativas) pegam o que é mecânico. O absurdo factual
+   ("conversão direta do oxigênio em gás carbônico nos alvéolos") e o rebaixamento da
+   ideia ("reduz-se a um entretenimento sem relação com o público") são JULGAMENTO — e só
+   uma leitura julga. Decisão do professor (06/10/2026): revisão por IA LIGADA por padrão
+   (REVISAO_DISTRATORES), em toda questão de alternativas de TEXTO.
+
+   O que acontece: UMA chamada curta (a 2ª só se a proposta for recusada), que lê o MESMO
+   cache da geração (ferramenta entregar_alternativas, da família v74.29) e aplica o TESTE
+   DO CANDIDATO MEDIANO a cada distrator; reescreve só os que falham, como quase-acertos
+   (REGRA DOS DISTRATORES, no prompt do sistema). A correta NUNCA é tocada: a montagem só
+   aceita mudança nas letras dos distratores. A proposta só entra se: cada reescrito ficar
+   entre 0,75× e 1,3× do tamanho do que substitui (paridade e ordem lógica preservadas) e
+   dentro do teto da disciplina; as cinco continuarem distintas; a conferência em código
+   não ganhar problema NOVO (absoluto, exagero, eco, dominante); gabarito e análise
+   continuarem na mesma letra. Recusada duas vezes, sem tempo ou com erro: a questão segue
+   como estava, marcada ("distratores": pendente) para o professor ver. Alternativas
+   numéricas não passam por aqui (lá o distrator é um valor de erro de etapa; o revisor
+   matemático já atua). Roda logo depois da coerência do gabarito e ANTES da conferência
+   em código das alternativas, que então corrige o que sobrar.
+
+   Custo: cache lido (≈ 25 mil tokens × US$ 0,20/M ≈ US$ 0,005) + questão e instruções
+   (≈ 2,5 mil tokens × US$ 2/M ≈ US$ 0,005) + saída (≈ 400–700 tokens × US$ 10/M ≈
+   US$ 0,004–0,007) ≈ US$ 0,015 por questão de texto; ≈ US$ 0,30 numa leva de 20. */
+const REVISAO_DISTRATORES = true;            // decisão do professor (06/10/2026): ligada por padrão
+const REVISOES_DISTRATORES_MAX = 2;          // uma chamada; a segunda só se a proposta for recusada
+const MS_MINIMO_PARA_REVISAR_DISTRATORES = 40_000;   // revisão (~10 s) + conferências e auditoria que vêm depois + margem
+const DISTRATOR_RAZAO_MIN = 0.75, DISTRATOR_RAZAO_MAX = 1.3;   // extensão do reescrito em relação ao que substitui
+
+function buildRevisaoDistratoresPrompt(data: any, tentativa = 1, recusaAnterior = ""): string {
+  const alts = (data && data.alternativas) || {};
+  const gab = String(data?.gabarito || "");
+  const an = (data && data.analiseAlternativas) || {};
+  const linhas = LETRAS_ALTERNATIVAS.map((k) => `${k}) ${String(alts[k] || "")}${k === gab ? "   ← CORRETA (não alterar)" : ""}`).join("\n");
+  const coments = LETRAS_ALTERNATIVAS.map((k) => `${k}: ${String((an as any)[k]?.comentario || "").slice(0, 300)}`).join("\n");
+  return `REVISÃO DOS DISTRATORES${tentativa > 1 ? ` — TENTATIVA ${tentativa}` : ""} (REGRA DOS DISTRATORES, no prompt do sistema) — a questão abaixo está pronta e a alternativa correta (${gab}) está certa e NÃO pode ser alterada. Sua única tarefa é julgar os quatro distratores e reescrever os que falharem no TESTE DO CANDIDATO MEDIANO.${recusaAnterior ? `\nA proposta anterior foi recusada pela conferência automática: ${recusaAnterior}.` : ""}
+
+O TESTE, para cada distrator, lendo como alguém que leu o texto-base mas NÃO estudou o conteúdo: essa pessoa descartaria a alternativa sem saber o conteúdo — porque é fisicamente ou factualmente impossível, porque contradiz o texto-base às claras, porque fala de outro assunto, porque rebaixa ou nega a ideia de modo grosseiro ("reduz-se a", "sem relação", "elimina", "inexistência", "de modo neutro") ou porque soa exagerada (total, permanente, definitivo, irreversível, imediato, isolado, exclusivo, aleatório, direto)? Se SIM, o distrator FALHOU. Se o conjunto deixa a correta como a única frase equilibrada, específica ou técnica, os distratores falharam.
+
+Distrator que passa no teste volta IDÊNTICO, caractere por caractere. Se os quatro passam, devolva os quatro idênticos e "comentarios" vazio ({}).
+
+COMO REESCREVER o que falhou — um QUASE-ACERTO: parta da alternativa correta e troque UM só elemento (agente, direção, etapa, causa↔efeito, contexto, parte pelo todo); mantenha o registro, o vocabulário técnico, a estrutura e a extensão (entre 85% e 115% do tamanho da alternativa que substitui); uma única oração, começando com minúscula e terminando com ponto; nenhum termo absoluto ou de exagero; cada distrator reescrito com um erro DIFERENTE dos outros três; o erro tem de ser nomeável numa frase de professor ("confunde o hormônio que retém água com o que retém sódio"). O novo distrator NÃO pode ser também correto nem defensável: a correta continua a ÚNICA. Não repita no distrator uma palavra do comando só para parecer com a correta.
+
+NÃO MEXA: no texto-base, no comando, na alternativa correta (${gab}), na ordem das alternativas e nos distratores que passaram no teste.
+
+TEXTO-BASE
+${String(data?.textoBase || "").slice(0, 3000)}
+
+COMANDO
+${String(data?.comando || "")}
+
+ALTERNATIVAS
+${linhas}
+
+COMENTÁRIOS ATUAIS
+${coments}
+
+RESOLUÇÃO (só para contexto)
+${String(data?.resolucaoComentada || "").slice(0, 1200)}
+
+Devolva pela ferramenta "entregar_alternativas": "alternativas" (as cinco; a correta ${gab} IDÊNTICA), "comentarios" (só as letras reescritas, cada uma nomeando o erro de raciocínio em termos conceituais) e "resolucaoComentada" como string vazia ("").`;
+}
+
+/* Monta a proposta sem confiar nela: a correta nunca muda (só as letras dos distratores são
+   permitidas); quatro idênticos = aprovado; reescrito fora de 0,75×–1,3× do que substitui, ou
+   acima do teto da disciplina, é recusado; cinco alternativas têm de continuar distintas. */
+function aplicaRevisaoDistratores(data: any, bruto: any, disciplina: string): { ok: boolean; motivo: string; nova: any; mudadas: string[]; aprovado: boolean } {
+  const falha = (motivo: string) => ({ ok: false, motivo, nova: null, mudadas: [] as string[], aprovado: false });
+  if (!bruto || typeof bruto !== "object" || !bruto.alternativas || typeof bruto.alternativas !== "object") return falha("a resposta veio sem as alternativas");
+  const gab = String(data?.gabarito || "");
+  const antes: any = (data && data.alternativas) || {};
+  const iguais = LETRAS_ALTERNATIVAS.every((k) => String(bruto.alternativas[k] ?? "").trim() === String(antes[k] ?? "").trim());
+  if (iguais) return { ok: true, motivo: "", nova: data, mudadas: [], aprovado: true };
+  const p = aplicaCorrecaoAlternativas(data, bruto, LETRAS_ALTERNATIVAS.filter((k) => k !== gab));
+  if (!p.ok) return falha(p.motivo === "nenhuma alternativa foi alterada" ? "só a alternativa correta foi alterada, e ela não pode mudar" : p.motivo);
+  const teto = tetosDaDisciplina(disciplina)?.item ?? 0;
+  for (const k of p.mudadas) {
+    const a = String(antes[k] ?? "").trim().length, b = String(p.nova.alternativas[k] ?? "").trim().length;
+    if (a >= 20 && (b < DISTRATOR_RAZAO_MIN * a || b > DISTRATOR_RAZAO_MAX * a)) return falha(`o distrator ${k} mudou de tamanho demais (${a} → ${b} caracteres; o limite é de 75% a 130% do original)`);
+    if (teto && b > teto && b > a) return falha(`o distrator ${k} passou do teto da disciplina (${b} > ${teto} caracteres)`);   // só quando cresceu além do teto; o que já era longo pode encolher
+  }
+  const distintas = new Set(LETRAS_ALTERNATIVAS.map((k) => normalizaAlternativa(p.nova.alternativas[k])));
+  if (distintas.size < LETRAS_ALTERNATIVAS.length) return falha("duas alternativas ficaram iguais");
+  return { ok: true, motivo: "", nova: p.nova, mudadas: p.mudadas, aprovado: false };
+}
+
+/* A revisão: custo de uma chamada curta por questão de texto; a questão é alterada no lugar
+   SÓ quando a proposta passa em tudo. */
+async function garantirDistratoresPlausiveis(data: any, system: SistemaPrompt, usos: any[], restanteMs: number, declaradas: any[] | null, disciplina: string) {
+  const prazo = Date.now() + restanteMs;
+  const diag: any = { aplicavel: false, chamadas: 0, revisado: false, ligada: REVISAO_DISTRATORES };
+  if (!REVISAO_DISTRATORES) { diag.estado = "desligada"; return diag; }
+  if (!data || typeof data !== "object" || !data.alternativas || typeof data.alternativas !== "object") { diag.estado = "nao_aplicavel"; return diag; }
+  const alts: any = data.alternativas;
+  const gab = LETRAS_ALTERNATIVAS.includes(data.gabarito) ? String(data.gabarito) : "";
+  if (!gab || LETRAS_ALTERNATIVAS.some((k) => !String(alts[k] ?? "").trim())) { diag.estado = "nao_aplicavel"; diag.motivo = "alternativas incompletas"; return diag; }
+  if (LETRAS_ALTERNATIVAS.filter((k) => alternativaDeNumero(alts[k])).length >= 4) { diag.estado = "nao_aplicavel"; diag.motivo = "alternativas numéricas"; return diag; }
+  if (idiomaDoItem(data).partes.length) { diag.estado = "nao_aplicavel"; diag.motivo = "item ainda em língua estrangeira (passa antes pelo português)"; return diag; }
+  diag.aplicavel = true;
+  const problemasAntes = new Set(conferenciaAlternativas(data).problemas.map((p) => p.tipo));
+  let recusa = "";
+  for (let tentativa = 1; tentativa <= REVISOES_DISTRATORES_MAX; tentativa++) {
+    const restante = prazo - Date.now();
+    if (restante < MS_MINIMO_PARA_REVISAR_DISTRATORES) { diag.pulado = `sem tempo para a revisão (restavam ${Math.round(restante / 1000)} s)`; break; }
+    try {
+      const bruto = await callClaudeForJSON(system, buildRevisaoDistratoresPrompt(data, tentativa, recusa), false, usos, FERRAMENTA_ALTERNATIVAS, undefined, `distratores-${tentativa}`, undefined, undefined, declaradas);
+      diag.chamadas++;
+      const p = aplicaRevisaoDistratores(data, bruto, disciplina);
+      if (!p.ok) { recusa = p.motivo; continue; }
+      if (p.aprovado) { diag.estado = "aprovado"; diag.tentativas = tentativa; console.log(`[distratores] os quatro passaram no teste do candidato mediano`); return diag; }
+      const conf2 = conferenciaAlternativas(p.nova);
+      const novos = conf2.problemas.filter((x) => !problemasAntes.has(x.tipo));
+      if (novos.length) { recusa = `a reescrita criou problema novo: ${novos.map((x) => `${x.tipo} (${x.detalhe})`).join("; ")}`; continue; }
+      const gab2 = conferenciaGabarito(p.nova);
+      if (gab2.estado !== "ok" || gab2.letra !== gab) { recusa = `a resposta deixou de ser coerente (${gab2.motivo})`; continue; }
+      data.alternativas = p.nova.alternativas;
+      data.analiseAlternativas = p.nova.analiseAlternativas;
+      diag.revisado = true; diag.estado = "revisado"; diag.letrasReescritas = p.mudadas; diag.tentativas = tentativa;
+      data.distratores = { estado: "revisado", letras: p.mudadas };
+      console.log(`[distratores] reescritos na tentativa ${tentativa}: ${p.mudadas.join(", ")}`);
+      return diag;
+    } catch (e) {
+      diag.erro = String((e as any)?.message || e).slice(0, 200);
+      break;
+    }
+  }
+  diag.estado = "pendente";
+  if (recusa) diag.motivoRecusa = recusa;
+  data.distratores = { estado: "pendente", motivo: diag.pulado || diag.erro || recusa || "" };
+  console.warn(`[distratores] revisão não concluída (${diag.pulado || diag.erro || recusa || "sem proposta aceita"})`);
+  return diag;
+}
+/* ═══════════ FIM DA REVISÃO DOS DISTRATORES ═══════════ */
 
 /* ========= v74.6 — COERÊNCIA DA RESPOSTA, CONFERIDA ANTES DE ENTREGAR =========
 
@@ -5655,6 +6465,9 @@ function selfTestResponse() {
     buildBlocoConhecimentoIA.toString(), buildBlocoAuditoriaIA.toString(), consultarTextosEnem.toString(),
     JSON.stringify([Object.fromEntries(Object.entries(MARCAS_IDIOMA).map(([k, v]) => [k, [...v]])), IDIOMA_MIN_MARCAS, ENEM_REAL_IDIOMA]),
     JSON.stringify([ABSOLUTOS_ALTERNATIVAS, ABSOLUTOS_EXIBICAO, [...PALAVRAS_VAZIAS_ECO], ECO_MIN_LETRAS, CORRETA_DOMINANTE_MINIMO, CORRETA_DOMINANTE_RAZAO, CORRETA_DOMINANTE_CARACTERES, CORRECOES_ALTERNATIVAS_MAX, MS_MINIMO_PARA_CORRIGIR_ALTERNATIVAS, ENEM_REAL_ALTERNATIVAS]),
+    JSON.stringify([EXAGEROS_ALTERNATIVAS, EXAGEROS_EXIBICAO, ECO_TEXTO_MIN_RADICAIS]), termosExageradosEm.toString(), buildRegraDistratores(),   // v74.36
+    JSON.stringify([REVISAO_DISTRATORES, REVISOES_DISTRATORES_MAX, MS_MINIMO_PARA_REVISAR_DISTRATORES, DISTRATOR_RAZAO_MIN, DISTRATOR_RAZAO_MAX]),
+    buildRevisaoDistratoresPrompt.toString(), aplicaRevisaoDistratores.toString(), garantirDistratoresPlausiveis.toString(),
     JSON.stringify([TEXTOS_ENEM_MINIMO_PONTOS, TEXTOS_ENEM_COBERTURA_MINIMA, TEXTOS_ENEM_FAIXA_EMPATE, DISCIPLINAS_TEXTOS_ENEM, TEXTOS_ENEM_LITERARIOS, [...TEXTOS_ENEM_TEMAS_GENERICOS], INEDITISMO_LIMITE, INEDITISMO_MIN_TOKENS_COMANDO, INEDITISMO_MIN_TOKENS_ALTERNATIVA]),
     JSON.stringify(ACERVOS_PRIORITARIOS), JSON.stringify(DISCIPLINAS_COM_ACERVO_PRIORITARIO), buildAcervosPrioritarios.toString(),   // v74.16
     JSON.stringify([WEB_SEARCH_TOOL, BUSCA_PESQUISADOR, BUSCA_PESQUISADOR_RETRY, BUSCA_AUDITORIA]),
@@ -5669,6 +6482,10 @@ function selfTestResponse() {
     BUSCA_FLUXO_DIRETO, fluxoDireto.toString(), modoFluxoDireto.toString(), buildBlocoFluxoDiretoAutoral.toString(),   // v74.33
     JSON.stringify([DISCIPLINAS_FLUXO_DIRETO, REELABORACOES_FLUXO_DIRETO, BUSCAS_FLUXO_DIRETO, TEXTO_PROPRIO_ASPAS_MIN, TP_ATRIBUICOES.map(String)]), conferenciaTextoProprio.toString(),
     visualSchemaUnico.toString(), JSON.stringify([RECURSOS_VISUAIS_TODOS, ferramentaQuestaoPara("imagem", true, "História")]), normalizarVisual.toString(),   // v74.34
+    conferenciaDadosVisual.toString(), dadosDoVisual.toString(), problemasDeContagem.toString(), problemasDeExtremo.toString(), problemasDeValor.toString(),   // v74.35
+    serieDaOracao.toString(), serieUnicaNoTrecho.toString(), rotulosNoTrecho.toString(), radicaisDaSerie.toString(), numeroDeTexto.toString(), listaDadosDoVisual.toString(),
+    buildCorrecaoDadosPrompt.toString(), aplicaCorrecaoDados.toString(), garantirDadosCoerentes.toString(), marcaDadosVisual.toString(), JSON.stringify(FERRAMENTA_DADOS),
+    JSON.stringify([CORRECOES_DADOS_MAX, MS_MINIMO_PARA_CORRIGIR_DADOS, DADOS_CONTAGEM_MAX, DADOS_SUBSTANTIVOS_CONTAGEM, DADOS_SUBSTANTIVOS_DURACAO, [...DADOS_ROTULOS_AGREGADOS], DADOS_GRANDEZA_UNIDADES.map(([re, u]) => [String(re), u]), DADOS_UNIDADES_CURTAS, String(DADOS_MARCA_MIN), String(DADOS_MARCA_MAX), DADOS_VARIACAO, String(DADOS_ANTES_DO_VALOR), String(DADOS_OBJETO_GENERICO)]),
   ].join(String.fromCharCode(0));
   return jsonResponse({
     selftest: true,
@@ -6283,6 +7100,69 @@ function selfTestResponse() {
             && u.includes('o campo "visual" tem de vir com "tipo": "grafico"') && u0.includes('{"tipo":"nenhum"}')
             && JSON.stringify(ferramentasDaQuestao(ferramentaQuestaoPara("imagem", false, "Química"))) === JSON.stringify(ferramentasDaQuestao(ferramentaQuestaoPara("tabela", false, "Química")));
         })(),
+        /* v74.36 — distratores: regra do quase-acerto no prompt, exagero e eco do texto-base em
+           código, revisão por IA ligada (pedido do professor, 06/10/2026). */
+        v7436_distratores: (() => {
+          const an = (c: string) => { const o: any = {}; for (const L of LETRAS_ALTERNATIVAS) o[L] = { status: L === c ? "correta" : "incorreta", comentario: "c" + L }; return o; };
+          const base: any = { textoBase: "Os rins ajustam a reabsorção de água conforme a ingestão; o ADH é o hormônio que regula essa reabsorção no túbulo renal.", comando: "A redução do volume urinário decorre de um mecanismo que", gabarito: "E",
+            alternativas: { A: "reduz a filtração glomerular para poupar água no sangue.", B: "inibe a sede, diminuindo a ingestão hídrica do trabalhador.", C: "estimula a aldosterona, que retém sódio nos túbulos.", D: "aumenta a sudorese, compensando a perda de água.", E: "eleva a reabsorção de água no túbulo renal via ADH." }, analiseAlternativas: an("E") };
+          const exag: any = { ...base, alternativas: { ...base.alternativas, D: "bloqueia de modo permanente a formação de urina." } };
+          const cinco: any = { ...base, alternativas: Object.fromEntries(LETRAS_ALTERNATIVAS.map((L) => [L, base.alternativas[L].replace(".", " de forma total.")])) };
+          const eco: any = { ...base, alternativas: { ...base.alternativas, E: "eleva a reabsorção de água no túbulo renal via o hormônio ADH." }, textoBase: "O túbulo renal reabsorve água sob ação do hormônio ADH, como mostra o quadro." };
+          const cE = conferenciaAlternativas(exag), cC = conferenciaAlternativas(cinco), cT = conferenciaAlternativas(eco), c0 = conferenciaAlternativas(base);
+          const fixo = buildBlocoFixo({ area: "natureza", disciplina: "Biologia" });
+          const prompt = buildRevisaoDistratoresPrompt(base);
+          const aprov = aplicaRevisaoDistratores(base, { alternativas: base.alternativas, comentarios: {}, resolucaoComentada: "" }, "Biologia");
+          const soCorreta = aplicaRevisaoDistratores(base, { alternativas: { ...base.alternativas, E: "outra correta." }, comentarios: {}, resolucaoComentada: "" }, "Biologia");
+          const boa = aplicaRevisaoDistratores(base, { alternativas: { ...base.alternativas, D: "eleva a reabsorção de sódio no túbulo renal via aldosterona." }, comentarios: { D: "troca o hormônio que retém água pelo que retém sódio" }, resolucaoComentada: "" }, "Biologia");
+          const grande = aplicaRevisaoDistratores(base, { alternativas: { ...base.alternativas, D: "eleva a reabsorção de sódio no túbulo renal via aldosterona, " + "x".repeat(60) + "." }, comentarios: { D: "c" }, resolucaoComentada: "" }, "Biologia");
+          const igual = aplicaRevisaoDistratores(base, { alternativas: { ...base.alternativas, D: base.alternativas.C }, comentarios: { D: "c" }, resolucaoComentada: "" }, "Biologia");
+          return cE.estado === "corrigir" && cE.problemas.some((p) => p.tipo === "exagero" && p.letras.join() === "D" && p.termos.join() === "permanente")
+            && cC.problemas.every((p) => p.tipo !== "exagero") && c0.estado === "ok"
+            && cT.problemas.some((p) => p.tipo === "ecoTexto" && p.letras.join() === "E") && ECO_TEXTO_MIN_RADICAIS === 2
+            && termosExageradosEm("Efeito imediato e irreversível, em excesso").join() === "irreversivel,imediato,em excesso" && !EXAGEROS_ALTERNATIVAS.includes("isolado") && !EXAGEROS_ALTERNATIVAS.includes("absoluto")
+            && buildCorrecaoAlternativasPrompt(exag, cE).includes("EXAGERO (pista de tom) em D") && buildCorrecaoAlternativasPrompt(eco, cT).includes("ECO DO TEXTO-BASE")
+            && fixo.includes("REGRA DOS DISTRATORES") && fixo.includes("TESTE DO CANDIDATO MEDIANO") && fixo.includes("CADA DISTRATOR É UM QUASE-ACERTO") && fixo.indexOf("REGRA DOS DISTRATORES") > fixo.indexOf("REGRA DAS CINCO ALTERNATIVAS") && fixo.indexOf("REGRA DOS DISTRATORES") < fixo.indexOf(JSON_SCHEMA_TXT.slice(0, 40))
+            && REVISAO_DISTRATORES === true && REVISOES_DISTRATORES_MAX === 2 && MS_MINIMO_PARA_REVISAR_DISTRATORES === 40_000 && DISTRATOR_RAZAO_MIN === 0.75 && DISTRATOR_RAZAO_MAX === 1.3
+            && prompt.includes("E) eleva a reabsorção de água no túbulo renal via ADH.   ← CORRETA (não alterar)") && prompt.includes("TESTE DO CANDIDATO MEDIANO") && prompt.includes('"entregar_alternativas"')
+            && aprov.ok && aprov.aprovado && !soCorreta.ok && soCorreta.motivo.includes("só a alternativa correta foi alterada")
+            && boa.ok && !boa.aprovado && boa.mudadas.join() === "D" && boa.nova.alternativas.E === base.alternativas.E && boa.nova.analiseAlternativas.D.comentario.startsWith("troca o hormônio")
+            && !grande.ok && grande.motivo.includes("tamanho demais") && !igual.ok && igual.motivo.includes("iguais")
+            && garantirDistratoresPlausiveis.toString().includes("alternativaDeNumero(alts[k])).length >= 4") && garantirDistratoresPlausiveis.toString().includes("a reescrita criou problema novo")
+            && garantirDistratoresPlausiveis.toString().includes('estado: "revisado"') && garantirDistratoresPlausiveis.toString().includes("letras: p.mudadas");
+        })(),
+        /* v74.35 — coerência entre o texto e os dados do gráfico/tabela (questão 4 do simulado
+           de Biologia de 06/10/2026), em código, com correção dirigida só quando falha. */
+        v7435_coerenciaDados: (() => {
+          const an = (c: string) => { const o: any = {}; for (const L of LETRAS_ALTERNATIVAS) o[L] = { status: L === c ? "correta" : "incorreta", comentario: "c" + L }; return o; };
+          const alts = { A: "8h, após acordar.", B: "14h, antes do almoço.", C: "17h, após o lanche.", D: "19h, após o copo de água.", E: "22h, após o jantar." };
+          const visual = { tipo: "grafico", chartType: "bar", titulo: "t", labels: ["8h", "14h", "17h", "19h", "22h"], datasets: [{ label: "Água ingerida acumulada (mL)", data: [300, 350, 700, 900, 1400] }, { label: "Nota de escurecimento da urina (1 a 5)", data: [2, 5, 3, 1, 2] }] };
+          const q4: any = { textoBase: "Um usuário registrou sua urina em quatro horários do dia.", comando: "O horário em que a urina apresentou maior concentração de solutos corresponde a", alternativas: alts, gabarito: "B", analiseAlternativas: an("B"),
+            resolucaoComentada: "Os dados mostram que às 14h o usuário havia ingerido o menor volume acumulado de água do dia e a nota de escurecimento da urina foi a mais alta (nota 5).", visual };
+          const c4 = conferenciaDadosVisual(q4);
+          const sa: any = { ...q4, textoBase: "Um usuário registrou sua urina em cinco horários do dia.", resolucaoComentada: "Às 14h a nota de escurecimento da urina foi a mais alta (nota 5), embora o volume acumulado (350 mL) fosse pouco maior que o das 8h (300 mL). Às 8h o volume era o menor do dia." };
+          const tab: any = { ...q4, textoBase: "Cinco regiões foram comparadas.", resolucaoComentada: "A Região Sudeste tem a maior produção de soja.", visual: { tipo: "tabela", titulo: "P", colunas: ["Região", "Produção de soja (t)"], linhas: [["Norte", "10"], ["Nordeste", "20"], ["Sudeste", "50"], ["Sul", "40"], ["Centro-Oeste", "45"], ["Total", "165"]] } };
+          const neg: any = { ...sa, resolucaoComentada: "Às 14h o volume de água não era o menor do dia; era maior que o das 8h; às 17h houve o maior aumento." };
+          const prop = aplicaCorrecaoDados(q4, { semAlteracao: false, justificativa: "j", textoBase: "Um usuário registrou sua urina em cinco horários do dia.", comando: q4.comando, alternativas: alts, comentarios: {}, resolucaoComentada: sa.resolucaoComentada });
+          const fam = ferramentasDaQuestao(ferramentaQuestaoPara("grafico", false, "Biologia"));
+          return c4.estado === "corrigir" && c4.problemas.length === 2 && c4.problemas.map((p) => p.tipo).join() === "contagem,extremo"
+            && c4.problemas[1].detalhe.includes("14h tem o menor valor de \"Água ingerida acumulada\"") && c4.problemas[1].detalhe.includes("mínimo é em 8h (300 mL)")
+            && conferenciaDadosVisual(sa).estado === "ok" && conferenciaDadosVisual(tab).estado === "ok" && conferenciaDadosVisual(neg).estado === "ok"
+            && conferenciaDadosVisual({ ...tab, resolucaoComentada: "A Região Sul tem a maior produção de soja." }).estado === "corrigir"
+            && conferenciaDadosVisual({ ...sa, resolucaoComentada: "Às 14h o volume acumulado era de 400 mL." }).problemas[0]?.tipo === "valor"
+            && conferenciaDadosVisual({ ...sa, visual: null }).estado === "indefinido" && conferenciaDadosVisual({ ...sa, visual: { tipo: "imagem", promptImagem: "x" } }).estado === "indefinido"
+            && prop.ok && prop.campos.join() === "textoBase,resolucaoComentada" && conferenciaDadosVisual(prop.nova).estado === "ok" && prop.nova.visual === visual
+            && !aplicaCorrecaoDados(q4, { semAlteracao: true, justificativa: "curta" }).ok && aplicaCorrecaoDados(q4, { semAlteracao: true, justificativa: "a frase fala da concentração de solutos, grandeza que o gráfico não traz" }).semAlteracao
+            && !aplicaCorrecaoDados(q4, { semAlteracao: false, justificativa: "", textoBase: q4.textoBase, comando: q4.comando, alternativas: alts, comentarios: {}, resolucaoComentada: q4.resolucaoComentada }).ok
+            && !aplicaCorrecaoDados(q4, { semAlteracao: false, justificativa: "", textoBase: q4.textoBase, comando: q4.comando, alternativas: { ...alts, B: "" }, comentarios: {}, resolucaoComentada: q4.resolucaoComentada }).ok
+            && fam.length === 5 && fam[4].name === "entregar_coerencia_dados" && FERRAMENTA_DADOS.input_schema.required.length === 7
+            && buildCorrecaoDadosPrompt(q4, c4).includes("DADOS DO GRÁFICO (NÃO ALTERE") && buildCorrecaoDadosPrompt(q4, c4).includes("8h = 300; 14h = 350") && buildCorrecaoDadosPrompt(q4, c4).includes("continua B")
+            && buildCorrecaoDadosPrompt(tab, conferenciaDadosVisual({ ...tab, resolucaoComentada: "A Região Sul tem a maior produção de soja." })).includes("DADOS DA TABELA")
+            && listaDadosDoVisual(visual).includes('Série "Água ingerida acumulada (mL)": 8h = 300; 14h = 350; 17h = 700; 19h = 900; 22h = 1400')
+            && CORRECOES_DADOS_MAX === 2 && MS_MINIMO_PARA_CORRIGIR_DADOS === 40_000
+            && garantirDadosCoerentes.toString().includes('.includes(recurso) || !data || typeof data !== "object" || !data.visual || !visualConforme(data.visual, recurso).ok') && garantirDadosCoerentes.toString().includes("marcaDadosVisual(data, diag)")
+            && garantirDadosCoerentes.toString().includes("gab2.letra !== gabAntes") && garantirDadosCoerentes.toString().includes('alt2.estado === "corrigir" && alternativasAntes !== "corrigir"');
+        })(),
         /* v74.33 — FLUXO DIRETO em História e Artes (decisão do professor, 05/10/2026). */
         v7433_fluxoDireto: (() => {
           const p = pesquisarFonteReal.toString(), g = garantirFontesReais.toString(), c = buildCorrecaoAuditoria.toString(), bup = buildUserPrompt.toString();
@@ -6403,7 +7283,7 @@ function selfTestResponse() {
           const c2 = corrigeFonteDoDossie(q2, dossie, "instituicao_fora_da_referencia");
           const q3: any = questao({ tipoUso: "proprio", autor: "", instituicao: "", obra: "", referencia: "", comoVerificou: "" });
           const bloco = buildBlocoTextoEnem(dossieDoTextoEnem({ id: 1, chave: "fuvest-1980-1f-q06", ano: 1980, numero: 6, prova: "Fuvest 1980", tipo_texto: "poema", autor: "Olavo Bilac", instituicao: "", obra: "Poesias", ano_obra: "", referencia: "Olavo Bilac, Poesias.", texto: "Invejo o ourives quando escrevo", comando_original: "", alternativas_originais: null, gabarito_original: "", habilidade_original: "", usos: 0 }, 5));
-          return fam.map((f: any) => f.name).join() === "entregar_questao,entregar_alternativas,entregar_gabarito,entregar_item_em_portugues"
+          return fam.map((f: any) => f.name).join() === "entregar_questao,entregar_alternativas,entregar_gabarito,entregar_item_em_portugues,entregar_coerencia_dados"   // v74.35
             && JSON.stringify(g.tools) === JSON.stringify(a.tools) && JSON.stringify(g.tools) === JSON.stringify(gb.tools) && JSON.stringify(g.tools) === JSON.stringify(id.tools)
             && g.tool_choice.name === "entregar_questao" && a.tool_choice.name === "entregar_alternativas" && gb.tool_choice.name === "entregar_gabarito" && id.tool_choice.name === "entregar_item_em_portugues"
             && web.tools!.length === 2 && web.tool_choice.type === "auto" && semFam.tools!.length === 1 && fora.tools!.length === 1 && fora.tool_choice.name === FERRAMENTA_RECORTES.name
@@ -7133,12 +8013,25 @@ ATENÇÃO — sua resposta anterior não pôde ser usada: o argumento da ferrame
     const gabaritoDiag = await garantirGabaritoCoerente(
       data, system, usos, LIMITE_FUNCAO_MS - (Date.now() - inicioReq), familiaQ,
     );
+    /* v74.36 — REVISÃO DOS DISTRATORES POR IA (pedido do professor, 06/10/2026): o teste do
+       candidato mediano em cada distrator; os que falham viram quase-acertos. A correta não
+       muda. Antes da conferência em código, que então corrige o que sobrar. */
+    const distratoresDiag: any = await garantirDistratoresPlausiveis(
+      data, system, usos, LIMITE_FUNCAO_MS - (Date.now() - inicioReq), familiaQ, disciplina,
+    );
     /* v74.27 — CONFERÊNCIA DAS ALTERNATIVAS: linguagem absolutista, correta
        maior que as demais e correta como única a repetir palavra do comando.
        Custo zero na questão sã; na que falha, reescrita dirigida só das
        alternativas apontadas. Antes do auditor, que confere a versão final. */
     const alternativasDiag: any = await garantirAlternativasConformes(
       data, system, usos, LIMITE_FUNCAO_MS - (Date.now() - inicioReq), familiaQ,
+    );
+    /* v74.35 — COERÊNCIA ENTRE O TEXTO E OS DADOS do gráfico/tabela (questão 4 do
+       simulado de Biologia de 06/10: "quatro horários" com cinco colunas; "menor volume
+       às 14h" com 8h menor). Custo zero na questão sã; na que falha, correção dirigida
+       do texto (os dados são a referência). Antes do auditor, que confere a versão final. */
+    const dadosDiag: any = await garantirDadosCoerentes(
+      data, system, usos, LIMITE_FUNCAO_MS - (Date.now() - inicioReq), familiaQ, recurso,
     );
 
     /* v74.8 — VALIDAÇÃO OBRIGATÓRIA DE FONTES. Por último, depois de toda
@@ -7186,13 +8079,17 @@ ATENÇÃO — sua resposta anterior não pôde ser usada: o argumento da ferrame
       visualDiag.refeito += vd2.refeito; visualDiag.conforme = vd2.conforme; visualDiag.motivo = vd2.motivo; visualDiag.entregueTipo = vd2.entregueTipo; visualDiag.promptChars = vd2.promptChars;
       nova = normalizarNotacaoMatematica(normalizarNotacaoQuimica(nova, area, disciplina), disciplina);
       const gd2 = await garantirGabaritoCoerente(nova, system, usos, LIMITE_FUNCAO_MS - (Date.now() - inicioReq), familiaQ);
+      const rd2 = await garantirDistratoresPlausiveis(nova, system, usos, LIMITE_FUNCAO_MS - (Date.now() - inicioReq), familiaQ, disciplina);   // v74.36
       const ad2 = await garantirAlternativasConformes(nova, system, usos, LIMITE_FUNCAO_MS - (Date.now() - inicioReq), familiaQ);   // v74.27 / v74.29
+      const dd2 = await garantirDadosCoerentes(nova, system, usos, LIMITE_FUNCAO_MS - (Date.now() - inicioReq), familiaQ, recurso);   // v74.35
       const od2 = garantirObjetoDaDisciplina(nova, area, disciplina);
       repoeTextoDaBiblioteca(nova, `reescrita ${reelaboracoes}`);   // v74.30
       const fd2 = await garantirFontesReais(nova, system, usos, LIMITE_FUNCAO_MS - (Date.now() - inicioReq), area, buscasWeb, dossie, disciplina);
       data = nova;
       Object.assign(gabaritoDiag, gd2);
+      distratoresDiag.aposReelaboracao = rd2;    // v74.36
       alternativasDiag.aposReelaboracao = ad2;   // v74.27
+      dadosDiag.aposReelaboracao = dd2;          // v74.35
       objetoDiagFinal = od2;
       fontesDiag = fd2;
     }
@@ -7247,7 +8144,7 @@ ATENÇÃO — sua resposta anterior não pôde ser usada: o argumento da ferrame
     notacaoDiag.residuoFinal = temResiduoNotacao(data, area);
     if (notacaoDiag.residuoFinal) console.warn(`[notação] resíduo ASCII na questão entregue (${disciplina}: "${String(data?.tema || "").slice(0, 60)}") — ` + JSON.stringify(notacaoDiag.notacao?.residuosDepois ?? notacaoDiag));
     else if (notacaoDiag.residuoAntesDoRevisor) console.log(`[notação] resíduo corrigido pelo revisor (${notacaoDiag.notacao?.tentativas ?? "?"} tentativa(s))`);
-    return jsonResponse({ question: corrigirQuebrasLiterais(data), uso, visualDiag, diversidadeDiag, notacaoDiag, gabaritoDiag, alternativasDiag, fontesDiag, objetoDiag: objetoDiagFinal });
+    return jsonResponse({ question: corrigirQuebrasLiterais(data), uso, visualDiag, diversidadeDiag, notacaoDiag, gabaritoDiag, distratoresDiag, alternativasDiag, dadosDiag, fontesDiag, objetoDiag: objetoDiagFinal });
   } catch (err) {
     return jsonResponse({ error: `Erro ao gerar questão: ${String((err as any)?.message || err)}` }, 502);
   }
