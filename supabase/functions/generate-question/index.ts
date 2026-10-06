@@ -2380,7 +2380,7 @@ Disciplina: ${opts.disciplina}
 Tema/conteúdo solicitado: ${opts.tema || (opts.eixoTematico ? (opts.diversidade && opts.diversidade.subtopico ? "(o professor não detalhou; siga o eixo e o subtópico reservados para esta questão, indicados abaixo)" : "(o professor não detalhou; siga o eixo reservado para esta questão, indicado abaixo)") : "(o professor não detalhou; escolha um tema representativo da disciplina e do nível de dificuldade pedidos)")}${textoAproximado ? `
 ⚠️ A BIBLIOTECA NÃO TEM TEXTO SOBRE ESTE TEMA (v74.30): a questão é sobre o texto mais próximo, que está no início desta mensagem, e do tema pedido só aproveita o que esse texto sustenta. Não troque o assunto do texto pelo do tema nem ponha dentro dele o artista, o autor, a obra, o lugar ou o período pedidos.` : ""}
 Nível de dificuldade: ${opts.dificuldade}
-Recurso visual pedido: ${opts.recurso}
+Recurso visual pedido: ${opts.recurso} — a ferramenta "entregar_questao" aceita os quatro recursos; nesta questão o campo "visual" tem de vir com "tipo": "${opts.recurso}"${opts.recurso === "nenhum" ? ' (isto é, {"tipo":"nenhum"}: sem imagem, gráfico nem tabela)' : " e com os campos obrigatórios desse tipo; qualquer outro tipo é devolvido para refazer"}.
 
 Siga integralmente as INSTRUÇÕES FIXAS DESTA CONFIGURAÇÃO que estão no prompt do sistema (recorte da disciplina, regra de fontes, calibração de extensão, regra das cinco alternativas e formato de entrega) E as instruções do recurso visual e da Matriz de Referência que vêm mais abaixo nesta mesma mensagem — todas fazem parte deste pedido, com o mesmo peso.
 ${buildDiversidadeTematica(opts.eixoTematico || "", opts.temasEvitar || [], opts.tema, opts.recorte || "", { ...(opts.diversidade || {}), textoDaBiblioteca })}${opts.instrucoesVisual ? `\nInstrução adicional do professor especificamente para o recurso visual (siga-a com prioridade, desde que compatível com as instruções do recurso visual no prompt do sistema e com a ANCORAGEM DE ASSUNTO logo abaixo): ${opts.instrucoesVisual}\n` : ""}
@@ -3095,8 +3095,37 @@ function tetosDaDisciplina(disciplina: string) {
     comando: c.comando[1], alvoComando: c.comando[2],
   };
 }
+/* ═══════════ v74.34 — FERRAMENTA DE ENTREGA ÚNICA PARA OS QUATRO RECURSOS (06/10/2026) ═══════════
+   Pedido do professor: "uma ferramenta que entregue única que aceite os quatro tipos de
+   recursos de modo que a leva leia o mesmo cache". Medido no log de 24/09 a 05/10 (212
+   questões): a definição da ferramenta vem ANTES do prompt do sistema no prefixo
+   cacheado, então cada troca de recurso visual dentro da leva (ferramenta diferente
+   por recurso, v62) regravava os 23 mil tokens do prefixo — US$ 0,058 por troca; no
+   modo "misto" (rodízio nenhum → imagem → tabela → gráfico) quase toda questão
+   gravava (leva de Matemática de 05/10: 4 gravações em 5 questões, US$ 0,38 em vez de
+   ≈ US$ 0,20). Agora a ferramenta "entregar_questao" é IDÊNTICA para os quatro recursos
+   (só varia por disciplina, pelos tetos de extensão, e por área, pelo campo "fonte"):
+   "recurso" aceita os quatro valores e "visual" é obrigatório sempre, com um ramo
+   estrito por tipo (anyOf) — {"tipo":"nenhum"} quando não há recurso. QUAL tipo entregar
+   continua vindo da mensagem do usuário (linha "Recurso visual pedido" + protocolo do
+   recurso) e é garantido em código como antes (visualConforme/garantirVisual refazem o
+   visual trocado; normalizarVisual descarta visual em questão sem recurso). O rigor da
+   v62 dentro de cada tipo fica: cada ramo exige os campos essenciais daquele tipo. */
+const RECURSOS_VISUAIS_TODOS = ["nenhum", "imagem", "grafico", "tabela"];
+function visualSchemaUnico(): any {
+  const ramo = (recurso: string, descricao: string) => ({ ...visualSchemaPara(recurso), description: descricao });
+  return {
+    description: 'OBRIGATÓRIO em toda questão. O TIPO tem de ser EXATAMENTE o "Recurso visual pedido" da mensagem do usuário: sem recurso → {"tipo":"nenhum"}; imagem → ramo IMAGEM; gráfico → ramo GRÁFICO; tabela → ramo TABELA. Tipo diferente do pedido é devolvido para refazer.',
+    anyOf: [
+      { type: "object", description: 'Recurso pedido "nenhum": {"tipo":"nenhum"}, sem nenhum outro campo. A questão se resolve só pelo texto-suporte.', properties: { tipo: { type: "string", enum: ["nenhum"] } }, required: ["tipo"] },
+      ramo("imagem", 'Recurso pedido IMAGEM: {"tipo":"imagem","descricao":"<legenda em português>","promptImagem":"<especificação técnica em inglês, as 8 seções numeradas em UMA ÚNICA STRING>"}. "promptImagem" é OBRIGATORIAMENTE uma única string de texto corrido — nunca um objeto.'),
+      ramo("grafico", 'Recurso pedido GRÁFICO: {"tipo":"grafico","chartType":"bar"|"line"|"pie","titulo","labels":[...],"datasets":[{"label","data":[...]}]}.'),
+      ramo("tabela", 'Recurso pedido TABELA: {"tipo":"tabela","titulo","colunas":[...],"linhas":[[...],...]}.'),
+    ],
+  };
+}
 function ferramentaQuestaoPara(recurso: string, exigeFonte = false, disciplina = ""): any {
-  const comVisual = ["imagem", "grafico", "tabela"].includes(recurso);
+  void recurso;   // v74.34 — a ferramenta é a mesma para os quatro recursos (o parâmetro fica na assinatura; quem decide o tipo é a mensagem do usuário)
   const t = tetosDaDisciplina(disciplina);
   const alt = (L: string) => t
     ? { type: "string", maxLength: t.item, description: `Alternativa ${L}: UMA oração. Alvo ~${t.alvoItem} caracteres, teto ${t.item} — medida das provas reais do ENEM nesta disciplina. O nível de dificuldade não altera este número.` }
@@ -3114,7 +3143,7 @@ function ferramentaQuestaoPara(recurso: string, exigeFonte = false, disciplina =
         competencia: { type: "object" },
         habilidade: { type: "object" },
         objetoConhecimento: { type: "string" },
-        recurso: comVisual ? { type: "string", enum: [recurso] } : { type: "string" },
+        recurso: { type: "string", enum: RECURSOS_VISUAIS_TODOS, description: 'EXATAMENTE o "Recurso visual pedido" da mensagem do usuário.' },   // v74.34
         textoBase: t
           ? { type: "string", maxLength: t.texto, description: `Texto-suporte. Alvo ~${t.alvoTexto} caracteres, teto ${t.texto} — medida das provas reais do ENEM nesta disciplina. Apresenta a situação e para: contexto histórico, biografia e juízo de valor sobram.` }
           : { type: "string" },
@@ -3131,14 +3160,14 @@ function ferramentaQuestaoPara(recurso: string, exigeFonte = false, disciplina =
         resolucaoComentada: { type: "string" },
         analiseAlternativas: { type: "object" },
         fonte: SCHEMA_FONTE,
-        visual: visualSchemaPara(recurso),
+        visual: visualSchemaUnico(),   // v74.34 — os quatro tipos, um ramo estrito por tipo
       },
       required: [
         "area", "disciplina", "tema", "dificuldade", "competencia", "habilidade",
         "objetoConhecimento", "recurso", "textoBase", "comando", "alternativas",
         "gabarito", "resolucaoComentada", "analiseAlternativas",
         ...(exigeFonte ? ["fonte"] : []),
-        ...(comVisual ? ["visual"] : []),
+        "visual",   // v74.34 — sempre ({"tipo":"nenhum"} quando não há recurso)
       ],
     },
   };
@@ -3795,6 +3824,10 @@ function textoDeEspecificacao(valor: unknown, profundidade = 0): string {
 
 function normalizarVisual(visual: unknown, recurso: string): any {
   if (visual == null) return null;
+  /* v74.34 — questão sem recurso não carrega visual (a ferramenta única aceita os quatro
+     tipos; o pedido "nenhum" manda): o que vier é descartado. E {"tipo":"nenhum"} vira null. */
+  if (recurso === "nenhum") return null;
+  if (visual && typeof visual === "object" && !Array.isArray(visual) && String((visual as any).tipo || "").trim().toLowerCase() === "nenhum") return null;
   let v: any = visual;
   if (typeof v === "string") {
     const t = v.trim();
@@ -5635,6 +5668,7 @@ function selfTestResponse() {
     BUSCA_BIOLOGIA,
     BUSCA_FLUXO_DIRETO, fluxoDireto.toString(), modoFluxoDireto.toString(), buildBlocoFluxoDiretoAutoral.toString(),   // v74.33
     JSON.stringify([DISCIPLINAS_FLUXO_DIRETO, REELABORACOES_FLUXO_DIRETO, BUSCAS_FLUXO_DIRETO, TEXTO_PROPRIO_ASPAS_MIN, TP_ATRIBUICOES.map(String)]), conferenciaTextoProprio.toString(),
+    visualSchemaUnico.toString(), JSON.stringify([RECURSOS_VISUAIS_TODOS, ferramentaQuestaoPara("imagem", true, "História")]), normalizarVisual.toString(),   // v74.34
   ].join(String.fromCharCode(0));
   return jsonResponse({
     selftest: true,
@@ -6225,6 +6259,29 @@ function selfTestResponse() {
             && garantirFontesReais.toString().includes("auditoriaSemWeb ? false : buscaDaAuditoria")
             && DISCIPLINAS_SEM_PESQUISA_WEB.join() === "Literatura,Língua Portuguesa" && DISCIPLINAS_TEXTOS_ENEM["Literatura"][0] === "Literatura"
             && linhasDaBiblioteca.toString().includes(".range(de, de + BIBLIOTECA_PAGINA - 1)") && BIBLIOTECA_PAGINA === 1000;
+        })(),
+        /* v74.34 — ferramenta de entrega única para os quatro recursos (pedido do professor, 06/10/2026). */
+        v7434_ferramentaUnica: (() => {
+          const f = (r: string) => JSON.stringify(ferramentaQuestaoPara(r, true, "Matemática"));
+          const g = (r: string) => JSON.stringify(ferramentaQuestaoPara(r, false, "Biologia"));
+          const q = ferramentaQuestaoPara("imagem", true, "História");
+          const vis = q.input_schema.properties.visual;
+          const tipos = vis.anyOf.map((x: any) => x.properties.tipo.enum[0]);
+          const u = buildUserPrompt({ area: "natureza", disciplina: "Física", tema: "t", dificuldade: "Médio", recurso: "grafico", competenciaNum: null, habilidadeCod: null });
+          const u0 = buildUserPrompt({ area: "natureza", disciplina: "Física", tema: "t", dificuldade: "Médio", recurso: "nenhum", competenciaNum: null, habilidadeCod: null });
+          return f("nenhum") === f("imagem") && f("imagem") === f("grafico") && f("grafico") === f("tabela")
+            && g("nenhum") === g("tabela") && f("nenhum") !== g("nenhum")
+            && JSON.stringify(ferramentaQuestaoPara("nenhum", true, "Artes")) !== JSON.stringify(ferramentaQuestaoPara("nenhum", true, "História"))
+            && q.input_schema.required.includes("visual") && q.input_schema.required.includes("fonte") && !ferramentaQuestaoPara("nenhum", false, "Biologia").input_schema.required.includes("fonte")
+            && JSON.stringify(q.input_schema.properties.recurso.enum) === JSON.stringify(["nenhum", "imagem", "grafico", "tabela"])
+            && Array.isArray(vis.anyOf) && vis.anyOf.length === 4 && tipos.join() === "nenhum,imagem,grafico,tabela"
+            && vis.anyOf[1].required.join() === "tipo,descricao,promptImagem" && vis.anyOf[2].required.join() === "tipo,chartType,titulo,labels,datasets" && vis.anyOf[3].required.join() === "tipo,titulo,colunas,linhas"
+            && JSON.stringify(ferramentaVisualPara("imagem").input_schema.properties.visual) === JSON.stringify(visualSchemaPara("imagem"))
+            && normalizarVisual({ tipo: "nenhum" }, "imagem") === null && normalizarVisual({ tipo: "imagem", promptImagem: "x" }, "nenhum") === null && normalizarVisual(null, "nenhum") === null
+            && normalizarVisual({ tipo: "Imagem", promptImagem: "x".repeat(10) }, "imagem").tipo === "imagem"
+            && !visualConforme({ tipo: "nenhum" }, "imagem").ok && visualConforme(null, "nenhum").ok
+            && u.includes('o campo "visual" tem de vir com "tipo": "grafico"') && u0.includes('{"tipo":"nenhum"}')
+            && JSON.stringify(ferramentasDaQuestao(ferramentaQuestaoPara("imagem", false, "Química"))) === JSON.stringify(ferramentasDaQuestao(ferramentaQuestaoPara("tabela", false, "Química")));
         })(),
         /* v74.33 — FLUXO DIRETO em História e Artes (decisão do professor, 05/10/2026). */
         v7433_fluxoDireto: (() => {

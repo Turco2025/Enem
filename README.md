@@ -177,6 +177,49 @@ Teste: `verify_fontes_app.js` — 19 verificações; as seções B e C bis prova
 quatro marcas ligadas ao mesmo tempo nenhuma conferência bloqueia, e que nenhuma delas tem sequer um
 `return true` no corpo. `verify_gabarito_coerente.js` H1 passou a exigir o contrário do que exigia.
 
+## Ferramenta de entrega única para os quatro recursos (generate-question v74.34 / app v18.38, 06/10/2026)
+
+Pedido do professor: "uma ferramenta que entregue única que aceite os quatro tipos de recursos de
+modo que a leva leia o mesmo cache". Medido no log de 24/09 a 05/10 (212 questões): o cache de 5
+minutos funcionava em 78% das questões; das 46 que gravaram, ≈ 26 eram a primeira da leva ou depois
+de pausa (inevitável), ≈ 9 eram o cache automático dos resultados de busca em Biologia (não é falha)
+e **≈ 11 eram troca de recurso visual dentro da leva**: a definição da ferramenta de entrega vem
+ANTES do prompt do sistema no prefixo cacheado e, desde a v62, havia uma ferramenta por recurso —
+cada troca regravava os 23 mil tokens (US$ 0,058). No modo "misto" (rodízio nenhum → imagem →
+tabela → gráfico) quase toda questão gravava: leva de Matemática de 05/10, 4 gravações em 5
+questões, US$ 0,38 em vez de ≈ US$ 0,20.
+
+O que mudou (`ferramentaQuestaoPara`, `visualSchemaUnico`, `RECURSOS_VISUAIS_TODOS`):
+
+- A ferramenta `entregar_questao` é **idêntica para os quatro recursos** — varia só por disciplina
+  (tetos de extensão) e por área (campo "fonte" obrigatório). `recurso` aceita os quatro valores;
+  `visual` é **obrigatório sempre**, com um ramo estrito por tipo (`anyOf`): `{"tipo":"nenhum"}`
+  sem recurso; imagem/gráfico/tabela com os mesmos campos obrigatórios da v62. Qual tipo entregar
+  vem da mensagem do usuário (a linha "Recurso visual pedido" passou a dizer o tipo exato) e segue
+  garantido em código: `visualConforme`/`garantirVisual` refazem o visual trocado com o schema
+  estrito do recurso (`entregar_visual`, inalterado).
+- `normalizarVisual`: questão **sem recurso não carrega visual** (o que vier é descartado) e
+  `{"tipo":"nenhum"}` vira `null` — o app continua recebendo `visual: null` como sempre. Rede de
+  segurança equivalente no app (`normalizaVisualQuestao`, v18.38).
+- `recurso_instrucoes.ts`: a instrução do recurso "nenhum" e o formato de entrega pedem
+  `{"tipo":"nenhum"}` em vez de `null`.
+- A família de ferramentas das correções dirigidas (v74.29) também fica a mesma para os quatro
+  recursos. Nada muda na Matriz, no método do Inep nem nas regras de qualidade; o prefixo cacheado
+  muda (ferramenta e bloco fixo), então a primeira questão de cada leva regrava o cache uma vez.
+
+Esperado: numa leva, só a primeira questão grava; as demais leem, qualquer que seja o recurso de
+cada uma — ≈ US$ 0,06 a menos por troca de recurso, ≈ US$ 0,45 a menos numa leva de 10 em misto.
+Risco acompanhado: sem o tipo fixo no schema, o modelo pode entregar o tipo errado; a medição de 30
+dias com o schema estrito mostrou 4,7% de refazer em imagem (28 de 598), e é esse número que se
+compara nas próximas levas.
+
+Testes: `tests/verify_ferramenta_unica_v7434.ts` (21: ferramenta idêntica nos quatro recursos e na
+família; `recurso`/`visual`/ramos/obrigatórios; normalização e conferência; ligação), selftest
+`v7434_ferramentaUnica` (52 verificações no total), schema validado como JSON Schema 2020-12 com
+oito entradas de exemplo, ensaio do handler com a API simulada (16 cenários — os quatro recursos
+declarando a mesma ferramenta, e o refazer quando vem `{"tipo":"nenhum"}` em questão com imagem),
+`node robo/teste_local.mjs`.
+
 ## Fluxo direto em História e Artes (generate-question v74.33 / app v18.37, 06/10/2026)
 
 Decisão do professor (05/10): **"história e artes igual a Biologia"** — uma única chamada de

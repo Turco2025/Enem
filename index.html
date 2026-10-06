@@ -1645,6 +1645,9 @@ function normalizaVisualQuestao(data){
   }
   if(typeof v !== "object" || Array.isArray(v)) return data;
   if(typeof v.tipo === "string") v.tipo = v.tipo.trim().toLowerCase();
+  // v18.38 — ferramenta de entrega única (backend v74.34): questão sem recurso vem com
+  // {"tipo":"nenhum"}; o backend já converte em null, e aqui é a rede de segurança.
+  if(v.tipo === "nenhum"){ data.visual = null; return data; }
   if(!v.tipo && ["imagem","grafico","tabela"].includes(data.recurso)) v.tipo = data.recurso;
   ["promptImagem","descricao","titulo"].forEach(k => {
     if(v[k] != null && typeof v[k] !== "string") v[k] = imgTextoDeEspecificacao(v[k], 0);
@@ -9242,6 +9245,8 @@ if(document.fonts && document.fonts.ready) document.fonts.ready.then(calibraBarr
    v18.37 — (06/10/2026) avisos do fluxo direto de História e Artes (backend v74.33); seção 6
    só com o botão (caixas da revisão matemática e do cache removidas; revisão sempre ligada;
    marca-passo do cache removido). A entrada de automação não muda.
+   v18.38 — (06/10/2026) rede de segurança para {"tipo":"nenhum"} no visual (backend v74.34,
+   ferramenta de entrega única). A entrada de automação não muda.
 
    O pedido feito pelo WhatsApp (formulário de 6 perguntas, etapa B1) fica na fila
    `wa_trabalhos`. Quem o executa é um robô (robo/operario.mjs, rodando no GitHub
@@ -9266,7 +9271,7 @@ if(document.fonts && document.fonts.ready) document.fonts.ready.then(calibraBarr
    parametros = { area, disciplina, quantidade, temas_texto, contagem, recurso }
    (os mesmos gravados em wa_trabalhos.parametros por supabase/functions/whatsapp-webhook).
    ====================================================================================== */
-const AUTOMACAO_VERSAO = "18.37";
+const AUTOMACAO_VERSAO = "18.38";
 let automacaoPronta = false;
 let automacaoFase = "carregando";   // carregando | pronto | configurando | gerando | exportando | concluido | erro
 let automacaoErro = "";
