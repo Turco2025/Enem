@@ -177,6 +177,35 @@ Teste: `verify_fontes_app.js` — 19 verificações; as seções B e C bis prova
 quatro marcas ligadas ao mesmo tempo nenhuma conferência bloqueia, e que nenhuma delas tem sequer um
 `return true` no corpo. `verify_gabarito_coerente.js` H1 passou a exigir o contrário do que exigia.
 
+## Gráfico com séries em escalas incompatíveis ganha um segundo eixo (app v18.39 / generate-question v74.34b, 06/10/2026)
+
+Caso real: simulado de Biologia "Sistema urinário humano" (20 questões, misto), **questão 4** — gráfico de
+barras com "Água ingerida acumulada (mL)" de 300 a 1400 e "Nota de escurecimento da urina (1 a 5)" no
+**mesmo eixo**. Os dados estavam completos (5 rótulos, 5 valores em cada série), mas a série da nota — a
+que respondia a questão (14h = nota 5) — saía com menos de 1 pixel de altura, e o professor viu o gráfico
+"sem dados". Nenhuma etapa acusava: os valores existem; o problema era de escala.
+
+- **App (`eixosDoGrafico`, `renderVisualContent`):** quando a maior série é ao menos 8× maior que outra
+  (`GRAFICO_RAZAO_SEGUNDO_EIXO`), a menor vai para um **eixo à direita** (como num climograma: barras de
+  chuva + linha de temperatura); em gráfico de barras ela é desenhada como **linha reta com pontos**, para
+  não se confundir com as barras; cada eixo mostra a unidade da sua série como título. Pizza e série única
+  não mudam; séries na mesma ordem de grandeza ficam exatamente como antes. Como PDF, impressão e Word
+  reaproveitam o canvas da tela, a correção vale para todas as saídas — e `pdfGetVisualChartInfo` passou a
+  pintar/restaurar **todas** as escalas (x, y, y1 e títulos) na captura. A auditoria local do card avisa
+  quando houve segundo eixo. O simulado já arquivado passa a abrir com o gráfico legível, sem regenerar.
+- **Backend (`recurso_instrucoes.ts`, instrução do GRÁFICO):** todas as séries do mesmo gráfico com a
+  **mesma unidade e ordem de grandeza**; prefira uma série; duas grandezas de unidades diferentes só quando
+  a questão precisar (no máximo duas, unidade no rótulo); nunca três; pizza com uma série. Só o texto da
+  instrução (bloco fixo do prompt) — nenhuma conferência paga a mais.
+
+Teste: `node tests/verify_grafico_segundo_eixo_v1839.mjs` (16, em Chromium real com as bibliotecas de
+`robo/libs_locais`: decisão dos eixos, gráfico renderizado — a nota 5 passa de 0,9 px para ≈ 245 px —,
+captura para impressão com todas as escalas, gráfico comum inalterado, aviso do card, instrução do backend).
+
+Também medido nesse simulado, a primeira leva com a v74.34 publicada: das 20 questões em misto, **só a 1ª
+gravou o cache (26,7 mil tokens); as outras 19 leram** — US$ 0,99 no total, US$ 0,050 por questão, o mesmo
+custo de uma leva de recurso único (antes, em misto, seriam ≈ US$ 0,45 a mais).
+
 ## Ferramenta de entrega única para os quatro recursos (generate-question v74.34 / app v18.38, 06/10/2026)
 
 Pedido do professor: "uma ferramenta que entregue única que aceite os quatro tipos de recursos de

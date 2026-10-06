@@ -5370,6 +5370,9 @@ function auditaQuestaoLocal(q){
     const n = (v.labels || []).length;
     (v.datasets || []).forEach((ds, i) => { if(!Array.isArray(ds.data) || ds.data.length !== n) aviso("Gráfico: série " + (i + 1) + " tem " + ((ds.data || []).length) + " valores para " + n + " rótulos."); });
     if(!n) aviso("Gráfico sem rótulos (labels).");
+    /* v18.39 — séries em escalas incompatíveis: a menor foi para um eixo à direita. */
+    const eixosG = eixosDoGrafico(v.datasets || [], v.chartType || "bar");
+    if(eixosG.includes("y1")) info("Gráfico com séries em escalas muito diferentes: " + (v.datasets || []).filter((_, i) => eixosG[i] === "y1").map(ds => '"' + String(ds.label || "") + '"').join(", ") + " desenhada(s) num segundo eixo, à direita" + ((v.chartType || "bar") === "bar" ? ", como linha" : "") + ".");
   } else if(v && v.tipo === "tabela"){
     const nc = (v.colunas || []).length;
     (v.linhas || []).forEach((row, i) => { if(!Array.isArray(row) || row.length !== nc) aviso("Tabela: linha " + (i + 1) + " tem " + ((row || []).length) + " células para " + nc + " colunas."); });
@@ -5748,18 +5751,35 @@ function renderVisualContent(body, visual, dataQuestao){
     body.appendChild(canvas);
     setTimeout(() => {
       try{
+        /* v18.39 — SÉRIES EM ESCALAS INCOMPATÍVEIS GANHAM UM SEGUNDO EIXO (caso real,
+           06/10/2026: simulado de Biologia, questão 4 — "Água ingerida acumulada (mL)"
+           de 300 a 1400 e "Nota de escurecimento da urina (1 a 5)" no MESMO eixo: as
+           barras da nota, que eram o dado que respondia a questão, saíam com 1 pixel e
+           o professor viu o gráfico "sem dados"). Quando a maior série é ao menos
+           GRAFICO_RAZAO_SEGUNDO_EIXO vezes maior que outra, a menor vai para um eixo à
+           direita (como num climograma: barras de chuva + linha de temperatura); em
+           gráfico de barras, a série do eixo direito é desenhada como linha com pontos,
+           para não se confundir com as barras. PDF, impressão e Word reaproveitam
+           este mesmo canvas, então a correção vale para todas as saídas. */
+        const tipo = visual.chartType || "bar";
+        const eixos = eixosDoGrafico(visual.datasets || [], tipo);
+        const comSegundoEixo = eixos.includes("y1");
+        const rotuloEixo = (id) => (visual.datasets || []).filter((_, i) => eixos[i] === id).map(ds => String(ds.label || "")).filter(Boolean).join(" · ");
         new Chart(canvas.getContext("2d"), {
-          type: visual.chartType || "bar",
+          type: tipo,
           data: { labels: visual.labels || [], datasets: (visual.datasets||[]).map((ds,i) => ({
             label: ds.label, data: ds.data,
             backgroundColor: chartColor(i, .55), borderColor: chartColor(i, 1), borderWidth: 2, tension: .3,
+            ...(comSegundoEixo && tipo !== "pie" ? { yAxisID: eixos[i] } : {}),
+            ...(comSegundoEixo && tipo === "bar" && eixos[i] === "y1" ? { type: "line", tension: 0, pointRadius: 5, pointHoverRadius: 6, borderWidth: 3, fill: false, order: 0 } : {}),
           })) },
           options: {
             responsive: true,
             plugins: { legend: { labels: { color: "#c7cde3" } }, title: { display: !!visual.titulo, text: visual.titulo||"", color:"#fff" } },
-            scales: (visual.chartType === "pie") ? {} : {
+            scales: (tipo === "pie") ? {} : {
               x: { ticks: { color: "#8a92b8" }, grid: { color: "rgba(255,255,255,.06)" } },
-              y: { ticks: { color: "#8a92b8" }, grid: { color: "rgba(255,255,255,.06)" } },
+              y: { ticks: { color: "#8a92b8" }, grid: { color: "rgba(255,255,255,.06)" }, ...(comSegundoEixo ? { position: "left", title: { display: true, text: rotuloEixo("y"), color: "#c7cde3" } } : {}) },
+              ...(comSegundoEixo ? { y1: { type: "linear", position: "right", ticks: { color: "#8a92b8" }, grid: { drawOnChartArea: false, color: "rgba(255,255,255,.06)" }, title: { display: true, text: rotuloEixo("y1"), color: "#c7cde3" } } } : {}),
             },
           },
         });
@@ -5941,6 +5961,23 @@ async function redoVisual(q, body, titleEl, redoBtn){
 function chartColor(i, alpha){
   const palette = [`99,102,241`,`236,72,153`,`16,185,129`,`245,158,11`,`59,130,246`];
   return `rgba(${palette[i % palette.length]},${alpha})`;
+}
+/* v18.39 — qual eixo cada série do gráfico usa: "y" (esquerda) ou "y1" (direita).
+   A maior série (pelo maior valor absoluto) fica à esquerda; toda série cujo maior
+   valor seja GRAFICO_RAZAO_SEGUNDO_EIXO vezes menor vai para a direita. Pizza e
+   gráfico de uma série só: tudo em "y". Sem segunda escala → tudo em "y". */
+const GRAFICO_RAZAO_SEGUNDO_EIXO = 8;
+function eixosDoGrafico(datasets, chartType){
+  const lista = Array.isArray(datasets) ? datasets : [];
+  if(chartType === "pie" || lista.length < 2) return lista.map(() => "y");
+  const maximos = lista.map(ds => {
+    const nums = (Array.isArray(ds && ds.data) ? ds.data : []).map(Number).filter(Number.isFinite).map(Math.abs);
+    return nums.length ? Math.max(...nums) : 0;
+  });
+  const maior = Math.max(...maximos);
+  if(!(maior > 0)) return lista.map(() => "y");
+  const eixos = maximos.map(m => (m > 0 && m * GRAFICO_RAZAO_SEGUNDO_EIXO <= maior) ? "y1" : "y");
+  return eixos.includes("y1") ? eixos : lista.map(() => "y");
 }
 
 /* ---------------- View toggle / print ---------------- */
@@ -8330,57 +8367,51 @@ function pdfGetVisualChartInfo(cardIdx){
     }catch(e){ return null; }
   }
 
+  /* v18.39 — percorre TODAS as escalas (x, y e, quando houver, y1 — o segundo eixo das
+     séries em escalas incompatíveis), inclusive o título de cada eixo. Antes só x e y eram
+     passados a preto para a impressão. */
   const opts = chart.options || {};
   const legendLabels = opts.plugins?.legend?.labels;
   const title = opts.plugins?.title;
-  const xTicks = opts.scales?.x?.ticks;
-  const yTicks = opts.scales?.y?.ticks;
-  const xGrid = opts.scales?.x?.grid;
-  const yGrid = opts.scales?.y?.grid;
-
-  const original = {
-    legend: legendLabels ? legendLabels.color : undefined,
-    title: title ? title.color : undefined,
-    xTicks: xTicks ? xTicks.color : undefined,
-    yTicks: yTicks ? yTicks.color : undefined,
-    xGrid: xGrid ? xGrid.color : undefined,
-    yGrid: yGrid ? yGrid.color : undefined,
+  const idsEscalas = Object.keys(opts.scales || {});
+  const corDe = (o) => (o && o.scales) ? Object.fromEntries(idsEscalas.map(id => [id, {
+    ticks: o.scales[id]?.ticks ? o.scales[id].ticks.color : undefined,
+    grid: o.scales[id]?.grid ? o.scales[id].grid.color : undefined,
+    title: o.scales[id]?.title ? o.scales[id].title.color : undefined,
+  }])) : {};
+  const original = { legend: legendLabels ? legendLabels.color : undefined, title: title ? title.color : undefined, escalas: corDe(opts) };
+  const pinta = (o, cores) => {
+    if(!o || !o.scales) return;
+    idsEscalas.forEach(id => {
+      const e = o.scales[id]; if(!e) return;
+      const c = cores ? cores[id] : null;
+      if(e.ticks) e.ticks.color = c ? c.ticks : "#000000";
+      if(e.grid) e.grid.color = c ? c.grid : "rgba(0,0,0,.12)";
+      if(e.title) e.title.color = c ? c.title : "#000000";
+    });
   };
 
   try{
     if(legendLabels) legendLabels.color = "#000000";
     if(title) title.color = "#000000";
-    if(xTicks) xTicks.color = "#000000";
-    if(yTicks) yTicks.color = "#000000";
-    if(xGrid) xGrid.color = "rgba(0,0,0,.12)";
-    if(yGrid) yGrid.color = "rgba(0,0,0,.12)";
+    pinta(opts, null);
     chart.update("none");
 
     return { dataUrl: canvas.toDataURL("image/png"), width: canvas.width, height: canvas.height };
   }catch(e){
     return null;
   }finally{
-    // Importante: NÃO reutilizamos as referências de objeto (xTicks/yTicks/xGrid/yGrid)
-    // capturadas antes do chart.update() acima — nesta versão do Chart.js, update()
-    // regenera internamente os sub-objetos de "scales" (ticks/grid), então a referência
-    // antiga fica "órfã" e escrever nela não muda mais nada que o Chart.js realmente lê.
-    // Por isso resolvemos os objetos de novo, a partir de chart.options atual, na hora
-    // de restaurar. (plugins.legend.labels e plugins.title não têm esse problema, mas
-    // resolvemos de novo por segurança/consistência.)
+    // Importante: NÃO reutilizamos as referências de objeto capturadas antes do
+    // chart.update() acima — nesta versão do Chart.js, update() regenera internamente os
+    // sub-objetos de "scales" (ticks/grid/title), então a referência antiga fica "órfã" e
+    // escrever nela não muda mais nada que o Chart.js realmente lê. Por isso resolvemos
+    // os objetos de novo, a partir de chart.options atual, na hora de restaurar.
     const freshOpts = chart.options || {};
     const freshLegendLabels = freshOpts.plugins?.legend?.labels;
     const freshTitle = freshOpts.plugins?.title;
-    const freshXTicks = freshOpts.scales?.x?.ticks;
-    const freshYTicks = freshOpts.scales?.y?.ticks;
-    const freshXGrid = freshOpts.scales?.x?.grid;
-    const freshYGrid = freshOpts.scales?.y?.grid;
-
     if(freshLegendLabels) freshLegendLabels.color = original.legend;
     if(freshTitle) freshTitle.color = original.title;
-    if(freshXTicks) freshXTicks.color = original.xTicks;
-    if(freshYTicks) freshYTicks.color = original.yTicks;
-    if(freshXGrid) freshXGrid.color = original.xGrid;
-    if(freshYGrid) freshYGrid.color = original.yGrid;
+    pinta(freshOpts, original.escalas);
     chart.update("none");
   }
 }
@@ -9247,6 +9278,9 @@ if(document.fonts && document.fonts.ready) document.fonts.ready.then(calibraBarr
    marca-passo do cache removido). A entrada de automação não muda.
    v18.38 — (06/10/2026) rede de segurança para {"tipo":"nenhum"} no visual (backend v74.34,
    ferramenta de entrega única). A entrada de automação não muda.
+   v18.39 — (06/10/2026) gráfico com séries em escalas incompatíveis ganha um segundo eixo
+   (eixosDoGrafico); impressão/PDF/Word pintam todas as escalas. A entrada de automação
+   não muda.
 
    O pedido feito pelo WhatsApp (formulário de 6 perguntas, etapa B1) fica na fila
    `wa_trabalhos`. Quem o executa é um robô (robo/operario.mjs, rodando no GitHub
@@ -9271,7 +9305,7 @@ if(document.fonts && document.fonts.ready) document.fonts.ready.then(calibraBarr
    parametros = { area, disciplina, quantidade, temas_texto, contagem, recurso }
    (os mesmos gravados em wa_trabalhos.parametros por supabase/functions/whatsapp-webhook).
    ====================================================================================== */
-const AUTOMACAO_VERSAO = "18.38";
+const AUTOMACAO_VERSAO = "18.39";
 let automacaoPronta = false;
 let automacaoFase = "carregando";   // carregando | pronto | configurando | gerando | exportando | concluido | erro
 let automacaoErro = "";
