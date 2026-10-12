@@ -177,6 +177,42 @@ Teste: `verify_fontes_app.js` — 19 verificações; as seções B e C bis prova
 quatro marcas ligadas ao mesmo tempo nenhuma conferência bloqueia, e que nenhuma delas tem sequer um
 `return true` no corpo. `verify_gabarito_coerente.js` H1 passou a exigir o contrário do que exigia.
 
+## Cores do site do Gera Enem: só azuis e amarelos na tela (app v18.43, 12/10/2026)
+
+A tela do aplicativo passou a usar só os azuis e os amarelos da página inicial do Gera Enem.
+Decisão do professor, depois de três versões de teste: nada de verde nem de vermelho, e as
+seções deixam de ter uma cor cada uma.
+
+**Paleta.** Azuis: #0F1C2B (fundo), #172A3D e #1E3449 (painéis), #14304D (caixas das seções,
+as mesmas das dúvidas do site), #0B5F8A (azul forte), #9FD6F2 e #B9E5FA (azul-claro). Amarelos:
+#F7C566, #FFD68A e #E9B04E.
+
+**Onde cada cor entra.** Seções 1 a 6 e caixa do WhatsApp: caixa azul-escura com borda
+azul-clara. Botões de ação (Aplicar, Acessar minha área, Vincular meu WhatsApp, Salvar):
+amarelos com letra escura. "Gerar simulado" (seções 4 e 6): azul-claro. Seleção (área,
+disciplina, recurso, versão do aluno/professor, aba do login) e números das seções: azul-claro
+com letra escura. Botões de contorno: azul-claro ao passar o mouse. Níveis: Fácil azul-claro,
+Médio amarelo, Difícil azul forte. Alternativa correta: azul-claro; marca INCORRETA: amarelo.
+Avisos e erros: amarelo. O disco branco do ✓ no chip marcado (v18.10) continua branco, agora
+com borda e ✓ escuros.
+
+**Emojis num tom só.** Emoji não aceita `color`, então os ícones das áreas, dos recursos, dos
+botões de cada questão e do topo, e a marca ✅/❌ das alternativas, são pintados com `filter`
+(azul-claro; azul-escuro quando o fundo fica azul-claro; amarelo na marca INCORRETA). Para isso,
+`iconBtn` passou a pôr o ícone num `<span class="emo">` e a marca CORRETA/INCORRETA ficou num
+`<span class="alt-marca">`. O texto da tela não mudou (o `textContent` é o mesmo).
+
+**Como foi feito.** Uma camada única no fim do `<style>` de `src/app_template.html`, dentro de
+`@media screen`: a impressão, o PDF e o Word não mudam. Para voltar às cores antigas, basta
+apagar o bloco "v18.43" (e, se quiser, os `<span class="emo">` do template).
+
+Testes: as 12 suítes do navegador passaram iguais antes e depois (verify_whatsapp_box 34,
+verify_gabarito_coerente 45, verify_interromper_v1833 23, verify_editar_questao 21,
+verify_chip_disciplina 19, verify_fontes_app 19, verify_gerar_no_lote 18,
+verify_referencia_objeto 15, verify_paridade_alternativas 15, verify_niveis_alternados 11,
+verify_dados_visual_v1840 10, verify_distratores_v1841 8). Estilos de impressão conferidos:
+iguais. Sem rolagem lateral a 1366 e 390 px.
+
 ## Logo e slogan do Gera Enem no cabeçalho (app v18.42, 12/10/2026)
 
 O cabeçalho do aplicativo passou a usar a mesma logo do site do Gera Enem, sempre com o slogan

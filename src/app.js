@@ -4758,7 +4758,8 @@ function renderQuestionCard(q, idx){
 
 function iconBtn(icon, title, onClick, disabled){
   const b = document.createElement("button");
-  b.className = "btn ghost sm"; b.title = title; b.textContent = icon;
+  b.className = "btn ghost sm"; b.title = title;
+  if(icon){ const e = document.createElement("span"); e.className = "emo"; e.setAttribute("aria-hidden", "true"); e.textContent = icon; b.appendChild(e); }
   if(disabled){ b.disabled = true; }
   else { b.addEventListener("click", onClick); }
   return b;
@@ -4915,7 +4916,7 @@ function buildQuestionBody(data, q){
       <div class="alt-letter">${letter}</div>
       <div style="flex:1;">
         <div>${mathHtml((data.alternativas && data.alternativas[letter]) || "")}</div>
-        <div class="alt-comment professor-only">${marcaAlternativa(confAlt, letter, true)} — ${mathHtml(comentario)}</div>
+        <div class="alt-comment professor-only"><span class="alt-marca">${marcaAlternativa(confAlt, letter, true)}</span> — ${mathHtml(comentario)}</div>
       </div>
     `;
     altList.appendChild(item);
@@ -8559,6 +8560,9 @@ if(document.fonts && document.fonts.ready) document.fonts.ready.then(calibraBarr
    automação não muda.
    v18.42 — (12/10/2026) logo do Gera Enem com o slogan no cabeçalho (só a tela; PDF, Word
    e impressão não mudam). A entrada de automação não muda.
+   v18.43 — (12/10/2026) cores do site do Gera Enem na tela: só azuis e amarelos (sem verde e
+   sem vermelho), emojis pintados de um tom só (iconBtn e a marca CORRETA/INCORRETA ganham
+   um <span>). PDF, Word e impressão não mudam. A entrada de automação não muda.
 
    O pedido feito pelo WhatsApp (formulário de 6 perguntas, etapa B1) fica na fila
    `wa_trabalhos`. Quem o executa é um robô (robo/operario.mjs, rodando no GitHub

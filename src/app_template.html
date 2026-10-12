@@ -441,6 +441,167 @@ body.mode-aluno .professor-only{display:none !important;}
 body.mode-aluno .alt-item.correct{background:rgba(255,255,255,.025);border-color:var(--glass-brd);}
 body.mode-aluno .alt-item.correct .alt-letter{background:rgba(255,255,255,.08);color:inherit;}
 body.mode-professor .qcard{box-shadow:0 25px 60px -25px rgba(0,0,0,.6), 0 0 0 1.5px rgba(99,102,241,.25);}
+/* ======================================================================================
+   v18.43 — o aplicativo só com os azuis e os amarelos do site do Gera Enem
+   (aprovado pelo professor em 12/10/2026, depois de três versões de teste).
+   Camada única, no fim do <style>, só para a tela (@media screen): impressão, PDF e Word
+   não mudam. Para desfazer, basta apagar este bloco.
+   Azuis do site: #0F1C2B (fundo) · #12233A · #172A3D (painel) · #1E3449 · #14304D e
+   #183A5E (caixas das dúvidas) · #0B5F8A (azul forte) · #9FD6F2 · #B9E5FA (azul-claro).
+   Amarelos do site: #F7C566 · #FFD68A (claro) · #E9B04E (escuro).
+   Sem verde e sem vermelho: Fácil = azul-claro, Médio = amarelo, Difícil = azul forte;
+   correta = azul-claro; avisos e erros = amarelo.
+   ====================================================================================== */
+@media screen{
+:root{
+  --ge-canvas:#0F1C2B; --ge-panel:#172A3D; --ge-panel-2:#1E3449; --ge-box:#14304D; --ge-box-2:#183A5E;
+  --ge-blue:#0B5F8A; --ge-blue-2:#0A4E72;
+  --ge-sky:#B9E5FA; --ge-sky-2:#9FD6F2; --ge-sky-3:#D4EEFB;
+  --ge-yellow:#F7C566; --ge-yellow-2:#FFD68A; --ge-yellow-3:#E9B04E;
+  --ge-ink:#13202E; --ge-ink-soft:#2C4256; --ge-text:#F1F4F7;
+  /* filtros que pintam os emojis de um tom só (os emojis não aceitam "color") */
+  --ge-tinta-sky:grayscale(1) sepia(1) saturate(2.3) hue-rotate(160deg) brightness(1.3);
+  --ge-tinta-amarelo:grayscale(1) sepia(1) saturate(2.8) hue-rotate(-6deg) brightness(1.4);
+  --ge-tinta-escura:grayscale(1) brightness(.45) sepia(1) saturate(3) hue-rotate(165deg) brightness(.7);
+  --bg-0:#0F1C2B; --bg-1:#12233A; --bg-2:#172A3D;
+  --ink-0:#F1F4F7; --ink-1:#F1F4F7; --ink-2:#F1F4F7;
+  --glass:rgba(185,229,250,.05); --glass-brd:rgba(185,229,250,.30);
+  --ok:#B9E5FA; --warn:#F7C566; --bad:#F7C566;
+  --accent-a:#B9E5FA; --accent-b:#9FD6F2;
+}
+body{
+  background:radial-gradient(ellipse 70% 45% at 88% 0%,rgba(247,197,102,.09),rgba(247,197,102,0) 60%),
+             radial-gradient(ellipse 55% 50% at 0% 35%,rgba(185,229,250,.06),rgba(185,229,250,0) 60%),
+             #0F1C2B;
+  background-attachment:fixed;
+}
+.blob{display:none;}
+
+/* cartões: painel do site; as etapas viram as caixas das dúvidas (azul-escuro + borda azul-clara) */
+.card{background:var(--ge-panel);border-color:rgba(185,229,250,.30);box-shadow:0 20px 50px -24px rgba(0,0,0,.75);-webkit-backdrop-filter:none;backdrop-filter:none;}
+.card::before{background:linear-gradient(135deg,rgba(185,229,250,.22),rgba(185,229,250,0) 40%);}
+.card-step1,.card-step2,.card-step3,.card-step4,.card-step5,.card-step6,.card-wa{
+  --accent-a:#B9E5FA;--accent-b:#9FD6F2;
+  background:var(--ge-box);border:1.5px solid rgba(185,229,250,.75);}
+.card-step6{border-color:var(--ge-sky);}
+.section-title .num{background:var(--ge-sky);color:var(--ge-canvas);border-radius:50%;box-shadow:none;}
+
+/* botões: ação em amarelo com letra escura, como "Escolher meu pacote" */
+.btn{background:var(--ge-yellow);color:var(--ge-ink);box-shadow:0 10px 26px -12px rgba(247,197,102,.65),inset 0 1px 0 rgba(255,255,255,.35);}
+.btn:hover{background:var(--ge-yellow-2);filter:none;}
+/* "Gerar simulado" (seções 4 e 6) em azul-claro */
+.btn.btn-gerar,#btnGerarLote{background:var(--ge-sky);color:var(--ge-ink);}
+.btn.btn-gerar{box-shadow:0 16px 36px -12px rgba(185,229,250,.75),0 0 0 6px rgba(185,229,250,.16);}
+#btnGerarLote{box-shadow:0 10px 26px -12px rgba(185,229,250,.65),inset 0 1px 0 rgba(255,255,255,.45);}
+.btn.btn-gerar:hover,#btnGerarLote:hover{background:var(--ge-sky-3);}
+/* botões de contorno: ao passar o mouse, azul-claro (como no site) */
+.btn.ghost{background:rgba(15,28,43,.25);border:1px solid rgba(185,229,250,.5);color:var(--ge-text);box-shadow:none;}
+.btn.ghost:hover{background:var(--ge-sky);color:var(--ge-ink);border-color:var(--ge-sky);}
+.btn.ghost.parar{border-color:rgba(247,197,102,.65);color:var(--ge-yellow);}
+.btn.ghost.parar:hover{background:var(--ge-yellow);color:var(--ge-ink);border-color:var(--ge-yellow);}
+/* emojis dos botões pintados de azul-claro (azul-escuro quando o botão fica azul-claro) */
+.emo{display:inline-block;filter:var(--ge-tinta-sky);}
+.btn.ghost:hover .emo,.section-title .num .emo{filter:var(--ge-tinta-escura);}
+
+/* WhatsApp: ícone azul-claro, botão amarelo */
+.card-wa .wa-ico{background:var(--ge-sky);box-shadow:0 8px 18px -8px rgba(185,229,250,.6);}
+.card-wa .wa-ico svg{fill:var(--ge-ink);}
+.card-wa .btn.wa{background:var(--ge-yellow);color:var(--ge-ink);box-shadow:0 10px 24px -10px rgba(247,197,102,.7);}
+.card-wa .btn.wa:hover{background:var(--ge-yellow-2);filter:none;}
+.card-wa .wa-pill{background:rgba(185,229,250,.14);border-color:rgba(185,229,250,.5);color:var(--ge-sky);}
+
+/* seleção: azul-claro com letra escura */
+.chip{border-color:rgba(185,229,250,.35);background:rgba(185,229,250,.04);}
+.chip:hover{background:rgba(185,229,250,.12);}
+.chip.sel{background:var(--ge-sky);color:var(--ge-ink);box-shadow:0 8px 18px -8px rgba(185,229,250,.6),inset 0 0 0 2px rgba(255,255,255,.6);}
+/* v18.10: o disco do ✓ continua branco; no chip azul-claro ganha borda e ✓ escuros */
+.chip.sel::before{background:#fff;border-color:var(--ge-ink);color:var(--ge-ink);}
+.res-opt{border-color:rgba(185,229,250,.3);background:rgba(185,229,250,.04);}
+.res-opt:hover{background:rgba(185,229,250,.12);}
+.res-opt.sel{background:var(--ge-sky);color:var(--ge-ink);box-shadow:0 8px 18px -8px rgba(185,229,250,.6);}
+.res-opt .ic{filter:var(--ge-tinta-sky);}
+.res-opt.sel .ic{filter:var(--ge-tinta-escura);}
+.diff-opt{border-color:rgba(185,229,250,.3);background:rgba(185,229,250,.04);}
+.view-toggle{background:rgba(15,28,43,.4);border-color:rgba(185,229,250,.3);}
+.view-toggle button.active{background:var(--ge-sky);color:var(--ge-ink);}
+.auth-tabs{background:rgba(185,229,250,.06);}
+.auth-tab.sel{background:var(--ge-sky);color:var(--ge-ink);box-shadow:none;}
+
+/* áreas: azul do painel; ao passar o mouse e quando marcada, azul-claro; ícones em um tom só */
+.area-tile[data-area]{background:var(--ge-panel-2);border-color:rgba(185,229,250,.35);--tile-glow:rgba(185,229,250,.45);}
+.area-tile h3,.area-tile p{transition:color .2s ease;}
+.area-tile .ic{filter:var(--ge-tinta-sky);}
+.area-tile[data-area]:hover,.area-tile.sel[data-area]{background:var(--ge-sky);border-color:var(--ge-sky);}
+.area-tile[data-area]:hover h3,.area-tile.sel[data-area] h3{color:var(--ge-ink);text-shadow:none;}
+.area-tile[data-area]:hover p,.area-tile.sel[data-area] p{color:var(--ge-ink-soft);text-shadow:none;}
+.area-tile[data-area]:hover .ic,.area-tile.sel[data-area] .ic{filter:var(--ge-tinta-escura);}
+.area-tile.sel[data-area]{box-shadow:0 20px 44px -16px rgba(185,229,250,.55),inset 0 0 0 3px var(--ge-ink);}
+.area-tile.sel::after{background:var(--ge-ink);color:var(--ge-sky);}
+
+/* quantidade */
+.qty-stepper button{background:var(--ge-sky);color:var(--ge-ink);}
+.qty-stepper .qty-val{background:linear-gradient(90deg,#fff,#B9E5FA);-webkit-background-clip:text;background-clip:text;}
+
+/* níveis: Fácil azul-claro, Médio amarelo, Difícil azul forte */
+.lote-count[data-d="Fácil"],.diff-opt[data-d="Fácil"].sel{background:linear-gradient(135deg,#B9E5FA,#9FD6F2);color:var(--ge-ink);border-color:transparent;}
+.lote-count[data-d="Médio"],.diff-opt[data-d="Médio"].sel{background:linear-gradient(135deg,#F7C566,#E9B04E);color:var(--ge-ink);border-color:transparent;}
+.lote-count[data-d="Difícil"],.diff-opt[data-d="Difícil"].sel{background:linear-gradient(135deg,#0B5F8A,#0A4E72);color:#fff;border-color:rgba(185,229,250,.45);}
+.lote-count[data-d="Fácil"] button,.lote-count[data-d="Médio"] button{border-color:rgba(19,32,46,.45);background:rgba(19,32,46,.12);color:var(--ge-ink);}
+.lote-count[data-d="Fácil"] button:hover,.lote-count[data-d="Médio"] button:hover{background:rgba(19,32,46,.22);}
+.badge.dif-Fácil{background:rgba(185,229,250,.14);color:#B9E5FA;border-color:rgba(185,229,250,.45);}
+.badge.dif-Médio{background:rgba(247,197,102,.16);color:#F7C566;border-color:rgba(247,197,102,.45);}
+.badge.dif-Difícil{background:#0B5F8A;color:#fff;border-color:rgba(185,229,250,.45);}
+
+/* campos */
+input[type=text],input[type=number],input[type=password],textarea,select{border-color:rgba(185,229,250,.3);background-color:rgba(15,28,43,.45);}
+input:focus,textarea:focus,select:focus{border-color:var(--ge-sky);background-color:rgba(15,28,43,.7);}
+select{background-image:url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="%23B9E5FA"><path d="M5.5 7.5l4.5 5 4.5-5z"/></svg>');}
+select option{background:#172A3D;}
+
+/* blocos de questão (seção 5) */
+.qblock{border-color:rgba(185,229,250,.3);background:rgba(15,28,43,.3);}
+.qblock .qb-num .dot{background:var(--ge-sky);color:var(--ge-ink);border-radius:50%;}
+
+/* resultado */
+.qcard{background:var(--ge-panel);border-color:rgba(185,229,250,.3);}
+.qcard .qcard-top{background:linear-gradient(90deg,#B9E5FA 0 80%,#F7C566 80% 100%);}
+.qcard-head .qnum-badge{background:var(--ge-sky);color:var(--ge-ink);box-shadow:none;}
+.qcard-meta span[style]{color:var(--ge-sky) !important;}
+body.mode-professor .qcard{box-shadow:0 25px 60px -25px rgba(0,0,0,.7),0 0 0 1.5px rgba(185,229,250,.25);}
+.texto-base{background:rgba(185,229,250,.05);border-left-color:var(--ge-sky);}
+.alt-item{border-color:rgba(185,229,250,.25);}
+.alt-item .alt-letter{background:rgba(185,229,250,.12);}
+/* alternativa correta em azul-claro */
+.alt-item.correct{border-color:var(--ge-sky);background:rgba(185,229,250,.16);}
+.alt-item.correct .alt-letter{background:var(--ge-sky);color:var(--ge-ink);}
+/* marca "CORRETA" em azul-claro e "INCORRETA" em amarelo (o emoji vai junto, num tom só) */
+.alt-marca{display:inline-block;filter:var(--ge-tinta-amarelo);}
+.alt-item.correct .alt-marca{filter:var(--ge-tinta-sky);}
+.pedagog-item,.resolucao,.visual-box{background:rgba(185,229,250,.05);}
+table.enem-table th{background:rgba(185,229,250,.10);}
+.status-line{background:rgba(185,229,250,.06);}
+.progressbar{background:rgba(185,229,250,.12);}
+.progressbar .fill{background:var(--ge-yellow);}
+.visual-image-holder .hint[style]{color:var(--ge-yellow) !important;}
+
+/* avisos e erros em amarelo */
+.lote-status .hint.erro,.auth-err{color:var(--ge-yellow-2);}
+.toast{background:rgba(23,42,61,.97);border-color:rgba(185,229,250,.3);}
+.toast.ok{border-left-color:var(--ge-sky);}
+.toast.err{border-left-color:var(--ge-yellow);}
+.toast.info{border-left-color:var(--ge-sky);}
+
+/* janelas e "Meus Simulados" */
+.modal-overlay{background:rgba(8,15,24,.75);}
+.modal-box{background:var(--ge-panel);border:1.5px solid rgba(185,229,250,.6);}
+.btn-google{border-color:rgba(185,229,250,.35);background:rgba(185,229,250,.06);}
+.btn-google:hover{background:rgba(185,229,250,.14);}
+.simulados-eyebrow,.simulado-tag{color:var(--ge-sky);}
+.simulados-titulo{background:linear-gradient(90deg,#fff,#B9E5FA);-webkit-background-clip:text;background-clip:text;}
+.simulado-card{background:var(--ge-panel);border-color:rgba(185,229,250,.3);}
+.simulado-del{background:rgba(247,197,102,.10);border-color:rgba(247,197,102,.45);color:var(--ge-yellow);}
+.simulado-del:hover{background:rgba(247,197,102,.22);}
+}
 </style>
 </head>
 <body>
@@ -454,8 +615,8 @@ body.mode-professor .qcard{box-shadow:0 25px 60px -25px rgba(0,0,0,.6), 0 0 0 1.
     </div>
     <div style="display:flex;gap:10px;align-items:center;" class="no-print">
       <button class="btn ghost sm" id="btnHelp">Como funciona</button>
-      <button class="btn ghost sm no-print" id="btnSettings" style="display:none;">⚙️ Configurações</button>
-      <button class="btn ghost sm" id="btnMeusSimulados" style="display:none;">📄 Meus Simulados</button>
+      <button class="btn ghost sm no-print" id="btnSettings" style="display:none;"><span class="emo" aria-hidden="true">⚙️</span> Configurações</button>
+      <button class="btn ghost sm" id="btnMeusSimulados" style="display:none;"><span class="emo" aria-hidden="true">📄</span> Meus Simulados</button>
       <button class="btn ghost sm" id="btnEntrar">Entrar</button>
       <button class="btn ghost sm" id="btnSair" style="display:none;">Sair</button>
     </div>
@@ -616,10 +777,10 @@ body.mode-professor .qcard{box-shadow:0 25px 60px -25px rgba(0,0,0,.6), 0 0 0 1.
             <button type="button" id="viewProfessor" class="active">Versão do professor</button>
           </div>
           <button type="button" class="btn ghost sm parar hidden" id="btnInterromper" title="Para a geração agora: as questões prontas ficam; as que faltam podem ser geradas depois com &quot;Regenerar&quot;.">⏹️ Interromper geração</button>
-          <button class="btn ghost sm" id="btnPrint">🖨️ Imprimir</button>
-          <button class="btn ghost sm" id="btnExportPdf">📄 Exportar PDF</button>
-          <button class="btn ghost sm" id="btnExportDocx">📝 Exportar DOCX</button>
-          <button class="btn ghost sm" id="btnExport">⬇️ Exportar HTML</button>
+          <button class="btn ghost sm" id="btnPrint"><span class="emo" aria-hidden="true">🖨️</span> Imprimir</button>
+          <button class="btn ghost sm" id="btnExportPdf"><span class="emo" aria-hidden="true">📄</span> Exportar PDF</button>
+          <button class="btn ghost sm" id="btnExportDocx"><span class="emo" aria-hidden="true">📝</span> Exportar DOCX</button>
+          <button class="btn ghost sm" id="btnExport"><span class="emo" aria-hidden="true">⬇️</span> Exportar HTML</button>
           <button class="btn ghost sm" id="btnBackToForm">← Novo simulado</button>
         </div>
       </div>
@@ -627,7 +788,7 @@ body.mode-professor .qcard{box-shadow:0 25px 60px -25px rgba(0,0,0,.6), 0 0 0 1.
     </div>
     <div id="questionResults"></div>
     <div class="card hidden" id="summaryCard">
-      <div class="section-title"><span class="num">📋</span> Gabarito resumido</div>
+      <div class="section-title"><span class="num"><span class="emo" aria-hidden="true">📋</span></span> Gabarito resumido</div>
       <table class="summary-table"><thead><tr><th>Questão</th><th>Tema</th><th>Habilidade</th><th>Dificuldade</th><th>Gabarito</th></tr></thead><tbody id="summaryBody"></tbody></table>
     </div>
   </div>
@@ -707,7 +868,7 @@ body.mode-professor .qcard{box-shadow:0 25px 60px -25px rgba(0,0,0,.6), 0 0 0 1.
     <input type="text" id="modelInput" value="claude-sonnet-5" placeholder="claude-sonnet-5">
     <p class="hint" style="margin-top:6px;">Se aparecer erro de "modelo não encontrado", troque para o identificador de modelo disponível na sua conta (ex.: claude-opus-5, claude-haiku-4-5).</p>
     <div class="modal-close-row">
-      <button class="btn ghost sm" id="btnForgetKey" title="Remove a chave salva deste navegador">🗑️ Esquecer chave</button>
+      <button class="btn ghost sm" id="btnForgetKey" title="Remove a chave salva deste navegador"><span class="emo" aria-hidden="true">🗑️</span> Esquecer chave</button>
       <button class="btn ghost sm" id="btnCloseSettings">Fechar</button>
       <button class="btn sm" id="btnSaveSettings">Salvar</button>
     </div>
