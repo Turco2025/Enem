@@ -539,9 +539,13 @@ input[type=range]::-moz-range-thumb{width:16px;height:16px;border-radius:50%;bac
 .faq summary i{width:36px;height:36px;border-radius:50%;border:2px solid var(--sky);position:relative;transition:background-color .3s var(--e-out)}
 .faq summary i::before,.faq summary i::after{content:"";position:absolute;left:50%;top:50%;width:14px;height:2.5px;background:var(--sky);transform:translate(-50%,-50%);transition:transform .3s var(--e-out)}
 .faq summary i::after{transform:translate(-50%,-50%) rotate(90deg)}
-.faq details[open]{background:#183A5E}
-.faq details[open] summary i{background:var(--sky)}
-.faq details[open] summary i::before,.faq details[open] summary i::after{background:var(--canvas);transform:translate(-50%,-50%) rotate(0)}
+/* caixa aberta (clicada): fundo azul-claro, como o "Enem" da logo, com borda, letras e sinal azul-escuros */
+.faq details[open]{background:var(--sky);border-color:#14304D;color:#14304D;box-shadow:0 18px 34px -20px rgba(0,0,0,.9),0 0 0 3px rgba(185,229,250,.2),0 0 30px -6px rgba(185,229,250,.5)}
+.faq details[open] summary{color:#14304D}
+.faq details[open] p{color:#24435F}
+.faq details[open] summary i{background:#14304D;border-color:#14304D}
+.faq details[open] summary i::before,.faq details[open] summary i::after{background:var(--sky);transform:translate(-50%,-50%) rotate(0)}
+.faq details[open] summary:focus-visible{outline-color:#14304D}
 .faq details p{padding:0 24px 24px;font-size:1.19rem;line-height:1.5;color:#C3D0DC;max-width:66ch}
 @media (hover:hover) and (pointer:fine){
   /* ao passar o mouse a caixa inverte: fundo azul-claro, borda e letras azul-escuras */
@@ -557,7 +561,15 @@ input[type=range]::-moz-range-thumb{width:16px;height:16px;border-radius:50%;bac
 .faq summary:focus-visible{outline-offset:-3px}
 @keyframes faq-salto{0%{transform:translateY(0)}35%{transform:translateY(-13px)}65%{transform:translateY(-3px)}100%{transform:translateY(-6px)}}
 @media (prefers-reduced-motion:reduce){html:not(.motion-on) .faq details:hover{transform:none}html:not(.motion-on) .diffs .diff:hover{translate:none}}
-@media (max-width:600px){.faq summary{padding:16px 16px;gap:12px;grid-template-columns:1fr 32px}.faq summary i{width:32px;height:32px}.faq details p{padding:0 16px 18px}}
+/* celular: caixas 20% menores (letras, espaços e sinal) */
+@media (max-width:600px){
+  .faq__list{gap:11px}
+  .faq details{border-radius:13px}
+  .faq summary{padding:13px 13px;gap:10px;grid-template-columns:1fr 26px;font-size:.972rem;border-radius:12px}
+  .faq summary i{width:26px;height:26px;border-width:1.6px}
+  .faq summary i::before,.faq summary i::after{width:11px;height:2px}
+  .faq details p{padding:0 13px 14px;font-size:.952rem}
+}
 @media (max-width:860px){.faq{grid-template-columns:1fr}}
 
 /* fechamento */
