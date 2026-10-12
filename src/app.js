@@ -8557,6 +8557,8 @@ if(document.fonts && document.fonts.ready) document.fonts.ready.then(calibraBarr
    v18.41 — (06/10/2026) aviso no cartão da revisão dos distratores por IA (backend v74.36:
    d.distratores revisado / pendente) e termos de exagero na auditoria local. A entrada de
    automação não muda.
+   v18.42 — (12/10/2026) logo do Gera Enem com o slogan no cabeçalho (só a tela; PDF, Word
+   e impressão não mudam). A entrada de automação não muda.
 
    O pedido feito pelo WhatsApp (formulário de 6 perguntas, etapa B1) fica na fila
    `wa_trabalhos`. Quem o executa é um robô (robo/operario.mjs, rodando no GitHub

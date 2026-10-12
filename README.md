@@ -177,6 +177,26 @@ Teste: `verify_fontes_app.js` — 19 verificações; as seções B e C bis prova
 quatro marcas ligadas ao mesmo tempo nenhuma conferência bloqueia, e que nenhuma delas tem sequer um
 `return true` no corpo. `verify_gabarito_coerente.js` H1 passou a exigir o contrário do que exigia.
 
+## Logo e slogan do Gera Enem no cabeçalho (app v18.42, 12/10/2026)
+
+O cabeçalho do aplicativo passou a usar a mesma logo do site do Gera Enem, sempre com o slogan
+logo abaixo: "Seu tema. Seu desafio. Seu simulado.". Decisão do professor: onde for a logo, vai o
+slogan.
+
+**O que mudou.** Em `src/app_template.html`, o ícone 🎓, o título "Gerador Inteligente de
+Simulados ENEM" e a frase "Conectado ao Agente Elaborador de Questões · Matriz de Referência
+oficial embutida" deram lugar à logo e ao slogan. A logo é a imagem WebP de 710 × 120 px do site,
+embutida como `data:` URI, porque o Netlify publica só o `index.html` (ver `netlify.toml`). O
+`<h1>` continua existindo e tem o nome "Gera Enem" como texto alternativo da imagem. No
+computador a logo tem 52 px de altura; até 760 px de largura ela acompanha a largura da tela
+(no máximo 300 px) e o slogan diminui junto.
+
+**O que não mudou.** O título da aba do navegador, o PDF, o Word, a impressão (o cabeçalho já
+era `no-print`) e a entrada de automação do robô. O caderno continua no padrão do ENEM.
+
+Teste: `node tests/verify_whatsapp_box.js` (34/34, sem erros no console e sem rolagem lateral a
+400 px). Conferência visual a 1366, 390 e 320 px: sem rolagem lateral, logo carregada.
+
 ## Alternativas numéricas em ordem crescente e sem valor repetido, conferidas em código (generate-question v74.39, 06/10/2026)
 
 Observação do professor na questão 6 do simulado de Matemática de 06/10: as alternativas saíram **20%, 44%, 40%, 60%,
