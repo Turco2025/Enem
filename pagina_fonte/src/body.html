@@ -1,0 +1,496 @@
+<a class="skip" href="#main">Pular para o conteúdo</a>
+<div class="ambient" aria-hidden="true"><i class="beam"></i><i class="grain"></i></div>
+
+<header class="nav" id="nav">
+  <div class="wrap nav__in">
+    <a class="brand" href="#topo" aria-label="Gera Enem, início">
+      <img class="brand__logo" src="assets/logo.webp" alt="Gera Enem" width="710" height="120">
+      <span class="brand__slogan">Seu tema. Seu desafio. Seu simulado.</span>
+    </a>
+    <nav class="nav__links" aria-label="Seções">
+      <a href="#como">Como funciona</a>
+      <a class="nav__opc" href="#questao">Questão real</a>
+      <a href="#planos">Planos</a>
+      <a href="#duvidas">Dúvidas</a>
+    </nav>
+    <div class="nav__auth">
+      <button class="btn btn--line btn--sm nav__entrar" type="button" data-auth="login">Entrar</button>
+      <button class="btn btn--accent btn--sm nav__cadastrar" type="button" data-auth="cadastro">Cadastrar</button>
+      <a class="btn btn--accent btn--sm nav__app" href="/app/">Abrir o app</a>
+    </div>
+  </div>
+  <div class="nav__bar" aria-hidden="true"></div>
+</header>
+
+<main id="main" tabindex="-1">
+
+<!-- HERO: provas caindo até a mesa, guiado pela rolagem -->
+<section class="hero" id="topo" data-sec="1" aria-label="Abertura">
+  <div class="hero__pin">
+    <div class="hero__stage">
+      <div class="hero__poster" aria-hidden="true"></div>
+      <canvas class="hero__cv" aria-hidden="true" tabindex="-1"></canvas>
+      <div class="hero__scrim" aria-hidden="true"></div>
+      <div class="hero__edge" aria-hidden="true"></div>
+
+      <div class="band band--1" data-a="0" data-b="0.22" data-fx="drift">
+        <p class="kicker">Gera Enem · simulados para professores</p>
+        <h2 class="band__t split">Toda semana, a mesma pilha.</h2>
+        <p class="band__s">Texto-base, cinco alternativas, gabarito, diagramação. A prova boa custa noites.</p>
+      </div>
+      <div class="band band--2" data-a="0.25" data-b="0.50" data-fx="scatter" data-spread="0.55">
+        <h2 class="band__t split">E se o simulado viesse pronto?</h2>
+        <p class="band__s">Questões inéditas no padrão do ENEM, para o conteúdo que a sua turma está estudando.</p>
+      </div>
+      <div class="band band--3" data-a="0.53" data-b="0.79" data-fx="punch">
+        <h2 class="band__t split"><span class="em">Vinte</span> questões. Poucos <span class="em">minutos.</span></h2>
+        <p class="band__s">Com gráfico, resolução comentada e gabarito conferido antes de chegar a você.</p>
+      </div>
+      <div class="band band--4" data-a="0.83" data-b="1" data-fx="rise">
+        <p class="kicker kicker--q"><b>Questão 01</b><span>Para professores</span></p>
+        <h1 class="band__t split">O simulado fica pronto. Você volta para os alunos.</h1>
+        <p class="band__s">O Gera Enem monta questões inéditas no padrão do ENEM, num caderno pronto para imprimir.</p>
+        <div class="band__cta">
+          <a class="btn btn--accent" href="#planos">Escolher meu pacote</a>
+          <a class="btn btn--line" href="#questao">Resolver uma questão</a>
+        </div>
+      </div>
+
+      <div class="band--static">
+        <p class="kicker">Gera Enem · simulados para professores</p>
+        <h1 class="static__t">O simulado fica pronto. Você volta para os alunos.</h1>
+        <p class="band__s">Questões inéditas no padrão do ENEM, com gabarito conferido e resolução comentada, em poucos minutos.</p>
+        <div class="band__cta">
+          <a class="btn btn--accent" href="#planos">Escolher meu pacote</a>
+          <a class="btn btn--line" href="#questao">Resolver uma questão</a>
+        </div>
+        <button class="motion-btn" id="motionOn" type="button" hidden>Ver o site com animações</button>
+      </div>
+
+      <div class="hero__cue chip" aria-hidden="true">
+        <svg class="ring" viewBox="0 0 48 48"><circle cx="24" cy="24" r="20" fill="none" stroke="currentColor" stroke-opacity=".25" stroke-width="3"/><circle class="ring__p" cx="24" cy="24" r="20" fill="none" stroke="currentColor" stroke-width="3" stroke-dasharray="126" transform="rotate(-90 24 24)"/></svg>
+        <span class="cue__t">Role a página</span>
+      </div>
+    </div>
+  </div>
+  <div class="wrap to-plans"><a class="btn btn--accent to-plans__btn" href="#planos">Ver planos<span aria-hidden="true">↓</span></a></div>
+</section>
+
+<!-- 02 · O GABARITO: o momento interativo -->
+<section class="gab" id="gabarito" data-sec="2" aria-label="O gabarito">
+  <div class="wrap gab__grid">
+    <div class="gab__copy">
+      <p class="kicker kicker--q"><b>Questão 02</b><span>O gabarito</span></p>
+      <h2>A caneta marca. Você confere.</h2>
+      <p class="lead">Role e veja um cartão-resposta de 20 questões ser preenchido e conferido, como o aplicativo faz com cada questão antes de entregar.</p>
+      <ul class="checks" id="checks" aria-live="polite">
+        <li><span class="ck" aria-hidden="true"></span>20 de 20 conferidas</li>
+        <li><span class="ck" aria-hidden="true"></span>Cinco alternativas em todas</li>
+        <li><span class="ck" aria-hidden="true"></span>Um gabarito por questão</li>
+        <li><span class="ck" aria-hidden="true"></span>As cinco letras bem distribuídas</li>
+        <li><span class="ck" aria-hidden="true"></span>Gráficos coerentes com o texto</li>
+      </ul>
+    </div>
+    <div class="gab__pin">
+      <div class="gab__sticky">
+        <div class="desk" id="desk" aria-label="Cartão-resposta de um simulado de Biologia com 20 questões sendo preenchido à caneta">
+          <div class="card" id="card">
+<!--SHEET-->
+            <div class="pen" id="pen" aria-hidden="true">
+              <img class="pen__sh" src="assets/caneta.webp" alt="" width="620" height="620">
+              <img class="pen__img" src="assets/caneta.webp" alt="" width="620" height="620">
+            </div>
+          </div>
+          <div class="desk__hud chip">
+            <p class="hud__t" id="hudChip">Simulado gabaritado</p>
+            <div class="hud__meter" aria-hidden="true"><i id="hudBar"></i></div>
+            <p class="hud__n" id="hudN">20/20</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="wrap to-plans"><a class="btn btn--accent to-plans__btn" href="#planos">Ver planos<span aria-hidden="true">↓</span></a></div>
+</section>
+
+<!-- 03 · O TEMPO -->
+<section class="tempo" id="tempo" data-sec="3" aria-label="O tempo">
+  <div class="tempo__img lq" id="lamp" aria-hidden="true" style="--lq:url(data:image/webp;base64,UklGRo4AAABXRUJQVlA4IIIAAAAwBQCdASogABIAPt1iq08opSQiKAqpEBuJQBOmZJbNz/gG4CpxrefuJe8zVmSmuJTbsAD+7NlBvcnzOd/5Kn7Co+ZKERVW3NcFQ00f1zL0iakwq5TnkJZfMX36zQmzpSN35CnLNSKLOvNc4Rk6WYD0GM7uEksqcAebChXX67K0AAAA)">
+    <img class="lz" src="assets/noite.webp" alt="" width="1920" height="1086" loading="lazy" decoding="async">
+    <div class="tempo__dark"></div>
+  </div>
+  <div class="dust" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
+  <div class="wrap tempo__in">
+    <div class="tempo__copy rv">
+      <p class="kicker kicker--q"><b>Questão 03</b><span>O tempo</span></p>
+      <h2>Uma prova boa custa noites.</h2>
+      <p class="lead">Escolher o texto, conferir a fonte, pensar em erros que pareçam certos, revisar o gabarito, diagramar. Esse tempo sai da aula, da correção e da sua vida.</p>
+      <figure class="stat">
+        <b>71%</b>
+        <figcaption>dos professores da rede pública dizem estar estressados pela sobrecarga de trabalho. <span>Pesquisa Ipec, 2022, com 6.775 professores.</span></figcaption>
+      </figure>
+    </div>
+  </div>
+  <div class="wrap">
+    <div class="calc rv" id="calc">
+      <div class="calc__in">
+        <h3>Quanto tempo você recupera</h3>
+        <p class="calc__note">Ajuste com a sua realidade. A conta é sua.</p>
+        <div class="field">
+          <label for="qMes">Questões que você prepara por mês <output id="qMesOut">80</output></label>
+          <input type="range" id="qMes" min="10" max="400" step="10" value="80">
+        </div>
+        <div class="field">
+          <label for="minQ">Minutos para criar uma questão do zero <output id="minQOut">30</output></label>
+          <input type="range" id="minQ" min="10" max="90" step="5" value="30">
+        </div>
+      </div>
+      <div class="calc__out" aria-live="polite">
+        <p class="calc__note">Tempo recuperado por mês</p>
+        <p class="calc__big"><span id="hMes">37</span><small>horas</small></p>
+        <p class="calc__note">São <b id="hAno">373 horas</b> em 10 meses de ano letivo. A conta já desconta 2 minutos para você revisar cada questão gerada.</p>
+        <a class="btn btn--line btn--sm" id="shareCalc" href="#" target="_blank" rel="noopener">Mandar para um colega</a>
+      </div>
+    </div>
+  </div>
+  <div class="wrap to-plans"><a class="btn btn--accent to-plans__btn" href="#planos">Ver planos<span aria-hidden="true">↓</span></a></div>
+</section>
+
+<!-- 04 · COMO FUNCIONA (vídeo feito no Remotion) -->
+<section class="como paper" id="como" data-sec="4" aria-label="Como funciona">
+  <div class="wrap">
+    <div class="como__head">
+      <p class="kicker kicker--q kicker--ink"><b>Questão 04</b><span>Como funciona</span></p>
+      <h2>Três passos entre a ideia e o caderno impresso.</h2>
+    </div>
+    <div class="player rv" id="player">
+      <video id="demo" class="lq" style="--lq:url(data:image/webp;base64,UklGRpIAAABXRUJQVlA4IIYAAADwBACdASogABIAPt1aqU8opKOiMBgIARAbiWcAuwAyyH/N6vhQlGBRXe7kZiLa51AA/vS0ine9pfU6YbJ44gYnIZ9UBnnL6P2vD/CFTvK+kHO+DQBcKHqgKxs+ekWVKf29eGfE5PSZU17KGjUrPZP9IYEwVeKz73LzJkyMrDIg7j0tbwAAAA==)" preload="metadata" muted playsinline loop poster="assets/demo2-poster.webp" aria-label="Demonstração animada: escolher o conteúdo, gerar e conferir as questões, e imprimir o caderno">
+        <source src="assets/demo2-m.mp4" type="video/mp4" media="(max-width: 900px)">
+        <source src="assets/demo2.mp4" type="video/mp4">
+        <source src="assets/demo2.webm" type="video/webm">
+      </video>
+      <button class="player__play" id="demoPlay" type="button" aria-label="Assistir à demonstração">
+        <span class="player__icon" aria-hidden="true"></span>
+        <span>Assistir à demonstração · 24 s</span>
+      </button>
+      <div class="player__bar" aria-hidden="true"><i id="demoBar"></i></div>
+    </div>
+    <ol class="chapters" id="chapters">
+      <li><button type="button" data-t="0"><b>1</b><span><strong>Escolha o conteúdo</strong>Área, disciplina, temas, quantidade, dificuldade e se quer gráfico, tabela ou imagem.</span></button></li>
+      <li><button type="button" data-t="5.9"><b>2</b><span><strong>O aplicativo elabora e confere</strong>Cada questão é escrita na hora e passa por conferências. O que não passa é refeito.</span></button></li>
+      <li><button type="button" data-t="13.7"><b>3</b><span><strong>Revise e imprima</strong>Caderno do aluno e do professor, em PDF ou Word, ou direto no WhatsApp.</span></button></li>
+    </ol>
+  </div>
+  <div class="wrap to-plans"><a class="btn btn--accent to-plans__btn" href="#planos">Ver planos<span aria-hidden="true">↓</span></a></div>
+</section>
+
+<!-- 05 · PELO WHATSAPP (vídeo feito no Remotion) -->
+<section class="wpp" id="whatsapp" data-sec="5" aria-label="Pelo WhatsApp">
+  <div class="dust" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
+  <div class="wrap wpp__grid">
+    <div class="wpp__copy">
+      <p class="kicker kicker--q"><b>Questão 05</b><span>Pelo WhatsApp</span></p>
+      <h2>Peça pelo WhatsApp. Receba o simulado pronto.</h2>
+      <p class="lead">Você não precisa abrir o aplicativo. Responda seis perguntas na conversa e, em poucos minutos, o caderno chega no seu WhatsApp, em PDF e Word, nas versões do aluno e do professor. Depois é só encaminhar para quem você quiser.</p>
+      <ol class="wsteps">
+        <li class="rv"><b>1</b><div><strong>Vincule seu número uma vez</strong><span>No aplicativo, um código de 6 dígitos liga o seu WhatsApp à sua conta.</span></div></li>
+        <li class="rv"><b>2</b><div><strong>Responda seis perguntas</strong><span>Área, disciplina, quantidade, temas, recurso visual e dificuldade, com botões na própria conversa.</span></div></li>
+        <li class="rv"><b>3</b><div><strong>Receba e encaminhe</strong><span>Chegam quatro arquivos: PDF e Word, do aluno e do professor. Mande para a turma, para a coordenação ou para quem quiser.</span></div></li>
+      </ol>
+      <p class="wpp__note">Até 20 questões por pedido.</p>
+    </div>
+    <div class="phone rv" id="phone">
+      <video id="wdemo" class="lq" style="--lq:url(data:image/webp;base64,UklGRnoAAABXRUJQVlA4IG4AAABwBACdASoSACAAPt1cpU0opSMiMBgMARAbiWUAuDAQ7jheZz5F4iePZcWLAAD+0OysKlXPAZ0aETu+NqpiwOFv/At/i3Pu4o1FDMDowaUBwUy0Pn1Z0S1rNvbiE4fsfKvd9uxc8IzTjOsH1JAAAA==)" preload="metadata" muted playsinline loop poster="assets/whatsapp-poster.webp" aria-label="Demonstração animada: pedido de simulado pelo WhatsApp, entrega dos arquivos e encaminhamento para a turma">
+        <source src="assets/whatsapp.mp4" type="video/mp4">
+        <source src="assets/whatsapp.webm" type="video/webm">
+      </video>
+      <button class="player__play" id="wPlay" type="button" aria-label="Ver a conversa no WhatsApp">
+        <span class="player__icon" aria-hidden="true"></span>
+        <span>Ver a conversa · 28 s</span>
+      </button>
+      <div class="player__bar" aria-hidden="true"><i id="wBar"></i></div>
+    </div>
+  </div>
+  <div class="wrap to-plans"><a class="btn btn--accent to-plans__btn" href="#planos">Ver planos<span aria-hidden="true">↓</span></a></div>
+</section>
+
+<!-- 06 · UMA QUESTÃO DE VERDADE -->
+<section class="real paper paper--2" id="questao" data-sec="6" aria-label="Uma questão de verdade">
+  <div class="wrap">
+    <div class="sec__head">
+      <p class="kicker kicker--q kicker--ink"><b>Questão 06</b><span>Uma questão de verdade</span></p>
+      <h2>Resolva uma questão que o aplicativo gerou.</h2>
+      <p class="lead">É a questão 12 de um simulado de Biologia sobre o sistema urinário humano, gerado em 6 de outubro de 2026. Texto, gráfico e alternativas estão como saíram. Marque a sua resposta.</p>
+    </div>
+    <div class="real__grid">
+      <article class="sheet rv" aria-label="Questão 12, Biologia">
+        <p class="qlabel"><b>Questão 12</b></p>
+        <p class="sheet__txt">Um paciente internado com desidratação grave teve a função renal monitorada por exame de sangue diário. A creatinina é produzida pelo músculo em ritmo praticamente constante e eliminada pelos rins por filtração glomerular; quando os néfrons filtram menos sangue por minuto, a substância se acumula no plasma. A equipe médica acompanhou os valores de creatinina sérica do paciente durante cinco dias de tratamento com reposição de líquidos, buscando avaliar a recuperação da taxa de filtração glomerular.</p>
+        <figure class="chart">
+          <figcaption>Creatinina sérica do paciente durante a internação</figcaption>
+          <svg viewBox="0 0 520 300" role="img" aria-label="Gráfico de linha: creatinina em mg/dL no dia 1, 3,2; dia 2, 2,6; dia 3, 2,0; dia 4, 1,4; dia 5, 1,0">
+            <g class="gr"><line x1="70" y1="190" x2="490" y2="190"/><line x1="70" y1="130" x2="490" y2="130"/><line x1="70" y1="70" x2="490" y2="70"/></g>
+            <line class="ax" x1="70" y1="250" x2="490" y2="250"/><line class="ax" x1="70" y1="40" x2="70" y2="250"/>
+            <g class="tl" text-anchor="end"><text x="60" y="254">0</text><text x="60" y="194">1</text><text x="60" y="134">2</text><text x="60" y="74">3</text></g>
+            <text class="tl" transform="translate(22 145) rotate(-90)" text-anchor="middle">Creatinina (mg/dL)</text>
+            <g class="tl" text-anchor="middle"><text x="110" y="272">Dia 1</text><text x="200" y="272">Dia 2</text><text x="290" y="272">Dia 3</text><text x="380" y="272">Dia 4</text><text x="470" y="272">Dia 5</text></g>
+            <polyline class="ln2" points="110,58 200,94 290,130 380,166 470,190"/>
+            <g><circle class="pt" cx="110" cy="58" r="5"/><circle class="pt" cx="200" cy="94" r="5"/><circle class="pt" cx="290" cy="130" r="5"/><circle class="pt" cx="380" cy="166" r="5"/><circle class="pt" cx="470" cy="190" r="5"/></g>
+            <g class="vl" text-anchor="middle"><text x="110" y="44">3,2</text><text x="200" y="80">2,6</text><text x="290" y="116">2,0</text><text x="380" y="152">1,4</text><text x="470" y="176">1,0</text></g>
+          </svg>
+        </figure>
+        <p class="sheet__cmd">A evolução dos valores registrados no gráfico indica que, ao longo da internação, a filtração glomerular do paciente</p>
+        <ol class="alts" id="alts">
+          <li><button class="alt" type="button" data-l="A" aria-pressed="false"><span class="opt__l">A</span><span>permaneceu reduzida, sem resposta à reposição.</span></button></li>
+          <li><button class="alt" type="button" data-l="B" aria-pressed="false"><span class="opt__l">B</span><span>foi gradualmente restabelecida com a hidratação.</span></button></li>
+          <li><button class="alt" type="button" data-l="C" aria-pressed="false"><span class="opt__l">C</span><span>piorou devido ao aumento da produção muscular.</span></button></li>
+          <li><button class="alt" type="button" data-l="D" aria-pressed="false"><span class="opt__l">D</span><span>variou de forma aleatória, sem relação com os rins.</span></button></li>
+          <li><button class="alt" type="button" data-l="E" aria-pressed="false"><span class="opt__l">E</span><span>foi comprometida de modo irreversível pelo exame.</span></button></li>
+        </ol>
+      </article>
+      <aside class="panel" aria-live="polite">
+        <div class="panel__box">
+          <span class="verdict" id="altVerdict">Aguardando sua resposta</span>
+          <h3 id="altTitle">Cada alternativa tem um porquê</h3>
+          <p id="altText">Marque uma letra. O comentário que aparece aqui é o mesmo da versão do professor: ele explica o raciocínio por trás de cada resposta.</p>
+        </div>
+        <div class="panel__box">
+          <h3>Ficha pedagógica</h3>
+          <dl class="ficha">
+            <div><dt>Área</dt><dd>Ciências da Natureza e suas Tecnologias</dd></div>
+            <div><dt>Competência</dt><dd>5 · Entender métodos e procedimentos próprios das ciências naturais e aplicá-los em diferentes contextos.</dd></div>
+            <div><dt>Habilidade</dt><dd>H17 · Relacionar informações apresentadas em diferentes formas de linguagem e representação usadas nas ciências físicas, químicas ou biológicas, como texto discursivo, gráficos, tabelas, relações matemáticas ou linguagem simbólica.</dd></div>
+            <div><dt>Dificuldade</dt><dd>Médio</dd></div>
+          </dl>
+          <details class="resol">
+            <summary>Ver a resolução comentada</summary>
+            <p>O gráfico mostra queda progressiva da creatinina sérica de 3,2 mg/dL (dia 1) para 1,0 mg/dL (dia 5), aproximando-se do valor de referência normal. Como a creatinina é produzida em ritmo constante pelo músculo e eliminada por filtração glomerular, uma queda na concentração plasmática indica aumento da taxa de filtração dos néfrons, ou seja, melhora da função renal em resposta à reidratação, que restabelece o volume sanguíneo e a perfusão renal.</p>
+          </details>
+        </div>
+      </aside>
+    </div>
+  </div>
+  <div class="wrap to-plans"><a class="btn btn--accent to-plans__btn" href="#planos">Ver planos<span aria-hidden="true">↓</span></a></div>
+</section>
+
+<!-- 06 · DIFERENCIAIS -->
+<section class="diffs-sec" id="diferenciais" data-sec="7" aria-label="Diferenciais">
+  <div class="dust" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
+  <div class="wrap">
+    <div class="sec__head">
+      <p class="kicker kicker--q"><b>Questão 07</b><span>Diferenciais</span></p>
+      <h2>Cada questão é construída como o Inep constrói um item.</h2>
+      <p class="lead">O Gera Enem segue a lógica que faz uma questão ser inconfundivelmente ENEM: situação-problema, texto-base, comando e cinco alternativas construídas de propósito.</p>
+    </div>
+    <div class="diffs">
+      <div class="diff rv"><svg viewBox="0 0 44 44" aria-hidden="true"><rect class="ic" x="5" y="7" width="34" height="30" rx="3"/><rect class="icf" x="17" y="18" width="10" height="8"/><path class="ic" d="M5 18h34M5 26h34M17 7v30M27 7v30"/></svg><h3>Matriz de Referência do Inep</h3><p>Cada questão declara competência, habilidade e objeto de conhecimento, com o texto oficial da Matriz.</p></div>
+      <div class="diff rv"><svg viewBox="0 0 44 44" aria-hidden="true"><circle class="ic" cx="10" cy="14" r="5"/><circle class="ic" cx="22" cy="14" r="5"/><circle class="ic" cx="34" cy="14" r="5"/><circle class="ic" cx="16" cy="30" r="5"/><circle class="icf" cx="28" cy="30" r="5.5"/><path class="ic" d="M7.5 11.5l5 5M12.5 11.5l-5 5M19.5 11.5l5 5M24.5 11.5l-5 5M31.5 11.5l5 5M36.5 11.5l-5 5M13.5 27.5l5 5M18.5 27.5l-5 5"/></svg><h3>Distratores plausíveis</h3><p>Cada alternativa errada nasce de um erro real de raciocínio e vem com um comentário que nomeia o equívoco.</p></div>
+      <div class="diff rv"><svg viewBox="0 0 44 44" aria-hidden="true"><path class="ic" d="M22 5l14 5v11c0 9-6 15-14 18C14 36 8 30 8 21V10z"/><path class="ic" d="M15 21.5l5 5 9-10"/></svg><h3>Conferido antes de chegar</h3><p>Cinco alternativas completas, um único gabarito, números em ordem crescente. O que falha na conferência é refeito.</p></div>
+      <div class="diff rv"><svg viewBox="0 0 44 44" aria-hidden="true"><rect class="ic" x="12" y="5" width="25" height="31" rx="2"/><path class="ic" d="M7 10v28a2 2 0 0 0 2 2h22M17 13h15M17 19h15M17 25h10"/></svg><h3>Textos das provas oficiais</h3><p>22.087 textos-base das provas do ENEM de 2009 a 2025, com referência conferida, além de Fuvest, Unesp e Unicamp.</p></div>
+      <div class="diff rv"><svg viewBox="0 0 44 44" aria-hidden="true"><rect class="ic" x="5" y="6" width="34" height="32" rx="3"/><path class="ic" d="M10 31l8-9 7 5 10-12"/></svg><h3>Gráficos, tabelas e imagens</h3><p>O recurso visual sai junto com a questão, coerente com o texto. Gerar ou refazer imagem, gráfico ou tabela não gasta crédito.</p></div>
+      <div class="diff rv"><svg viewBox="0 0 44 44" aria-hidden="true"><rect class="ic" x="6" y="4" width="32" height="36" rx="2"/><path class="ic" d="M22 9v26M10 16h8M10 20h8M10 24h6M26 9h8M26 14h8M26 18h8M26 22h5"/><rect class="icf" x="10" y="9" width="8" height="3"/></svg><h3>Caderno no padrão ENEM</h3><p>Duas colunas, QUESTÃO em destaque, versão do aluno com folha de gabarito e versão do professor com resoluções. PDF ou Word.</p></div>
+      <div class="diff rv"><svg viewBox="0 0 44 44" aria-hidden="true"><g class="ic"><circle cx="8" cy="9" r="3"/><circle cx="15" cy="9" r="3"/><circle cx="22" cy="9" r="3"/><circle cx="29" cy="9" r="3"/><circle cx="36" cy="9" r="3"/><circle cx="8" cy="22" r="3"/><circle cx="15" cy="22" r="3"/><circle cx="22" cy="22" r="3"/><circle cx="29" cy="22" r="3"/><circle cx="36" cy="22" r="3"/><circle cx="8" cy="35" r="3"/><circle cx="15" cy="35" r="3"/><circle cx="22" cy="35" r="3"/><circle cx="29" cy="35" r="3"/><circle cx="36" cy="35" r="3"/></g><circle class="icf" cx="22" cy="9" r="3.2"/><circle class="icf" cx="8" cy="22" r="3.2"/><circle class="icf" cx="36" cy="35" r="3.2"/></svg><h3>Gabarito bem distribuído</h3><p>Em cada bloco de cinco questões, as cinco letras aparecem uma vez. Nenhuma questão repete a letra da anterior.</p></div>
+      <div class="diff rv"><svg viewBox="0 0 44 44" aria-hidden="true"><path class="ic" d="M6 9a3 3 0 0 1 3-3h26a3 3 0 0 1 3 3v18a3 3 0 0 1-3 3H17l-8 7v-7H9a3 3 0 0 1-3-3z"/><path class="ic" d="M13 14h18M13 20h12"/></svg><h3>Peça pelo WhatsApp</h3><p>Vincule o seu número, responda seis perguntas e receba o simulado em PDF e Word, nas versões do aluno e do professor.</p></div>
+      <div class="diff rv"><svg viewBox="0 0 44 44" aria-hidden="true"><path class="ic" d="M30 5l9 9-21 21-11 2 2-11zM26 9l9 9M9 26l9 9"/></svg><h3>Sempre inédita</h3><p>A questão é escrita na hora, para o conteúdo que você escolheu. O texto-base pode vir de uma prova oficial, com referência; o item é novo.</p></div>
+    </div>
+  </div>
+  <div class="wrap to-plans"><a class="btn btn--accent to-plans__btn" href="#planos">Ver planos<span aria-hidden="true">↓</span></a></div>
+</section>
+
+<!-- 07 · PROFESSOR E ALUNO -->
+<section class="people paper" id="pessoas" data-sec="8" aria-label="Professor e aluno">
+  <div class="wrap">
+    <div class="sec__head">
+      <p class="kicker kicker--q kicker--ink"><b>Questão 08</b><span>Professor e aluno</span></p>
+      <h2>Um simulado para a turma. Ou um para cada aluno.</h2>
+    </div>
+    <div class="people__grid">
+      <article class="person rv">
+        <div class="person__img lq" style="--lq:url(data:image/webp;base64,UklGRvAAAABXRUJQVlA4IOQAAABwBgCdASoYAB4APt1Wpk0opCOiMBgMARAbiWQAnSDou/+AcDmKeN+hmn5YJxm07nqLR07M6N730UmK2TAA/vZAvCFm9JL434K49i4/B459kIjiAiVGE+26Jukx7nTr5GmdnDYQoQk1CdNkuUthUQXx81DLADEGAyJPycF9bCUsK7G+4B/nKUgOgWPaO6kSEBlzuLggR5eI0YXVbafj/2r0/BDleQsR90x+gBV77yko9GJmAdfMh2oA+yH0DsnnHrwtJmVXCfKK2n9K/2a41aqhMJIOLUBHzQiTzff5n5QAWacUAAA=)"><img class="lz" decoding="async" src="assets/professor.webp" alt="Professor sentado ao lado de uma aluna, apontando uma questão impressa numa sala com sol da manhã" width="1100" height="1375" loading="lazy" data-par="1"></div>
+        <p class="kicker kicker--ink"><b>Para quem ensina</b></p>
+        <h3>Menos noites montando prova, mais tempo com quem precisa.</h3>
+        <p>Quem errou função do 2º grau recebe uma lista de função do 2º grau. Quem já domina o conteúdo vai para o nível difícil. Você decide o recorte; o aplicativo faz o trabalho braçal.</p>
+      </article>
+      <article class="person rv">
+        <div class="person__img lq" style="--lq:url(data:image/webp;base64,UklGRtIAAABXRUJQVlA4IMYAAABwBQCdASoYAB4APt1Yp00opKOiMBgMARAbiUAWo3Q4oeCPzVBs9tZKA8MGE9++ZSc6iYFgAK6Pt3SblrdnFynoD25gwA2tNWHZ+7PuVtBrzQ8EMdPUvFFpXhBZm/3nyCa1QDPgY3jguwGtcLPh6DNHWCTeGkL6c3+foPg41oWGTqmeEGhZh2KJWPsLMp/ueD+8bTkBIVEkk9Q79EDynOKBnwR1I8uvG/+PyXTfI9DscsV1nD5QWb2TRe5fz5/87A9u4AzrgAA=)"><img class="lz" decoding="async" src="assets/simulado.webp" alt="Estudantes fazendo um simulado com cadernos azuis numa sala iluminada pelo sol da manhã" width="1100" height="1375" loading="lazy" data-par="-1"></div>
+        <p class="kicker kicker--ink"><b>Para quem aprende</b></p>
+        <h3>Treino no formato que ele vai encontrar em novembro.</h3>
+        <p>Texto-base, comando, gráfico para ler, cinco alternativas. Depois, a resolução comentada mostra por que cada alternativa está certa ou errada, e o erro vira aula.</p>
+      </article>
+    </div>
+  </div>
+  <div class="wrap to-plans"><a class="btn btn--accent to-plans__btn" href="#planos">Ver planos<span aria-hidden="true">↓</span></a></div>
+</section>
+
+<!-- 08 · VANTAGENS E LIMITES -->
+<section class="honest" id="limites" data-sec="9" aria-label="Vantagens e limites">
+  <div class="wrap">
+    <div class="sec__head">
+      <p class="kicker kicker--q"><b>Questão 09</b><span>Vantagens e limites</span></p>
+      <h2>O que ele faz bem. E o que continua com você.</h2>
+    </div>
+    <div class="honest__grid">
+      <div class="rv">
+        <h3><span class="bub f" aria-hidden="true"></span>O aplicativo faz</h3>
+        <ul>
+          <li><span class="bub f" aria-hidden="true"></span><span><b>Elabora em minutos</b> o que levaria noites: texto-base, comando, alternativas, resolução.</span></li>
+          <li><span class="bub f" aria-hidden="true"></span><span><b>Confere o que dá para conferir em código</b>: alternativas completas, ordem, gabarito, coerência com o gráfico.</span></li>
+          <li><span class="bub f" aria-hidden="true"></span><span><b>Personaliza</b> por conteúdo, dificuldade, habilidade e recurso visual.</span></li>
+          <li><span class="bub f" aria-hidden="true"></span><span><b>Entrega pronto para a sala</b>: caderno do aluno, caderno do professor, PDF e Word.</span></li>
+        </ul>
+      </div>
+      <div class="rv honest__you">
+        <h3><span class="bub" aria-hidden="true"></span>Continua com você</h3>
+        <ul>
+          <li><span class="bub" aria-hidden="true"></span><span><b>A revisão final.</b> O aplicativo confere muito, mas a palavra final sobre a questão é do professor.</span></li>
+          <li><span class="bub" aria-hidden="true"></span><span><b>Algumas imagens pedem outra versão.</b> Refazer a figura não custa crédito.</span></li>
+          <li><span class="bub" aria-hidden="true"></span><span><b>É treino, não prova oficial.</b> As questões seguem o modelo do ENEM, mas não são do Inep.</span></li>
+          <li><span class="bub" aria-hidden="true"></span><span><b>Precisa de internet</b> para gerar as questões.</span></li>
+        </ul>
+      </div>
+    </div>
+  </div>
+  <div class="wrap to-plans"><a class="btn btn--accent to-plans__btn" href="#planos">Ver planos<span aria-hidden="true">↓</span></a></div>
+</section>
+
+<!-- 09 · PLANOS -->
+<section class="planos paper" id="planos" data-sec="10" aria-label="Planos">
+  <div class="wrap">
+    <div class="sec__head">
+      <p class="kicker kicker--q kicker--ink"><b>Questão 10</b><span>Planos</span></p>
+      <h2>Créditos que viram questões.</h2>
+      <p class="lead">Sem mensalidade obrigatória: você compra um pacote e usa no seu ritmo. Um crédito gera uma questão completa.</p>
+    </div>
+    <div class="ledger rv" aria-label="Como os créditos funcionam">
+      <p class="ledger__t">Como os créditos funcionam</p>
+      <div class="ledger__cols">
+        <div class="lcol">
+          <p class="lcol__n">1<span>crédito</span></p>
+          <h3>Cada questão gerada</h3>
+          <p>Com texto-base, alternativas, gabarito e resolução.</p>
+        </div>
+        <div class="lcol">
+          <p class="lcol__n">1<span>crédito</span></p>
+          <h3>Refazer uma questão</h3>
+          <p>Uma nova questão no lugar da anterior.</p>
+        </div>
+        <div class="lcol lcol--free">
+          <p class="lcol__n">0<span>créditos</span></p>
+          <h3>Imagem, gráfico e tabela</h3>
+          <p>Gerar ou refazer o recurso visual é grátis.</p>
+        </div>
+        <div class="lcol lcol--back">
+          <p class="lcol__n">+1<span>de volta</span></p>
+          <h3>Deu erro? O crédito volta.</h3>
+          <p>Se a questão não for gerada ou sair com erro, o crédito é devolvido.</p>
+        </div>
+      </div>
+      <div class="ledger__foot">
+        <p><b>Validade de 12 meses</b>, contados a partir da compra.</p>
+        <p><b>Acabou? Compre mais.</b> Um aviso aparece quando os créditos terminam.</p>
+      </div>
+    </div>
+    <div class="plans">
+      <article class="plan rv"><p class="plan__cr">50<span>créditos</span></p><p class="plan__price"><small>R$</small>150</p><p class="plan__per"><b>R$ 3,00</b> por questão</p><div><div class="meter" data-sims="2" aria-hidden="true"></div><p class="plan__fit">Para conhecer: 2 simulados de 20 questões e uma lista de 10.</p></div><button class="btn btn--ink-line buy" type="button" data-plano="50">Escolher 50 créditos</button></article>
+      <article class="plan rv"><p class="plan__cr">100<span>créditos</span></p><p class="plan__price"><small>R$</small>270</p><p class="plan__per"><b>R$ 2,70</b> por questão · 10% a menos</p><div><div class="meter" data-sims="5" aria-hidden="true"></div><p class="plan__fit">5 simulados de 20 questões: um por mês no semestre.</p></div><button class="btn btn--ink-line buy" type="button" data-plano="100">Escolher 100 créditos</button></article>
+      <article class="plan rv"><p class="plan__cr">200<span>créditos</span></p><p class="plan__price"><small>R$</small>500</p><p class="plan__per"><b>R$ 2,50</b> por questão · 17% a menos</p><div><div class="meter" data-sims="10" aria-hidden="true"></div><p class="plan__fit">10 simulados de 20 questões, para quem tem várias turmas.</p></div><button class="btn btn--ink-line buy" type="button" data-plano="200">Escolher 200 créditos</button></article>
+      <article class="plan plan--hi rv"><span class="plan__badge">Menor preço por questão</span><p class="plan__cr">400<span>créditos</span></p><p class="plan__price"><small>R$</small>800</p><p class="plan__per"><b>R$ 2,00</b> por questão · 33% a menos</p><div><div class="meter" data-sims="20" aria-hidden="true"></div><p class="plan__fit">20 simulados de 20 questões, ou dois do tamanho do ENEM (180 questões) e mais 40.</p></div><button class="btn btn--accent buy" type="button" data-plano="400">Escolher 400 créditos</button></article>
+    </div>
+    <div class="plans__foot">
+      <span>Pix ou cartão de crédito</span>
+      <span>Parcelamento no cartão sem acréscimo</span>
+      <span>Créditos liberados assim que o pagamento é confirmado</span>
+    </div>
+  </div>
+</section>
+
+<!-- 10 · DÚVIDAS -->
+<section class="faq-sec" id="duvidas" data-sec="11" aria-label="Dúvidas">
+  <div class="wrap faq">
+    <div class="sec__head">
+      <p class="kicker kicker--q"><b>Questão 11</b><span>Dúvidas</span></p>
+      <h2>Perguntas de quem dá aula.</h2>
+    </div>
+    <div class="faq__list">
+      <details><summary>Posso confiar no gabarito?<i aria-hidden="true"></i></summary><p>Cada questão passa por conferências antes de chegar a você: cinco alternativas completas, um único gabarito defensável, números em ordem crescente e coerência entre o texto e o gráfico. O que falha é refeito. Mesmo assim, recomendamos a sua revisão, como faria com qualquer material.</p></details>
+      <details><summary>Preciso abrir o aplicativo para pedir pelo WhatsApp?<i aria-hidden="true"></i></summary><p>Não. Depois de vincular o seu número uma vez, você faz o pedido pela conversa e recebe os quatro arquivos ali mesmo, prontos para encaminhar.</p></details>
+      <details><summary>As questões são do ENEM?<i aria-hidden="true"></i></summary><p>Não. São questões inéditas, elaboradas no modelo do ENEM e ancoradas na Matriz de Referência do Inep. O texto-base pode vir de uma prova oficial ou de um vestibular, sempre com a referência; o comando e as alternativas são novos.</p></details>
+      <details><summary>Quais disciplinas estão disponíveis?<i aria-hidden="true"></i></summary><p>Treze: Língua Portuguesa, Literatura, Língua Estrangeira (Inglês ou Espanhol), Artes, Educação Física, História, Geografia, Filosofia, Sociologia, Física, Química, Biologia e Matemática.</p></details>
+      <details><summary>Como funcionam os créditos?<i aria-hidden="true"></i></summary><p>Cada questão gerada usa 1 crédito, e refazer uma questão usa outro. Gerar ou refazer imagem, gráfico ou tabela não custa nada. Se a questão não for gerada ou sair com erro, o crédito volta. Os créditos valem 12 meses.</p></details>
+      <details><summary>Posso parcelar?<i aria-hidden="true"></i></summary><p>Sim. No cartão de crédito, o pacote pode ser parcelado sem acréscimo. Também dá para pagar à vista no Pix.</p></details>
+      <details><summary>Em que formato recebo o simulado?<i aria-hidden="true"></i></summary><p>Num caderno diagramado no padrão do ENEM, em duas versões: a do aluno, com a folha de gabarito no fim, e a do professor, com gabarito, ficha pedagógica e resolução comentada. Dá para baixar em PDF ou Word, ou receber pelo WhatsApp.</p></details>
+      <details><summary>Serve para vestibulares além do ENEM?<i aria-hidden="true"></i></summary><p>O formato é o do ENEM, que também orienta muitos vestibulares. A base de textos inclui provas da Fuvest, da Unesp e da Unicamp.</p></details>
+    </div>
+  </div>
+</section>
+
+<!-- FECHAMENTO -->
+<section class="final" id="fim" aria-label="Fechamento">
+  <div class="final__img lq" aria-hidden="true" style="--lq:url(data:image/webp;base64,UklGRsgAAABXRUJQVlA4ILwAAADwBQCdASogABIAPt1epkyopSOiMAgBEBuJYgCdMoMhLgAU0YTslD/SLw+ftfHBnUfqSjfETnh5AAD+3R+z1PF+8CjpNUYnJNPfbn/hjnNJrLubSW2fWFAeQxPxMZUfs2wvy54ZVi0DeNq+PO5M6MkxQHNgURW8iS2a/NnSYmB+BdO4l748nF70OMDtDzprvBQ6wEvY7zR4crxlhqQ87FIxaDNly4P8fi3ZK3dvlCTJCVZmD+926jQy9hoAAA==)"><img class="lz" decoding="async" src="assets/hero-end.webp" alt="" width="1920" height="1084" loading="lazy"></div>
+  <div class="wrap">
+    <div class="final__in rv">
+      <p class="kicker kicker--q"><b>Gabarito</b><span>Fim da prova</span></p>
+      <h2 class="final__t">Gabaritou.</h2>
+      <p class="lead">Seu próximo simulado pode ficar pronto antes do intervalo. O resto da noite é seu.</p>
+      <div class="band__cta">
+        <a class="btn btn--accent" href="#planos">Escolher meu pacote</a>
+        <a class="btn btn--line" href="#questao">Resolver a questão de exemplo</a>
+      </div>
+      <div class="share">
+        <span>Conhece um professor que corrige prova de madrugada?</span>
+        <a class="btn btn--line btn--sm" id="shareWa" href="#" target="_blank" rel="noopener">Enviar pelo WhatsApp</a>
+        <button class="btn btn--line btn--sm" id="copyLink" type="button">Copiar link</button>
+      </div>
+    </div>
+  </div>
+</section>
+</main>
+
+<footer class="foot">
+  <div class="wrap foot__in">
+    <a class="brand brand--foot" href="#topo" aria-label="Gera Enem, voltar ao início"><img class="brand__logo" src="assets/logo.webp" alt="Gera Enem" width="710" height="120" loading="lazy" decoding="async"><span class="brand__slogan">Seu tema. Seu desafio. Seu simulado.</span></a>
+    <p>Não é um produto oficial do Inep nem do MEC. ENEM é o Exame Nacional do Ensino Médio, aplicado pelo Inep. As questões geradas são inéditas e servem para treino.</p>
+    <p>© 2026 · Gera Enem <button class="motion-off" id="motionOff" type="button" hidden>Ver sem animações</button></p>
+  </div>
+</footer>
+
+<nav class="sheetnav" aria-label="Cartão-resposta: navegação por seção">
+  <p class="sheetnav__t">Cartão-resposta</p>
+  <ol id="sheetnav"></ol>
+</nav>
+<!-- login e cadastro: a mesma conta do aplicativo (Google ou e-mail e senha); depois de entrar, vai para /app/ -->
+<div class="auth" id="auth" hidden>
+  <div class="auth__fundo" data-fechar></div>
+  <div class="auth__caixa" role="dialog" aria-modal="true" aria-labelledby="authTitulo">
+    <button class="auth__x" type="button" data-fechar aria-label="Fechar">&#x2715;</button>
+    <img class="auth__logo" src="assets/logo.webp" alt="" width="710" height="120">
+    <h2 class="auth__t" id="authTitulo">Acesse o seu Gera Enem</h2>
+    <div class="auth__abas" role="tablist" aria-label="Entrar ou cadastrar">
+      <button type="button" role="tab" id="abaLogin" data-aba="login" aria-selected="true" aria-controls="formLogin">Entrar</button>
+      <button type="button" role="tab" id="abaCadastro" data-aba="cadastro" aria-selected="false" aria-controls="formCadastro">Cadastrar</button>
+    </div>
+    <button class="auth__google" type="button" id="authGoogle">
+      <svg viewBox="0 0 48 48" aria-hidden="true"><path fill="#FFC107" d="M43.6 20.5H42V20H24v8h11.3C33.7 32.7 29.2 36 24 36c-6.6 0-12-5.4-12-12s5.4-12 12-12c3.1 0 5.8 1.2 7.9 3l5.7-5.7C34 6.1 29.3 4 24 4 12.9 4 4 12.9 4 24s8.9 20 20 20 20-8.9 20-20c0-1.3-.1-2.4-.4-3.5z"/><path fill="#FF3D00" d="M6.3 14.7l6.6 4.8C14.7 15.1 19 12 24 12c3.1 0 5.8 1.2 7.9 3l5.7-5.7C34 6.1 29.3 4 24 4 16.3 4 9.7 8.3 6.3 14.7z"/><path fill="#4CAF50" d="M24 44c5.2 0 9.9-2 13.4-5.2l-6.2-5.2C29.2 35.1 26.7 36 24 36c-5.2 0-9.6-3.3-11.3-7.9l-6.5 5C9.5 39.6 16.2 44 24 44z"/><path fill="#1976D2" d="M43.6 20.5H42V20H24v8h11.3c-.8 2.2-2.2 4.2-4.1 5.6l6.2 5.2C37 39.2 44 34 44 24c0-1.3-.1-2.4-.4-3.5z"/></svg>
+      <span>Continuar com Google</span>
+    </button>
+    <p class="auth__ou"><span>ou com e-mail e senha</span></p>
+    <form class="auth__form" id="formLogin" role="tabpanel" aria-labelledby="abaLogin" novalidate>
+      <label for="loginEmail">E-mail</label>
+      <input id="loginEmail" type="email" autocomplete="email" inputmode="email" placeholder="voce@exemplo.com" required>
+      <label for="loginSenha">Senha</label>
+      <input id="loginSenha" type="password" autocomplete="current-password" required>
+      <button class="btn btn--accent" type="submit">Entrar no app</button>
+      <p class="auth__troca">Ainda não tem conta? <button type="button" data-aba="cadastro">Cadastre-se</button></p>
+    </form>
+    <form class="auth__form" id="formCadastro" role="tabpanel" aria-labelledby="abaCadastro" novalidate hidden>
+      <label for="cadastroEmail">E-mail</label>
+      <input id="cadastroEmail" type="email" autocomplete="email" inputmode="email" placeholder="voce@exemplo.com" required>
+      <label for="cadastroSenha">Senha <small>(pelo menos 6 caracteres)</small></label>
+      <input id="cadastroSenha" type="password" autocomplete="new-password" minlength="6" required>
+      <button class="btn btn--accent" type="submit">Criar minha conta</button>
+      <p class="auth__troca">Já tem conta? <button type="button" data-aba="login">Entrar</button></p>
+    </form>
+    <p class="auth__msg" id="authMsg" role="alert" hidden></p>
+  </div>
+</div>
+<div class="toast" role="status" aria-live="polite" id="toast"></div>

@@ -162,12 +162,26 @@ function initAuth(){
     currentSession = session;
     currentUser = session ? session.user : null;
     atualizaHeaderAuth();
+    // v18.44: saiu da conta no site publicado → volta para a página inicial
+    if(_event === "SIGNED_OUT" && appNoSite()) location.replace("/");
   });
   supabaseClient.auth.getSession().then(({ data }) => {
     currentSession = data.session;
     currentUser = data.session ? data.session.user : null;
     atualizaHeaderAuth();
+    // v18.44: chegou ao app sem estar logado → página inicial, com a janela de login aberta
+    if(!data.session && appNoSite()) location.replace("/?entrar");
   });
+}
+
+/* v18.44 — PÁGINA INICIAL E APP NO MESMO ENDEREÇO (12/10/2026). No site publicado, a página
+   inicial do Gera Enem fica na raiz e o app em /app/ (ver netlify.toml). O login e o cadastro
+   são feitos na página inicial (Google ou e-mail e senha, a mesma conta do Supabase); como o
+   endereço é o mesmo, a sessão vale nos dois. Quem abre /app/ sem login volta para "/?entrar".
+   Fora do site (arquivo local, testes, robô do WhatsApp em localhost/index.html) nada muda:
+   o app continua com a própria janela de login. */
+function appNoSite(){
+  return /^https?:$/.test(location.protocol) && /^\/app(\/|$)/.test(location.pathname);
 }
 
 // Cabeçalho de autorização enviado ao backend (Supabase Edge Functions), que
@@ -8563,6 +8577,9 @@ if(document.fonts && document.fonts.ready) document.fonts.ready.then(calibraBarr
    v18.43 — (12/10/2026) cores do site do Gera Enem na tela: só azuis e amarelos (sem verde e
    sem vermelho), emojis pintados de um tom só (iconBtn e a marca CORRETA/INCORRETA ganham
    um <span>). PDF, Word e impressão não mudam. A entrada de automação não muda.
+   v18.44 — (12/10/2026) página inicial e app no mesmo endereço: no site publicado o app fica
+   em /app/ e quem chega sem login vai para a página inicial (appNoSite). A entrada de
+   automação não muda (o robô abre o app em localhost/index.html).
 
    O pedido feito pelo WhatsApp (formulário de 6 perguntas, etapa B1) fica na fila
    `wa_trabalhos`. Quem o executa é um robô (robo/operario.mjs, rodando no GitHub

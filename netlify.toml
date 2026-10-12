@@ -5,11 +5,13 @@
 # Depois de ligar o repositório em Site configuration → Build & deploy, este
 # arquivo diz ao Netlify o que fazer a cada push na branch main.
 #
-# O aplicativo é um único arquivo já compilado (index.html, gerado por
-# src/combine.py a partir de src/app.js + src/fonts.js). Não há dependências para
-# instalar nem empacotador para rodar: o "build" apenas separa o arquivo que vai
-# ao ar dentro de dist/, para que o código-fonte (src/, supabase/) não seja
-# publicado junto com ele.
+# v18.44 (12/10/2026) — página inicial e app no mesmo endereço:
+#   /      → a página inicial do Gera Enem (pasta pagina/: index.html, _headers e assets/)
+#   /app/  → o aplicativo (index.html da raiz do repositório, gerado por src/combine.py)
+# O login e o cadastro são feitos na página inicial; como o endereço é o mesmo, a sessão
+# do Supabase vale no app. Não há dependências para instalar nem empacotador para rodar:
+# o "build" só monta dist/ com os dois, para que o código-fonte (src/, supabase/, tests/)
+# não seja publicado junto.
 [build]
-  command = "mkdir -p dist && cp index.html dist/index.html"
+  command = "rm -rf dist && mkdir -p dist/app && cp -R pagina/. dist/ && cp index.html dist/app/index.html"
   publish = "dist"

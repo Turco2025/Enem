@@ -177,6 +177,44 @@ Teste: `verify_fontes_app.js` — 19 verificações; as seções B e C bis prova
 quatro marcas ligadas ao mesmo tempo nenhuma conferência bloqueia, e que nenhuma delas tem sequer um
 `return true` no corpo. `verify_gabarito_coerente.js` H1 passou a exigir o contrário do que exigia.
 
+## Página inicial e app no mesmo endereço: login e cadastro na página inicial (app v18.44, 12/10/2026)
+
+O endereço do site passou a abrir a página inicial do Gera Enem, e o aplicativo foi para `/app/`.
+Decisão do professor: a pessoa chega pela página inicial, faz o cadastro ou o login ali (Google
+ou e-mail e senha, a mesma conta de sempre) e só então entra no app.
+
+**Como fica no site.**
+- `/` é a página inicial (pasta `pagina/`). O menu tem "Entrar" e "Cadastrar" (no celular, só
+  "Entrar", e a janela tem as duas abas). Quem já está logado vê "Abrir o app".
+- A janela de login tem "Continuar com Google" e o formulário de e-mail e senha. Depois de entrar,
+  a pessoa vai para `/app/`. No cadastro com confirmação por e-mail, o link do e-mail volta para a
+  página inicial, que segue para o app.
+- `/app/` é o aplicativo (o `index.html` da raiz, como antes). Quem abre `/app/` sem login volta
+  para `/?entrar`, com a janela de login aberta. "Sair" no app volta para a página inicial.
+- Como a página e o app estão no mesmo endereço, o login feito num vale no outro (o Supabase
+  guarda a sessão por endereço). Quem já estava logado continua logado.
+
+**Por que o Google volta para a raiz.** O app sempre pediu ao Supabase para voltar à raiz do
+site, endereço que já está liberado no login. A página inicial pede o mesmo e, ao receber a
+sessão de volta, segue para `/app/`. Assim não depende de liberar um endereço novo no painel do
+Supabase.
+
+**O que mudou nos arquivos.**
+- `netlify.toml`: o build monta `dist/` com `pagina/` na raiz e `index.html` em `dist/app/`.
+- `pagina/`: a página inicial pronta (`index.html`, `_headers` e `assets/` com imagens e vídeos).
+- `pagina_fonte/`: as fontes da página inicial e `montar.py`, que gera `pagina/index.html`
+  (`python3 pagina_fonte/montar.py`). O login fica em `pagina_fonte/src/auth.js`.
+- `src/app.js`: `appNoSite()` e os dois redirecionamentos em `initAuth` (sem login → `/?entrar`;
+  "Sair" → `/`). Fora do site (arquivo local, testes, robô do WhatsApp em
+  `localhost/index.html`) nada muda: o app mantém a própria janela de login.
+
+**O que não mudou.** O backend, o banco, o robô do WhatsApp, o PDF e o Word. Os créditos e o
+pagamento são as próximas etapas.
+
+Testes: `node tests/verify_pagina_login_v1844.js` (17 verificações: menu, abas, cadastro, senha
+errada, login, "Abrir o app", "Sair", `/app/` sem login, volta do Google, menu de 390 a 1366 px
+sem rolagem lateral, sem erros). As 12 suítes do app continuam passando.
+
 ## Cores do site do Gera Enem: só azuis e amarelos na tela (app v18.43, 12/10/2026)
 
 A tela do aplicativo passou a usar só os azuis e os amarelos da página inicial do Gera Enem.
