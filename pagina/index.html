@@ -435,6 +435,24 @@ input[type=range]::-moz-range-thumb{width:16px;height:16px;border-radius:50%;bac
   .diff:hover .ic{stroke:var(--ink)}
   .diff:hover .icf{fill:#0B5F8A}
 }
+/* celular (sem mouse): o mesmo efeito vai para o item que passa pelo meio da tela ou que é tocado (.ativo, posto pelo JS) */
+@media (hover:none),(pointer:coarse){
+  .wsteps{margin-inline:-10px}
+  .wsteps li{padding-inline:10px;border-radius:12px}
+}
+.wsteps li.ativo{background-color:var(--sky);border-bottom-color:transparent}
+.wsteps li.ativo strong{color:var(--ink)}
+.wsteps li.ativo span{color:#2C4256}
+.wsteps li.ativo b{background:var(--ink);color:var(--sky)}
+.diffs .diff.ativo{z-index:2;translate:0 -6px;border-radius:14px;box-shadow:0 24px 40px -20px rgba(0,0,0,.95),0 0 0 3px rgba(185,229,250,.2),0 0 30px -6px rgba(185,229,250,.5);
+  transition:background-color .35s ease,translate .6s cubic-bezier(.3,2.4,.5,1),box-shadow .35s var(--e-out),border-radius .35s var(--e-out);
+  transition:background-color .35s ease,translate .6s linear(0,.9 10%,1.6 20%,2.05 28%,2.17 35%,1.9 43%,1.2 52%,.6 61%,.5 65%,.62 72%,.85 84%,1),box-shadow .35s var(--e-out),border-radius .35s var(--e-out)}
+.diff.ativo{background-color:var(--sky)}
+.diff.ativo h3{color:var(--ink)}
+.diff.ativo p{color:#2C4256}
+.diff.ativo .ic{stroke:var(--ink)}
+.diff.ativo .icf{fill:#0B5F8A}
+@media (prefers-reduced-motion:reduce){html:not(.motion-on) .diffs .diff.ativo{translate:none}}
 @media (max-width:980px){.diffs{grid-template-columns:repeat(2,minmax(0,1fr))}.diff:not(:nth-child(3n+1)){border-left:0}.diff:nth-child(2n){border-left:1px solid rgba(185,229,250,.45)}}
 @media (max-width:620px){.diffs{grid-template-columns:1fr}.diff:nth-child(2n){border-left:0}}
 
@@ -2225,6 +2243,39 @@ html.auth-aberta{overflow:hidden}
     toast('Pronto: o site voltou para a versão sem animações.');
   });
   syncMotionUI();
+
+  /* ================= celular: o efeito do "passar o mouse" sem mouse =================
+     Passos do WhatsApp (seção 05) e Diferenciais (07 no computador, 06 no celular): no computador, o item ganha o azul-claro
+     (e, nos Diferenciais, salta) ao passar o mouse. No celular não há mouse: o mesmo efeito vai
+     para o item que está passando pelo meio da tela ao rolar, e para o item tocado. */
+  const semMouse = matchMedia('(hover: none), (pointer: coarse)');
+  function realceSemMouse(seletor) {
+    const itens = [...document.querySelectorAll(seletor)];
+    if (!itens.length) return;
+    let atual = null, quadro = 0, tocadoAte = 0;
+    const marca = el => { if (el === atual) return; if (atual) atual.classList.remove('ativo'); if (el) el.classList.add('ativo'); atual = el; };
+    const escolhe = () => {
+      quadro = 0;
+      if (!semMouse.matches) return marca(null);
+      if (Date.now() < tocadoAte) return;
+      const meio = innerHeight * 0.5; let melhor = null, dist = Infinity;
+      for (const el of itens) {
+        const r = el.getBoundingClientRect();
+        if (r.bottom < innerHeight * 0.18 || r.top > innerHeight * 0.82) continue;
+        const d = Math.abs((r.top + r.bottom) / 2 - meio);
+        if (d < dist) { dist = d; melhor = el; }
+      }
+      marca(melhor);
+    };
+    const pede = () => { if (!quadro) quadro = requestAnimationFrame(escolhe); };
+    addEventListener('scroll', pede, { passive: true });
+    addEventListener('resize', pede);
+    semMouse.addEventListener('change', pede);
+    itens.forEach(el => el.addEventListener('click', () => { if (!semMouse.matches) return; tocadoAte = Date.now() + 900; marca(el); }));
+    pede();
+  }
+  realceSemMouse('.wsteps li');
+  realceSemMouse('.diffs .diff');
 
   heroSize();
   addEventListener('load', () => { heroSize(); kick(); });

@@ -613,6 +613,39 @@
   });
   syncMotionUI();
 
+  /* ================= celular: o efeito do "passar o mouse" sem mouse =================
+     Passos do WhatsApp (seção 05) e Diferenciais (07 no computador, 06 no celular): no computador, o item ganha o azul-claro
+     (e, nos Diferenciais, salta) ao passar o mouse. No celular não há mouse: o mesmo efeito vai
+     para o item que está passando pelo meio da tela ao rolar, e para o item tocado. */
+  const semMouse = matchMedia('(hover: none), (pointer: coarse)');
+  function realceSemMouse(seletor) {
+    const itens = [...document.querySelectorAll(seletor)];
+    if (!itens.length) return;
+    let atual = null, quadro = 0, tocadoAte = 0;
+    const marca = el => { if (el === atual) return; if (atual) atual.classList.remove('ativo'); if (el) el.classList.add('ativo'); atual = el; };
+    const escolhe = () => {
+      quadro = 0;
+      if (!semMouse.matches) return marca(null);
+      if (Date.now() < tocadoAte) return;
+      const meio = innerHeight * 0.5; let melhor = null, dist = Infinity;
+      for (const el of itens) {
+        const r = el.getBoundingClientRect();
+        if (r.bottom < innerHeight * 0.18 || r.top > innerHeight * 0.82) continue;
+        const d = Math.abs((r.top + r.bottom) / 2 - meio);
+        if (d < dist) { dist = d; melhor = el; }
+      }
+      marca(melhor);
+    };
+    const pede = () => { if (!quadro) quadro = requestAnimationFrame(escolhe); };
+    addEventListener('scroll', pede, { passive: true });
+    addEventListener('resize', pede);
+    semMouse.addEventListener('change', pede);
+    itens.forEach(el => el.addEventListener('click', () => { if (!semMouse.matches) return; tocadoAte = Date.now() + 900; marca(el); }));
+    pede();
+  }
+  realceSemMouse('.wsteps li');
+  realceSemMouse('.diffs .diff');
+
   heroSize();
   addEventListener('load', () => { heroSize(); kick(); });
   kick();
