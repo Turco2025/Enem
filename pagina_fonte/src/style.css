@@ -378,6 +378,9 @@ input[type=range]::-moz-range-thumb{width:16px;height:16px;border-radius:50%;bac
 .resol p{margin-top:10px}
 @media (max-width:900px){.real__grid{grid-template-columns:1fr}.panel{position:static}}
 @media (max-width:600px){.sheet__txt,.sheet__cmd{text-align:left;text-indent:0}}
+/* celular (em pé, até 600 px, ou deitado): a seção 6 ("Uma questão de verdade") não aparece,
+   nem os botões e o link do menu que levam até ela */
+@media (max-width:600px),(pointer:coarse) and (max-height:500px){#questao,a[href="#questao"]{display:none}}
 
 /* 06 diferenciais */
 .diffs-sec{position:relative;padding-block:clamp(80px,10vw,150px);isolation:isolate;overflow:hidden;background:radial-gradient(ellipse 70% 50% at 85% 0%,rgba(247,197,102,.08),rgba(247,197,102,0) 60%)}
