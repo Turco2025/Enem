@@ -698,7 +698,7 @@ Deno.test("créditos (Etapa 2): pedido maior que os créditos disponíveis é ba
   resetar(); vincula("u2", "Prof", { ilimitado: false, limite_diario_wa: 30 }); banco.saldos.set("u2", 0);
   await pedir("wamid.cr0", "3");
   const aviso0 = enviosWa[enviosWa.length - 2];
-  ok(banco.mensagens.get("wamid.cr07").acao === "sem_creditos" && banco.trabalhos.length === 0 && aviso0.text.body.includes("Seus créditos acabaram") && aviso0.text.body.includes("simuladorenem159753.netlify.app"), "saldo 0 → barrado, nada gravado, aviso com o site");
+  ok(banco.mensagens.get("wamid.cr07").acao === "sem_creditos" && banco.trabalhos.length === 0 && aviso0.text.body.includes("Seus créditos acabaram") && aviso0.text.body.includes("geraenem.com.br"), "saldo 0 → barrado, nada gravado, aviso com o site");
   ok(banco.conversas.get("556296116652").estado.passo === "confirmar" && ultimo().interactive?.type === "button", "volta para a confirmação com os botões");
   resetar(); vincula("u2", "Prof", { ilimitado: false, limite_diario_wa: 30 }); banco.saldos.set("u2", 10);
   banco.trabalhos.push({ id: "t-p", user_id: "u2", telefone: "556296116652", status: "pendente", criado_em: new Date().toISOString(), parametros: { quantidade: 4, disciplina: "Física" }, erro: null });

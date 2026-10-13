@@ -24,7 +24,7 @@ import sys
 
 AQUI = Path(__file__).resolve().parent
 PAGINA = AQUI.parent / 'pagina'
-ORIGEM = 'https://simuladorenem159753.netlify.app'
+ORIGEM = 'https://geraenem.com.br'   # domínio próprio (13/10/2026); antes simuladorenem159753.netlify.app
 sys.path.insert(0, str(AQUI / 'src'))
 sys.dont_write_bytecode = True
 import sheet  # noqa: E402

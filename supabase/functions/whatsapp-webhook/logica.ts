@@ -424,7 +424,7 @@ const disparoImediato = (env: Env) => !!env.WA_GITHUB_TOKEN;
 // ---------------------------------------------------------------------------
 // textos das respostas (etapa A1)
 // ---------------------------------------------------------------------------
-const SITE_GERA_ENEM = "https://simuladorenem159753.netlify.app";
+const SITE_GERA_ENEM = "https://geraenem.com.br";   // domínio próprio (13/10/2026)
 export const TEXTOS = {
   vinculoOk: (nome: string, emailMascarado: string) =>
     `Pronto${nome ? ", " + nome : ""}! Este número ficou vinculado à sua conta do Gerador ENEM${emailMascarado ? ` (${emailMascarado})` : ""}.\n\n` +

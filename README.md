@@ -177,6 +177,20 @@ Teste: `verify_fontes_app.js` — 19 verificações; as seções B e C bis prova
 quatro marcas ligadas ao mesmo tempo nenhuma conferência bloqueia, e que nenhuma delas tem sequer um
 `return true` no corpo. `verify_gabarito_coerente.js` H1 passou a exigir o contrário do que exigia.
 
+## Domínio próprio: geraenem.com.br (13/10/2026)
+
+O site passou a ter domínio próprio, `geraenem.com.br`, já configurado no Netlify como endereço
+principal (o endereço `simuladorenem159753.netlify.app` continua funcionando). No código, mudaram
+só os dois lugares que escreviam o endereço por extenso:
+- `pagina_fonte/montar.py` (`ORIGEM`): link de compartilhamento e imagem de prévia (`og:url`,
+  `og:image`) das páginas inicial, do professor e do aluno, geradas de novo;
+- `supabase/functions/whatsapp-webhook/logica.ts` (`SITE_GERA_ENEM`): o endereço do site na
+  mensagem do WhatsApp para quem está sem créditos (teste em `teste_logica.ts` atualizado).
+O login usa o endereço de onde a pessoa está (`location.origin`), então não muda no código. No
+Supabase (Authentication → URL Configuration), a Site URL passa a ser `https://geraenem.com.br`, e
+as Redirect URLs incluem `https://geraenem.com.br/**`, `https://www.geraenem.com.br/**` e o
+endereço antigo do Netlify.
+
 ## Auditoria local só na conta do dono (app v18.47, 13/10/2026)
 
 Decisão do professor: a auditoria local continua funcionando, mas a caixa "Auditoria local (sem
