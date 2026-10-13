@@ -312,6 +312,80 @@ function jsonResponse(body: unknown, status = 200) {
   });
 }
 
+/* ─────────── v74.40 — ETAPA 2: CRÉDITOS (13/10/2026) ───────────
+   Decisão do professor: 1 crédito por questão gerada, 1 por "refazer" (Regenerar, Mais
+   fácil/difícil, Outro contexto, Editar); planejar recortes e refazer imagem, gráfico ou
+   tabela não custam. Se a questão não sair, o crédito volta. A conta do dono
+   (perfis.ilimitado) não usa créditos. As regras ficam no banco (migração
+   2026-10-13_etapa2_creditos.sql): creditos_cobrar / creditos_devolver, chamados aqui com a
+   chave de serviço.
+   · Todo POST identifica quem pede pelo token de login (Authorization: Bearer). Sem
+     usuário válido: 401.
+   · Cada questão pedida pelo app tem um identificador (cobrancaId). As retentativas
+     automáticas do MESMO pedido (546, fonte bloqueada, auditor) mandam o mesmo
+     identificador e não cobram de novo. Um crédito paga UMA entrega: o mesmo identificador
+     pedido de novo depois da entrega é cobrado como questão nova (exceção: questões de um
+     pedido do WhatsApp em geração, que o robô pode refazer até 3 vezes; ver o banco).
+   · A cobrança acontece ANTES do trabalho caro; sem crédito, 402 e nada é gerado.
+   · Resposta que não entrega a questão (4xx/5xx) devolve o crédito cobrado nela.
+   · A questão que chega mas não pode ser entregue no app (gabarito divergente, recurso
+     visual ou imagem que não saiu, geração interrompida) é devolvida pelo app com
+     {devolverCredito: true, cobrancaId}, até 2 horas depois e no máximo 30 por dia
+     (proteção contra abuso; as devoluções feitas pelo próprio servidor não têm limite).
+   · Questão devolvida que acaba entregue depois (imagem pedida de novo pelo professor) é
+     cobrada de novo: o app manda {confirmarCredito: true, cobrancaId} ANTES de refazer. */
+const CREDITOS_JANELA_DEVOLUCAO_APP = "2 hours";   // contadas da última vez que o pedido chegou ao servidor
+async function usuarioDoPedido(req: Request): Promise<{ id: string } | null> {
+  const token = (req.headers.get("authorization") || "").replace(/^Bearer\s+/i, "").trim();
+  if (!token) return null;
+  try {
+    const { data, error } = await supabase.auth.getUser(token);
+    if (error || !data?.user?.id) return null;
+    return { id: data.user.id };
+  } catch (_) {
+    return null;
+  }
+}
+function idCobrancaValido(v: unknown): string | null {
+  const s = String(v ?? "").trim();
+  return /^[A-Za-z0-9_.:-]{8,80}$/.test(s) ? s : null;
+}
+async function cobrarCredito(userId: string, cobrancaId: string, motivo: "questao" | "refazer"): Promise<any> {
+  const { data, error } = await supabase.rpc("creditos_cobrar", { p_user: userId, p_cobranca: cobrancaId, p_motivo: motivo });
+  if (error) throw new Error(`créditos: ${error.message}`);
+  return data;
+}
+async function devolverCredito(userId: string, cobrancaId: string, motivo: string, janela: string | null = null): Promise<any> {
+  const { data, error } = await supabase.rpc("creditos_devolver", { p_user: userId, p_cobranca: cobrancaId, p_motivo: motivo.slice(0, 200), p_janela: janela });
+  if (error) { console.error(`[créditos] devolver ${cobrancaId}: ${error.message}`); return null; }
+  return data;
+}
+/* Fecha a cobrança de um pedido de questão: se a resposta não entregou a questão, devolve o
+   crédito cobrado NESTE pedido; se entregou de vez, registra a entrega (um crédito paga uma
+   entrega: o mesmo identificador pedido de novo depois disso é cobrado como questão nova).
+   Em qualquer caso, a resposta leva o saldo em "creditos".
+   "Entregou de vez" exclui a questão reprovada pelo auditor de fontes que o app ainda vai pedir
+   de novo com o MESMO identificador (app: reprovadaNaAuditoria, MAX_TENTATIVAS_FONTE = 3). */
+const CREDITOS_TENTATIVAS_FONTE_APP = 3;
+async function fechaCobranca(resp: Response, userId: string, cobrancaId: string, cob: any, tentativa = 0): Promise<Response> {
+  let corpo: any = null;
+  try { corpo = await resp.clone().json(); } catch (_) { corpo = null; }
+  const entregou = resp.status === 200 && !!corpo && !!corpo.question && !corpo.error;
+  let creditos: any = { cobranca: cobrancaId, ilimitado: !!cob?.ilimitado, cobrado: !!cob?.cobrado, saldo: cob?.saldo ?? null };
+  const appVaiPedirDeNovo = entregou && !!corpo.question.fonteNaoVerificada && !corpo.fontesDiag?.ultimoRecurso
+    && Number(tentativa) >= 1 && Number(tentativa) < CREDITOS_TENTATIVAS_FONTE_APP;
+  if (entregou && !appVaiPedirDeNovo && !cob?.ilimitado) {
+    const { error } = await supabase.rpc("creditos_entregue", { p_user: userId, p_cobranca: cobrancaId });
+    if (error) console.error(`[créditos] entregue ${cobrancaId}: ${error.message}`);
+  }
+  if (!entregou && cob?.cobrado) {
+    const dev = await devolverCredito(userId, cobrancaId, `servidor: HTTP ${resp.status}`);
+    creditos = { ...creditos, cobrado: false, devolvido: !!dev?.devolvido, saldo: dev?.saldo ?? creditos.saldo };
+  }
+  if (!corpo || typeof corpo !== "object" || Array.isArray(corpo)) return resp;
+  return jsonResponse({ ...corpo, creditos }, resp.status);
+}
+
 /* ---------------- Prompt building (porta fiel da lógica do app cliente) ---------------- */
 
 // Objetos de conhecimento oficiais (Anexo da Matriz de Referência do ENEM), por área.
@@ -8125,6 +8199,39 @@ Deno.serve(async (req: Request) => {
   try { body = await req.json(); } catch { return jsonResponse({ error: "JSON inválido." }, 400); }
   if (body?.selftest === true) return selfTestResponse();
 
+  // v74.40 — Etapa 2 (créditos): todo pedido identifica quem pede (token de login do app).
+  const usuario = await usuarioDoPedido(req);
+  if (!usuario) {
+    return jsonResponse({ error: "Sua sessão expirou. Entre de novo no app para gerar questões.", code: "sem_login" }, 401);
+  }
+  // Devolução pedida pelo app: a questão chegou, mas não pôde ser entregue ao professor.
+  if (body?.devolverCredito === true) {
+    const id = idCobrancaValido(body.cobrancaId);
+    if (!id) return jsonResponse({ error: "Campo 'cobrancaId' inválido." }, 400);
+    const dev = await devolverCredito(usuario.id, id, `app: ${String(body.motivo || "erro").slice(0, 150)}`, CREDITOS_JANELA_DEVOLUCAO_APP);
+    if (!dev) return jsonResponse({ error: "Não foi possível devolver o crédito agora." }, 502);
+    return jsonResponse({ creditos: { ...dev, cobranca: id } });
+  }
+  // Cobrança de novo de uma questão devolvida que acabou entregue (ex.: a imagem falhou, o
+  // crédito voltou, e o professor pediu a imagem outra vez). O app pede ANTES de refazer.
+  if (body?.confirmarCredito === true) {
+    const id = idCobrancaValido(body.cobrancaId);
+    if (!id) return jsonResponse({ error: "Campo 'cobrancaId' inválido." }, 400);
+    const { data: rec, error: errRec } = await supabase.rpc("creditos_reconfirmar", { p_user: usuario.id, p_cobranca: id });
+    if (errRec) {
+      console.error(`[créditos] reconfirmar ${id}: ${errRec.message}`);
+      return jsonResponse({ error: "Não foi possível conferir seus créditos agora. Tente de novo em instantes.", code: "creditos_indisponivel" }, 503);
+    }
+    if (!rec?.ok) {
+      return jsonResponse({
+        error: "Seus créditos acabaram. Compre um pacote de créditos para continuar gerando questões.",
+        code: "sem_creditos",
+        creditos: { cobranca: id, ilimitado: false, cobrado: false, saldo: Number(rec?.saldo) || 0 },
+      }, 402);
+    }
+    return jsonResponse({ creditos: { ...rec, cobranca: id } });
+  }
+
   const area = (body.area || "").toString();
   if (!AREA_LABELS[area]) {
     return jsonResponse({ error: `Campo 'area' inválido ou ausente. Use um destes valores: ${Object.keys(AREA_LABELS).join(", ")}.` }, 400);
@@ -8243,6 +8350,35 @@ ATENÇÃO — sua resposta anterior não pôde ser usada: o argumento da ferrame
     }
   }
 
+  /* v74.40 — Etapa 2 (créditos): a questão é cobrada ANTES do trabalho caro. Sem crédito,
+     402 e nada é gerado. A geração em si (abaixo, sem mudança) roda em gerarQuestaoPadrao;
+     fechaCobranca devolve o crédito quando a resposta não entrega a questão. */
+  const cobrancaId = idCobrancaValido(body.cobrancaId) || `srv-${crypto.randomUUID()}`;
+  const motivoCredito: "questao" | "refazer" = body.motivoCredito === "refazer" ? "refazer" : "questao";
+  let cobranca: any;
+  try {
+    cobranca = await cobrarCredito(usuario.id, cobrancaId, motivoCredito);
+  } catch (err) {
+    console.error(`[créditos] cobrar ${cobrancaId}: ${String((err as any)?.message || err)}`);
+    return jsonResponse({ error: "Não foi possível conferir seus créditos agora. Tente de novo em instantes.", code: "creditos_indisponivel" }, 503);
+  }
+  if (!cobranca?.ok) {
+    return jsonResponse({
+      error: "Seus créditos acabaram. Compre um pacote de créditos para continuar gerando questões.",
+      code: "sem_creditos",
+      creditos: { cobranca: cobrancaId, ilimitado: false, cobrado: false, saldo: Number(cobranca?.saldo) || 0 },
+    }, 402);
+  }
+  let respostaPadrao: Response;
+  try {
+    respostaPadrao = await gerarQuestaoPadrao();
+  } catch (err) {
+    respostaPadrao = jsonResponse({ error: `Erro ao gerar questão: ${String((err as any)?.message || err)}` }, 502);
+  }
+  return await fechaCobranca(respostaPadrao, usuario.id, cobrancaId, cobranca, Number(body.tentativa) || 0);
+
+  // A geração da questão (sem mudança na v74.40; só passou a ficar dentro desta função).
+  async function gerarQuestaoPadrao(): Promise<Response> {
   const recurso = ["nenhum", "imagem", "grafico", "tabela"].includes(body.recurso) ? body.recurso : "nenhum";
   const competenciaNum = typeof body.competenciaNum === "number" ? body.competenciaNum : null;
   const habilidadeCod = body.habilidadeCod ? String(body.habilidadeCod) : null;
@@ -8609,4 +8745,5 @@ ATENÇÃO — sua resposta anterior não pôde ser usada: o argumento da ferrame
   } catch (err) {
     return jsonResponse({ error: `Erro ao gerar questão: ${String((err as any)?.message || err)}` }, 502);
   }
+  }   // fim de gerarQuestaoPadrao (v74.40)
 });

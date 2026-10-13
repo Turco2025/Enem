@@ -146,6 +146,7 @@ function interromperGeracao(){
       q.status = "error"; q.errorMsg = MSG_GERACAO_INTERROMPIDA; q.statusDetalhe = ""; paradas++;
     }else if(q.status === "imagem"){
       q.status = "error"; q.errorMsg = MSG_IMAGEM_INTERROMPIDA; paradas++;
+      devolveCreditoDaQuestao(q, "geração interrompida (imagem)");   // v18.46: a questão não ficou pronta
     }
   });
   console.warn(`[geração] interrompida pelo professor: ${paradas} questão(ões) parada(s)`);
@@ -201,6 +202,235 @@ function atualizaHeaderAuth(){
   // v15: a caixa do WhatsApp acompanha a sessão (carrega o status ao logar, limpa ao sair).
   // Protegida: um erro aqui nunca pode atrapalhar o login nem o formulário.
   try{ waAtualizar(); }catch(e){ console.error("[wa] atualizar:", e); }
+  // v18.46: o saldo de créditos também (mesma proteção).
+  try{ creditosPinta(); creditosAtualizar(); }catch(e){ console.error("[créditos] atualizar:", e); }
+}
+
+/* ======================================================================================
+   v18.46 — CRÉDITOS (Etapa 2, 13/10/2026)
+   1 crédito = 1 questão gerada (também ao refazer). Imagem, gráfico e tabela não gastam
+   crédito. Se a questão não sair, o crédito volta sozinho. Créditos valem 12 meses. A conta
+   do dono não usa créditos (perfis.ilimitado). Quem cobra e devolve é o servidor
+   (generate-question v74.40 + funções creditos_* do banco); o app:
+   · mostra o saldo no topo (botão "Créditos") e a janela dos pacotes;
+   · confere o saldo ANTES de começar (simulado inteiro ou "Regenerar"); sem saldo, abre a
+     janela em vez de gerar. Se a consulta falhar, não bloqueia: o servidor confere de novo;
+   · manda um identificador por questão (cobrancaId): as retentativas automáticas do mesmo
+     pedido não cobram de novo; "Regenerar" é um pedido novo (motivo "refazer");
+   · pede a devolução quando a questão chega mas não pode ser entregue aqui (gabarito
+     divergente, recurso visual ou imagem que não saiu, geração interrompida);
+   · antes de "Tentar novamente" numa imagem de questão com erro, pede para cobrar de novo
+     (a questão vai ficar pronta); se a imagem falhar outra vez, o crédito volta de novo.
+   A compra (Etapa 3) ainda não existe: o clique num pacote só avisa.
+   ====================================================================================== */
+const CREDITOS_PACOTES = [
+  { creditos: 50,  preco: 150, porQuestao: 3.00, desconto: 0 },
+  { creditos: 100, preco: 270, porQuestao: 2.70, desconto: 10 },
+  { creditos: 200, preco: 500, porQuestao: 2.50, desconto: 17 },
+  { creditos: 400, preco: 800, porQuestao: 2.00, desconto: 33, destaque: "Menor preço por questão" },
+];
+const MSG_SEM_CREDITOS = 'Seus créditos acabaram antes desta questão. Compre um pacote em "Créditos" e use "Regenerar" para gerá-la.';
+let creditos = { carregado: false, ilimitado: false, saldo: null, proximaValidade: null };
+let creditosConsulta = null;                 // consulta de saldo em curso (nunca duas ao mesmo tempo)
+const creditosDevolvendo = new Set();        // devoluções em curso, por cobrancaId
+let automacaoCobrancaBase = null;            // pedido do WhatsApp: "wa-<pedido>" (ver enemAutomacao.gerar)
+
+function novoIdCobranca(){
+  if(window.crypto && typeof window.crypto.randomUUID === "function") return "q-" + window.crypto.randomUUID();
+  return "q-" + Date.now().toString(36) + "-" + Math.random().toString(36).slice(2, 12);
+}
+function emAutomacao(){ return automacaoFase === "gerando"; }   // pedido do WhatsApp em geração (robô)
+function plural(n, um, varios){ return n === 1 ? um : varios; }
+function formataReais(v, casas){ return "R$ " + Number(v).toFixed(casas).replace(".", ","); }
+
+// Consulta o saldo (função creditos_meu_saldo do banco). Devolve true se conseguiu.
+function creditosAtualizar(){
+  if(!currentUser || !supabaseClient){
+    creditos = { carregado: false, ilimitado: false, saldo: null, proximaValidade: null };
+    creditosPinta();
+    return Promise.resolve(false);
+  }
+  if(creditosConsulta) return creditosConsulta;
+  const usuario = currentUser.id;
+  const tempo = new Promise(r => setTimeout(() => r({ data: null, error: { message: "tempo esgotado" } }), 8000));
+  let consulta;
+  try{ consulta = Promise.resolve(supabaseClient.rpc("creditos_meu_saldo")); }
+  catch(e){ consulta = Promise.resolve({ data: null, error: { message: String(e && e.message || e) } }); }
+  creditosConsulta = Promise.race([consulta, tempo]).then((r) => {
+    const { data, error } = r || {};
+    if(!currentUser || currentUser.id !== usuario) return false;   // trocou de conta no meio
+    if(error || !data || data.ok !== true){
+      if(error) console.warn("[créditos] saldo:", error.message || error);
+      return false;
+    }
+    creditos = { carregado: true, ilimitado: data.ilimitado === true, saldo: Number(data.saldo) || 0, proximaValidade: data.proxima_validade || null };
+    creditosPinta();
+    return true;
+  }).catch(e => { console.warn("[créditos] saldo:", e); return false; })
+    .finally(() => { creditosConsulta = null; });
+  return creditosConsulta;
+}
+
+// O servidor manda o saldo em toda resposta de questão ({creditos: {...}}).
+function creditosDaResposta(payload){
+  const c = payload && payload.creditos;
+  if(!c || typeof c !== "object") return;
+  if(c.ilimitado === true){ creditos.ilimitado = true; creditos.carregado = true; }
+  else if(typeof c.saldo === "number"){ creditos.saldo = c.saldo; creditos.carregado = true; }
+  creditosPinta();
+}
+
+function creditosTexto(){
+  if(!creditos.carregado) return "Créditos";
+  if(creditos.ilimitado) return "Créditos: ilimitado";
+  return `${creditos.saldo} ${plural(creditos.saldo, "crédito", "créditos")}`;
+}
+
+function creditosPinta(){
+  const b = document.getElementById("btnCreditos");
+  if(!b) return;
+  b.style.display = currentUser ? "" : "none";
+  const n = document.getElementById("creditosBtnTexto");
+  if(n) n.textContent = creditosTexto();
+  b.classList.toggle("vazio", creditos.carregado && !creditos.ilimitado && creditos.saldo === 0);
+  const saldo = document.getElementById("creditosSaldo");
+  if(saldo) saldo.textContent = !creditos.carregado ? "—" : creditos.ilimitado ? "Ilimitado" : String(creditos.saldo);
+  const rot = document.getElementById("creditosSaldoRotulo");
+  if(rot) rot.textContent = creditos.ilimitado ? "esta conta gera sem gastar créditos" : `${plural(creditos.saldo || 0, "crédito disponível", "créditos disponíveis")}`;
+  const val = document.getElementById("creditosValidade");
+  if(val){
+    const d = creditos.proximaValidade ? new Date(creditos.proximaValidade) : null;
+    val.textContent = d && !isNaN(d) && !creditos.ilimitado ? `Os créditos mais antigos valem até ${d.toLocaleDateString("pt-BR")}.` : "";
+  }
+}
+
+function creditosMontaPacotes(){
+  const grade = document.getElementById("creditosPacotes");
+  if(!grade || grade.childElementCount) return;
+  CREDITOS_PACOTES.forEach(p => {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.className = "pacote" + (p.destaque ? " destaque" : "");
+    b.innerHTML = (p.destaque ? `<span class="pacote__selo">${escapeHtml(p.destaque)}</span>` : "") +
+      `<span class="pacote__qtd">${p.creditos}</span><span class="pacote__un">créditos</span>` +
+      `<span class="pacote__preco">${formataReais(p.preco, 0)}</span>` +
+      `<span class="pacote__por">${formataReais(p.porQuestao, 2)} por questão</span>` +
+      `<span class="pacote__desc">${p.desconto ? `${p.desconto}% a menos` : "&nbsp;"}</span>`;
+    b.addEventListener("click", () => {
+      grade.querySelectorAll(".pacote").forEach(x => x.classList.toggle("sel", x === b));
+      const aviso = document.getElementById("creditosCompraAviso");
+      aviso.textContent = `Pacote de ${p.creditos} créditos (${formataReais(p.preco, 0)}). A compra pelo app fica pronta em breve. Até lá, peça seus créditos à equipe do Gera Enem.`;
+      aviso.classList.add("show");
+    });
+    grade.appendChild(b);
+  });
+}
+
+// Abre a janela de créditos. aviso: { precisa: n } (faltou saldo antes de começar) ou
+// { acabaram: true } (o saldo acabou no meio da geração).
+function abreCreditos(aviso){
+  creditosMontaPacotes();
+  const el = document.getElementById("creditosAviso");
+  let texto = "";
+  if(aviso && aviso.precisa){
+    const s = creditos.saldo || 0;
+    texto = aviso.precisa === 1
+      ? `Para gerar esta questão você precisa de 1 crédito, e sua conta está sem créditos.`
+      : `Este simulado tem ${aviso.precisa} questões e você tem ${s} ${plural(s, "crédito", "créditos")}. Compre um pacote ou diminua a quantidade de questões.`;
+  }else if(aviso && aviso.acabaram){
+    texto = `Seus créditos acabaram durante a geração. As questões prontas ficaram; as outras estão marcadas — depois de comprar créditos, use "Regenerar" em cada uma.`;
+  }
+  el.textContent = texto;
+  el.classList.toggle("show", !!texto);
+  const compra = document.getElementById("creditosCompraAviso");
+  compra.classList.remove("show");
+  document.querySelectorAll("#creditosPacotes .pacote").forEach(x => x.classList.remove("sel"));
+  creditosPinta();
+  openModal("creditosModal");
+  creditosAtualizar();
+}
+
+/* Confere o saldo antes de gerar n questões. true = pode gerar. Sem saldo: na tela, abre a
+   janela e devolve false; no robô do WhatsApp, lança "sem créditos: …" (o pedido não é
+   repetido). Consulta que falha não bloqueia (o servidor confere de novo em cada questão). */
+async function creditosLiberaGeracao(n){
+  if(!currentUser) return true;
+  const ok = await creditosAtualizar();
+  if(!ok || creditos.ilimitado || creditos.saldo >= n) return true;
+  if(emAutomacao()) throw new Error(`sem créditos: a conta tem ${creditos.saldo} ${plural(creditos.saldo, "crédito", "créditos")} e o pedido precisa de ${n}`);
+  abreCreditos({ precisa: n });
+  return false;
+}
+
+function erroSemCredito(){
+  const e = new Error(MSG_SEM_CREDITOS);
+  e.semCredito = true;
+  return e;
+}
+
+/* Devolução pedida pelo app: a questão chegou (ou pode ter chegado) ao servidor, mas não pôde
+   ser entregue aqui. Nunca usa o sinal de cancelamento da leva (a devolução tem de sair
+   mesmo depois de "Interromper geração"). O servidor só devolve o que está cobrado. */
+async function devolveCreditoDaQuestao(q, motivo){
+  if(!q || !q.cobrancaEnviada || !q.cobrancaId || q.creditoDevolvido || creditos.ilimitado) return;
+  if(creditosDevolvendo.has(q.cobrancaId)) return;
+  const id = q.cobrancaId;
+  creditosDevolvendo.add(id);
+  try{
+    // Interrompida logo depois do pedido sair: o servidor pode ainda não ter registrado a
+    // cobrança. A espera curta garante que a devolução chegue depois dela.
+    if(/interrompida/.test(String(motivo || ""))) await new Promise(r => setTimeout(r, 3000));
+    for(let tentativa = 1; tentativa <= 2; tentativa++){
+      try{
+        const resp = await fetch(QUESTION_BACKEND_URL, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", ...authHeaders() },
+          body: JSON.stringify({ devolverCredito: true, cobrancaId: id, motivo: String(motivo || "erro").slice(0, 150) }),
+        });
+        let p = {};
+        try{ p = await resp.json(); }catch(e){ /* trata abaixo */ }
+        if(resp.ok && p.creditos){
+          if(q.cobrancaId === id) q.creditoDevolvido = true;   // devolvido agora ou já não estava cobrado
+          creditosDaResposta(p);
+          diagImagem(q, "credito", p.creditos.devolvido ? `crédito devolvido (${motivo})` : `devolução não feita: ${p.creditos.motivo || "a questão não estava cobrada"}`);
+          return;
+        }
+        if(resp.status === 400 || resp.status === 401) return;
+      }catch(e){ /* rede: tenta mais uma vez */ }
+      await new Promise(r => setTimeout(r, 1500));
+    }
+    console.warn(`[créditos] não consegui pedir a devolução de ${id}`);
+  }finally{
+    creditosDevolvendo.delete(id);
+  }
+}
+
+/* Antes de "Tentar novamente" na imagem de uma questão com erro: a questão vai ficar pronta,
+   então o crédito devolvido é cobrado de novo (o servidor só cobra se estava devolvido).
+   Devolve true se pode seguir. */
+async function creditoReconfirma(q){
+  if(!q || !q.cobrancaEnviada || !q.cobrancaId || creditos.ilimitado) return true;
+  try{
+    const resp = await fetch(QUESTION_BACKEND_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...authHeaders() },
+      body: JSON.stringify({ confirmarCredito: true, cobrancaId: q.cobrancaId }),
+    });
+    let p = {};
+    try{ p = await resp.json(); }catch(e){ /* trata abaixo */ }
+    creditosDaResposta(p);
+    if(resp.status === 402){ abreCreditos({ precisa: 1 }); return false; }
+    if(resp.ok && p.creditos){
+      if(p.creditos.cobrado) q.creditoDevolvido = false;
+      q.creditoReconfirmado = !!p.creditos.cobrado;
+      return true;
+    }
+    toast(p.error || "Não foi possível conferir seus créditos agora. Tente de novo em instantes.", "err");
+    return false;
+  }catch(e){
+    toast("Não foi possível conferir seus créditos agora. Tente de novo em instantes.", "err");
+    return false;
+  }
 }
 
 // Chama antes de qualquer ação que exija estar logado (selecionar área,
@@ -2805,8 +3035,12 @@ function corrigirQuebrasLiterais(valor){
 
 async function generateQuestion(q){
   const run = geracaoAtiva();   // v18.33 — a leva em curso (cancelável), ou nada
+  /* v18.46 — créditos: cada questão vai com um identificador de cobrança (ver o bloco
+     CRÉDITOS, no começo do arquivo). Sem um (caminho antigo), ganha um aqui. */
+  if(!q.cobrancaId){ q.cobrancaId = novoIdCobranca(); q.motivoCredito = "questao"; q.cobrancaEnviada = false; q.creditoDevolvido = false; }
   q.status = "generating"; q.errorMsg = ""; updateQuestionCard(q, state.questions.indexOf(q));
   try{
+    if(run && run.semCredito) throw erroSemCredito();   // v18.46: o saldo acabou nesta leva
     const MAX_TENTATIVAS = 3;
     let tentativa = 0;
     /* v18.27 — INSISTÊNCIA AUTOMÁTICA (backend v74.23; decisão do professor, 20/09):
@@ -2840,6 +3074,7 @@ async function generateQuestion(q){
       q.tentativasFonte = tentativaFonte;
       q.statusDetalhe = tentativaFonte > 1 ? `tentativa ${tentativaFonte} de ${MAX_TENTATIVAS_FONTE} — ` + (tentativaFonte >= MAX_TENTATIVAS_FONTE ? "último recurso: texto próprio sobre o tema" : "procurando outra fonte") : "";
       if(tentativaFonte > 1) updateQuestionCard(q, state.questions.indexOf(q));
+      q.cobrancaEnviada = true;   // v18.46: daqui em diante o servidor pode ter cobrado
       resp = await fetch(QUESTION_BACKEND_URL, {
         method: "POST",
         signal: run ? run.controller.signal : undefined,   // v18.33
@@ -2888,11 +3123,18 @@ async function generateQuestion(q){
           tentativa: tentativaFonte,
           fontesEvitar: fontesEvitar,
           ultimoRecurso: tentativaFonte >= MAX_TENTATIVAS_FONTE,
+          // v18.46 — créditos (backend v74.40): o mesmo identificador em todas as
+          // retentativas desta questão; "refazer" quando é um "Regenerar".
+          cobrancaId: q.cobrancaId,
+          motivoCredito: q.motivoCredito === "refazer" ? "refazer" : "questao",
         }),
       });
       rawBody = await resp.text();
       payload = {};
       try{ payload = rawBody ? JSON.parse(rawBody) : {}; }catch(e){ /* corpo não é JSON — trata abaixo */ }
+      /* v18.46 — créditos: o saldo vem em toda resposta; 402 = acabou (nada foi gerado nem cobrado). */
+      creditosDaResposta(payload);
+      if(resp.status === 402 && payload.code === "sem_creditos") throw erroSemCredito();
       const isResourceLimit = resp.status === 546 || payload.code === "WORKER_RESOURCE_LIMIT";
       if(isResourceLimit && tentativa < MAX_TENTATIVAS){
         // Falha transitória de recursos do servidor (plano free do Supabase sob carga).
@@ -3065,6 +3307,19 @@ async function generateQuestion(q){
     q.errorMsg = run && run.interrompida ? (err && err.interrompida ? err.message : MSG_GERACAO_INTERROMPIDA) : (err.message || String(err));
     q.statusDetalhe = "";
     diagImagem(q, "questao_erro", q.errorMsg);
+    /* v18.46 — créditos. Sem saldo: nada foi cobrado; a leva para de começar questões e a
+       janela de créditos abre uma vez (no robô, não). Outro erro: o crédito desta questão
+       volta (o servidor só devolve o que estiver cobrado). */
+    if(err && err.semCredito){
+      q.cobrancaEnviada = false;
+      if(run) run.semCredito = true;
+      if(!emAutomacao() && !(run && run.avisouSemCredito)){
+        if(run) run.avisouSemCredito = true;
+        abreCreditos(run ? { acabaram: true } : { precisa: 1 });
+      }
+    }else{
+      devolveCreditoDaQuestao(q, run && run.interrompida ? "geração interrompida" : "erro no app: " + String(q.errorMsg || "").slice(0, 120));
+    }
   }
   updateQuestionCard(q, state.questions.indexOf(q));
   updateProgress();
@@ -3153,6 +3408,7 @@ function garanteImagemDaQuestao(q){
     q.errorMsg = run && run.interrompida ? MSG_IMAGEM_INTERROMPIDA   // v18.33
       : `Imagem obrigatória NÃO gerada após ${IMG_MAX_TENTATIVAS} tentativas: ${err && err.message || String(err)}. A questão não foi concluída — clique em "Regenerar" ou em "Tentar novamente" na imagem.`;
     diagImagem(q, "imagem_perdida", q.errorMsg);
+    devolveCreditoDaQuestao(q, run && run.interrompida ? "geração interrompida (imagem)" : "imagem não gerada");   // v18.46
   }).finally(() => {
     imagensEmAndamento.delete(visual);
     updateQuestionCard(q, state.questions.indexOf(q));
@@ -3200,6 +3456,12 @@ function resumoImagens(){
 // Simulados", atualiza o arquivo — senão a edição feita aqui se perderia na
 // próxima vez que o simulado fosse reaberto.
 async function regenerarQuestaoEArquivar(q){
+  /* v18.46 — créditos: "Regenerar" (e "Mais fácil", "Mais difícil", "Outro contexto", editar)
+     é uma questão nova: confere o saldo antes e manda um identificador novo. Questão que
+     estava pronta é "refazer"; a que tinha dado erro é só gerada de novo. */
+  if(!(await creditosLiberaGeracao(1))) return;
+  q.motivoCredito = q.status === "done" ? "refazer" : "questao";
+  q.cobrancaId = novoIdCobranca(); q.cobrancaEnviada = false; q.creditoDevolvido = false; q.creditoReconfirmado = false;
   await generateQuestion(q);
   await aguardaImagensPendentes();
   // v17: a auditoria de contextos da leva é refeita (a questão nova pode ter
@@ -3339,7 +3601,15 @@ function iniciarGeracao(){
   generateAll();
 }
 
+let creditosConferindoLeva = false;   // v18.46: um clique só enquanto o saldo é conferido
 async function generateAll(){
+  /* v18.46 — créditos: o simulado inteiro só começa com saldo para todas as questões. */
+  if(creditosConferindoLeva) return;
+  creditosConferindoLeva = true;
+  let liberado = false;
+  try{ liberado = await creditosLiberaGeracao(state.questions.length); }
+  finally{ creditosConferindoLeva = false; }
+  if(!liberado) return;
   document.getElementById("formPanel").style.display = "none";
   document.getElementById("resultsPanel").style.display = "block";
   document.getElementById("genProgressWrap").classList.remove("hidden");
@@ -3363,6 +3633,12 @@ async function generateAll(){
      disciplina sobrevivendo à troca) agora acontece em limpaInstrucoesVisuais,
      chamada ao trocar de área/disciplina e ao aplicar o lote. */
   state.questions.forEach(q => { q.status = "idle"; q.data = null; q.errorMsg = ""; q.gabaritoStatus = null; q.approved = false; });
+  /* v18.46 — um identificador de cobrança por questão. No pedido do WhatsApp ele é fixo
+     ("wa-<pedido>-<nº>"): o robô que refaz o pedido inteiro não cobra o professor de novo. */
+  state.questions.forEach((q, i) => {
+    q.cobrancaId = automacaoCobrancaBase ? automacaoCobrancaBase + "-" + (i + 1) : novoIdCobranca();
+    q.motivoCredito = "questao"; q.cobrancaEnviada = false; q.creditoDevolvido = false; q.creditoReconfirmado = false;
+  });
   // Plano de gabaritos sorteado ANTES de gerar: como as questões saem em
   // paralelo, cada uma precisa saber de antemão qual letra é a sua, senão não há
   // como garantir que não se repitam.
@@ -3401,7 +3677,12 @@ async function generateAll(){
   // crescente — e esse erro acontece ANTES de a IA ser chamada, então a
   // retentativa não é cobrada. Se esses erros aparecerem com frequência no
   // console, o valor pode voltar para 4.
-  if(demais.length && !run.interrompida) await runPool(demais, generateQuestion, 5, () => run.interrompida);   // v18.33
+  if(demais.length && !run.interrompida && !run.semCredito) await runPool(demais, generateQuestion, 5, () => run.interrompida || run.semCredito);   // v18.33 · v18.46
+  /* v18.46 — o saldo acabou no meio: as que não começaram ficam marcadas, com "Regenerar". */
+  if(run.semCredito){
+    state.questions.forEach((q, i) => { if(q.status === "idle"){ q.status = "error"; q.errorMsg = MSG_SEM_CREDITOS; updateQuestionCard(q, i); } });
+    updateProgress();
+  }
   document.getElementById("genProgressWrap").classList.add("hidden");
   // v12: baixa o jsPDF (≈ 420 KB) em segundo plano assim que o simulado fica
   // pronto, para o primeiro "Exportar PDF"/"Imprimir" não pagar o download do
@@ -3435,6 +3716,9 @@ async function generateAll(){
   const problemas = auditaGabaritos();
   if(run.interrompida){
     /* v18.33 — o aviso da interrupção já foi dado no clique; "Simulado gerado!" seria falso. */
+  }else if(run.semCredito){
+    const prontasAgora = state.questions.filter(q => q.status === "done" || q.status === "imagem").length;
+    toast(`Seus créditos acabaram: ${prontasAgora} de ${state.questions.length} questões ficaram prontas. Compre créditos e use "Regenerar" nas que faltaram.`, "err");
   }else if(problemas.length){
     toast("Simulado gerado, mas a distribuição do gabarito ficou imperfeita: " + problemas[0] + ". Regenere a questão para corrigir.", "err");
   }else if(presos){
@@ -5111,7 +5395,19 @@ function renderGeneratedImage(holder, promptText, descricao, visual, forcar){
         <button class="btn sm ghost no-print retry-img-btn">🔄 Tentar novamente</button>
       </div>
     `;
-    holder.querySelector(".retry-img-btn").addEventListener("click", () => renderGeneratedImage(holder, promptText, descricao, visual, true));
+    holder.querySelector(".retry-img-btn").addEventListener("click", async (ev) => {
+      /* v18.46 — questão com erro cujo crédito voltou: ela vai ficar pronta com esta imagem,
+         então o crédito é cobrado de novo ANTES de pedir a imagem (sem saldo, abre a janela). */
+      const btn = ev.currentTarget;
+      const donoQ = visual ? state.questions.find(qq => qq.data && qq.data.visual === visual) : null;
+      if(donoQ && donoQ.status === "error"){
+        btn.disabled = true;
+        const pode = await creditoReconfirma(donoQ);
+        btn.disabled = false;
+        if(!pode) return;
+      }
+      renderGeneratedImage(holder, promptText, descricao, visual, true);
+    });
   };
   const mostraCarregando = () => {
     holder.innerHTML = `
@@ -5164,6 +5460,7 @@ function renderGeneratedImage(holder, promptText, descricao, visual, forcar){
     // Guarda a imagem pronta no próprio recurso visual da questão, para nunca
     // mais precisar gerar de novo esta mesma figura.
     if(visual) visual.imagemDataUrl = dataUrl;
+    if(dono) dono.creditoReconfirmado = false;   // v18.46: a imagem saiu; o crédito cobrado de novo fica
     if(dono && (dono.status === "error" || dono.status === "imagem")){
       dono.status = "done"; dono.errorMsg = "";
       diagImagem(dono, "imagem_vinculada", "gerada pelo card (Tentar novamente / reabertura) e gravada em visual.imagemDataUrl");
@@ -5173,7 +5470,11 @@ function renderGeneratedImage(holder, promptText, descricao, visual, forcar){
     /* Sem seletor de qualidade e sem custo exibido na tela — a geração é
        sempre "low", sem opção de troca. O uso continua contabilizado em
        state.usoImagem (ver somaUsoImagem) para consulta quando pedida. */
-  }).catch(mostraErro).finally(() => {
+  }).catch(err => {
+    mostraErro(err);
+    // v18.46: o crédito cobrado de novo para esta tentativa volta (a imagem não saiu)
+    if(dono && dono.creditoReconfirmado){ dono.creditoReconfirmado = false; devolveCreditoDaQuestao(dono, "imagem não gerada (tentar novamente)"); }
+  }).finally(() => {
     if(visual) imagensEmAndamento.delete(visual);
   });
   imagePromisesEmAndamento.push(promessa);
@@ -8531,6 +8832,9 @@ function init(){
   ["cadastroEmail","cadastroSenha"].forEach(id => document.getElementById(id).addEventListener("keydown", e => { if(e.key === "Enter") fazerCadastro(); }));
   document.getElementById("btnSair").addEventListener("click", fazerLogout);
   document.getElementById("btnMeusSimulados").addEventListener("click", abrirMeusSimulados);
+  // v18.46: créditos
+  document.getElementById("btnCreditos").addEventListener("click", () => abreCreditos());
+  document.getElementById("btnFecharCreditos").addEventListener("click", () => closeModal("creditosModal"));
   document.getElementById("btnFecharSimulados").addEventListener("click", fecharMeusSimulados);
 
   // v15: caixa "Solicitar simulados pelo WhatsApp". Isolada: se falhar, o resto do app segue.
@@ -8580,6 +8884,10 @@ if(document.fonts && document.fonts.ready) document.fonts.ready.then(calibraBarr
    v18.44 — (12/10/2026) página inicial e app no mesmo endereço: no site publicado o app fica
    em /app/ e quem chega sem login vai para a página inicial (appNoSite). A entrada de
    automação não muda (o robô abre o app em localhost/index.html).
+   v18.46 — (13/10/2026) créditos (Etapa 2; bloco CRÉDITOS no começo do arquivo). A entrada
+   de automação aceita parametros.cobrancaBase ("wa-<id do pedido>"): cada questão vai com o
+   identificador fixo "wa-<pedido>-<nº>", e refazer o pedido inteiro não cobra de novo. Sem
+   saldo, gerar() lança "sem créditos: …" (o robô não repete o pedido). Versão 18.46.
 
    O pedido feito pelo WhatsApp (formulário de 6 perguntas, etapa B1) fica na fila
    `wa_trabalhos`. Quem o executa é um robô (robo/operario.mjs, rodando no GitHub
@@ -8601,10 +8909,11 @@ if(document.fonts && document.fonts.ready) document.fonts.ready.then(calibraBarr
      await enemAutomacao.gerar(parametros)              → { simuladoId, total, prontas,
                                                             falhas[], arquivos[], custo }
      enemAutomacao.estado()                             → progresso para o robô relatar
-   parametros = { area, disciplina, quantidade, temas_texto, contagem, recurso }
-   (os mesmos gravados em wa_trabalhos.parametros por supabase/functions/whatsapp-webhook).
+   parametros = { area, disciplina, quantidade, temas_texto, contagem, recurso[, cobrancaBase] }
+   (os mesmos gravados em wa_trabalhos.parametros por supabase/functions/whatsapp-webhook;
+   cobrancaBase = "wa-<id do pedido>", acrescentado pelo robô — v18.46, créditos).
    ====================================================================================== */
-const AUTOMACAO_VERSAO = "18.41";
+const AUTOMACAO_VERSAO = "18.46";
 let automacaoPronta = false;
 let automacaoFase = "carregando";   // carregando | pronto | configurando | gerando | exportando | concluido | erro
 let automacaoErro = "";
@@ -8663,7 +8972,9 @@ function automacaoValidaParametros(p){
   // ("Era Vargas, Estado Novo" é UM tema). Com um só, vai o texto como veio.
   const lista = Array.isArray(p.temas) ? p.temas.map((t) => String(t || "").replace(/\s+/g, " ").trim()).filter(Boolean) : [];
   const temas = (lista.length >= 2 ? lista.join("\n") : String(p.temas_texto || lista[0] || "")).trim().slice(0, 600);
-  return { area: p.area, disciplina: p.disciplina, quantidade: qtd, recurso, temas, contagem: automacaoContagem(p.contagem, qtd) };
+  // v18.46 — créditos: identificador fixo do pedido ("wa-<id do pedido>"), mandado pelo robô.
+  const cobrancaBase = typeof p.cobrancaBase === "string" && /^wa-[A-Za-z0-9-]{8,60}$/.test(p.cobrancaBase) ? p.cobrancaBase : null;
+  return { area: p.area, disciplina: p.disciplina, quantidade: qtd, recurso, temas, contagem: automacaoContagem(p.contagem, qtd), cobrancaBase };
 }
 
 window.enemAutomacao = {
@@ -8753,19 +9064,25 @@ window.enemAutomacao = {
     confirmaOrientacoesEm = 0;
     confirmaDisciplinaEm = 0;
     automacaoFase = "gerando";
+    automacaoCobrancaBase = p.cobrancaBase;   // v18.46
     try{
       await generateAll();
     }catch(err){
       automacaoFase = "erro";
       automacaoErro = (err && err.message) || String(err);
       throw err;
+    }finally{
+      automacaoCobrancaBase = null;
     }
     const total = state.questions.length;
     const prontas = state.questions.filter(q => q.status === "done");
     const falhas = state.questions.map((q, i) => ({ numero: i + 1, motivo: q.status === "done" ? "" : String(q.errorMsg || q.status || "não gerada").slice(0, 300) })).filter(f => f.motivo);
     if(!prontas.length){
       automacaoFase = "erro";
-      automacaoErro = "nenhuma questão ficou pronta" + (falhas[0] ? ": " + falhas[0].motivo : "");
+      // v18.46: "sem créditos: …" faz o robô não repetir o pedido
+      automacaoErro = state.questions.some(q => q.errorMsg === MSG_SEM_CREDITOS)
+        ? "sem créditos: os créditos da conta acabaram antes de alguma questão ficar pronta"
+        : "nenhuma questão ficou pronta" + (falhas[0] ? ": " + falhas[0].motivo : "");
       throw new Error(automacaoErro);
     }
 

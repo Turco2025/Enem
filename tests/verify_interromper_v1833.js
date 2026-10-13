@@ -51,6 +51,9 @@ const questaoSimulada = (body) => ({
     if(u.includes('supabase-js') || u.includes('jsdelivr')) return r.fulfill({ status: 200, contentType: 'application/javascript', body: STUB });
     if(u.includes('/functions/v1/generate-question')){
       const body = r.request().postDataJSON() || {};
+      /* v18.46 — devolução de crédito (as questões interrompidas devolvem o crédito): não é
+         pedido de questão; responde e não conta. */
+      if(body.devolverCredito){ pedidos.devolucoes = (pedidos.devolucoes || 0) + 1; try{ await r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ creditos: { ok: true, devolvido: true, saldo: 0, cobranca: body.cobrancaId } }) }); }catch(e){} return; }
       pedidos.questao.push({ t: Date.now(), tema: body.tema, planejar: !!body.planejarRecortes });
       await sleep(atrasoQuestao);
       try{ await r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(questaoSimulada(body)) }); }catch(e){ /* pedido cancelado pelo app */ }
@@ -116,6 +119,7 @@ const questaoSimulada = (body) => ({
   ok(e.msgs.slice(1).every(m => m.startsWith('Geração interrompida pelo professor')), 'B3 as paradas dizem que foram interrompidas pelo professor (e não "The operation was aborted")', JSON.stringify(e.msgs));
   await sleep(3500);
   ok(pedidos.questao.length === antes, 'B4 depois do clique nenhuma questão nova foi pedida ao servidor', `${antes} → ${pedidos.questao.length}`);
+  ok(pedidos.devolucoes === emAndamento, 'B4b v18.46: o crédito de cada questão interrompida em andamento é devolvido (um pedido de devolução por questão)', `${pedidos.devolucoes} devoluções para ${emAndamento} em andamento`);
   await p.waitForFunction(() => window.__fim === true, null, { timeout: 15000 });
   e = await estado();
   ok(e.status[0] === 'done' && e.status.slice(1).every(s => s === 'error') && e.msgs.slice(1).every(m => m.startsWith('Geração interrompida pelo professor')),

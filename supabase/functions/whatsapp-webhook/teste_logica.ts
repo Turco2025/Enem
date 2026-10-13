@@ -24,7 +24,8 @@ const DONO = "52e6a6ea-b394-4958-8294-06ff2f5091de";
 
 
 // ---- banco falso em memória + registro das chamadas ------------------------
-const banco = { mensagens: new Map<string, any>(), perfis: new Map<string, any>(), vinculos: [] as any[], conversas: new Map<string, any>(), trabalhos: [] as any[] };
+const banco = { mensagens: new Map<string, any>(), perfis: new Map<string, any>(), vinculos: [] as any[], conversas: new Map<string, any>(), trabalhos: [] as any[], saldos: new Map<string, number>() };
+const SALDO_PADRAO = 1000;       // Etapa 2: os testes antigos não tratam de créditos — saldo de sobra
 const chamadas: { url: string; metodo: string; corpo: any; t: number }[] = [];
 const enviosWa: any[] = [];
 let graphFalha: false | "permanente" | "transitorio" = false;   // simula Graph API recusando o envio
@@ -42,7 +43,7 @@ let jwksFora = false;            // etapa C: simula o JWKS do GitHub indisponív
 let graphFalhaApos: number | null = null;   // etapa C: a Graph aceita N envios e recusa (transitório) o seguinte
 let enviosOkSeguidos = 0;
 
-function resetar() { banco.mensagens.clear(); banco.perfis.clear(); banco.vinculos.length = 0; banco.conversas.clear(); banco.trabalhos.length = 0; chamadas.length = 0; enviosWa.length = 0; graphFalha = false; contagemFora = false; graphDemoraMs = 0; listaTestes = null; dbDemoraMs = 0; insertDemoraMs = 0; graphJanelaFechada = false; midiasSubidas = []; dispatches = []; authFalha = false; jwksFora = false; graphFalhaApos = null; enviosOkSeguidos = 0; O.limparCacheJwks(); }
+function resetar() { banco.saldos.clear(); banco.mensagens.clear(); banco.perfis.clear(); banco.vinculos.length = 0; banco.conversas.clear(); banco.trabalhos.length = 0; chamadas.length = 0; enviosWa.length = 0; graphFalha = false; contagemFora = false; graphDemoraMs = 0; listaTestes = null; dbDemoraMs = 0; insertDemoraMs = 0; graphJanelaFechada = false; midiasSubidas = []; dispatches = []; authFalha = false; jwksFora = false; graphFalhaApos = null; enviosOkSeguidos = 0; O.limparCacheJwks(); }
 const param = (url: string, k: string) => { const v = new URL(url).searchParams.get(k); return v === null ? null : decodeURIComponent(v); };
 
 // ---- OIDC do GitHub falso: par de chaves RSA gerado aqui; o JWKS "público" sai pelo fetch falso ----
@@ -145,6 +146,10 @@ globalThis.fetch = (async (entrada: string | URL | Request, init?: RequestInit) 
     if (metodo === "HEAD") return new Response(null, { status: 200, headers: { "content-range": `0-0/${banco.perfis.size}` } });
     const tel = param(url, "whatsapp")!.replace("eq.", "");
     const p = banco.perfis.get(tel); return j(p ? [p] : []);
+  }
+  if (url.startsWith(env.SUPABASE_URL + "/rest/v1/rpc/creditos_saldo")) {   // Etapa 2 (créditos)
+    if (!(init?.headers as any)?.authorization?.includes("service-teste")) return j({ message: "permission denied" }, 401);
+    return j(banco.saldos.has(corpo.p_user) ? banco.saldos.get(corpo.p_user) : SALDO_PADRAO);
   }
   if (url.startsWith(env.SUPABASE_URL + "/rest/v1/rpc/wa_concluir_vinculo")) {
     if (!(init?.headers as any)?.authorization?.includes("service-teste")) return j({ message: "permission denied" }, 401);
@@ -685,6 +690,33 @@ Deno.test("limite diário: conta comum é barrada quando estoura (cancelada não
   ok(inicioDoDiaBrasilia(new Date("2026-10-04T02:30:00.000Z")) === "2026-10-03T03:00:00.000Z" && inicioDoDiaBrasilia(new Date("2026-10-04T03:00:00.000Z")) === "2026-10-04T03:00:00.000Z", "início do dia em Brasília (UTC-3)");
 });
 
+Deno.test("créditos (Etapa 2): pedido maior que os créditos disponíveis é barrado e volta à confirmação; fila reserva; conta sem limite não confere", async () => {
+  const pedir = async (pre: string, qtd: string) => {
+    await envia(`${pre}0`, "oi"); await toca(`${pre}1`, lr("area:natureza")); await toca(`${pre}2`, lr("disc:fisica")); await envia(`${pre}3`, qtd); await envia(`${pre}4`, "ondas"); await toca(`${pre}5`, lr("rec:nenhum")); await toca(`${pre}6`, lr("dif:medio"));
+    await toca(`${pre}7`, botao("conf:sim"));
+  };
+  resetar(); vincula("u2", "Prof", { ilimitado: false, limite_diario_wa: 30 }); banco.saldos.set("u2", 0);
+  await pedir("wamid.cr0", "3");
+  const aviso0 = enviosWa[enviosWa.length - 2];
+  ok(banco.mensagens.get("wamid.cr07").acao === "sem_creditos" && banco.trabalhos.length === 0 && aviso0.text.body.includes("Seus créditos acabaram") && aviso0.text.body.includes("simuladorenem159753.netlify.app"), "saldo 0 → barrado, nada gravado, aviso com o site");
+  ok(banco.conversas.get("556296116652").estado.passo === "confirmar" && ultimo().interactive?.type === "button", "volta para a confirmação com os botões");
+  resetar(); vincula("u2", "Prof", { ilimitado: false, limite_diario_wa: 30 }); banco.saldos.set("u2", 10);
+  banco.trabalhos.push({ id: "t-p", user_id: "u2", telefone: "556296116652", status: "pendente", criado_em: new Date().toISOString(), parametros: { quantidade: 4, disciplina: "Física" }, erro: null });
+  banco.trabalhos.push({ id: "t-g", user_id: "u2", telefone: "556296116652", status: "gerando", criado_em: new Date().toISOString(), parametros: { quantidade: 5, disciplina: "Física" }, progresso: { prontas: 3 }, erro: null });
+  await pedir("wamid.cr1", "5");
+  const aviso1 = enviosWa[enviosWa.length - 2];
+  ok(banco.mensagens.get("wamid.cr17").acao === "sem_creditos" && banco.trabalhos.length === 2 && aviso1.text.body.includes("precisa de 5 créditos") && aviso1.text.body.includes("4 disponíveis") && aviso1.text.body.includes("reservados"),
+    "saldo 10 − fila (4 pendentes + 2 que faltam das 5 gerando) = 4 → pedido de 5 barrado");
+  resetar(); vincula("u2", "Prof", { ilimitado: false, limite_diario_wa: 30 }); banco.saldos.set("u2", 10);
+  banco.trabalhos.push({ id: "t-p", user_id: "u2", telefone: "556296116652", status: "pendente", criado_em: new Date().toISOString(), parametros: { quantidade: 4, disciplina: "Física" }, erro: null });
+  await pedir("wamid.cr2", "6");
+  ok(banco.mensagens.get("wamid.cr27").acao !== "sem_creditos" && banco.trabalhos.length === 2, "saldo 10 − 4 na fila = 6 → pedido de 6 cabe");
+  resetar(); vincula("u1", "Maziad", { ilimitado: true }); banco.saldos.set("u1", 0);
+  await pedir("wamid.cr3", "20");
+  ok(banco.mensagens.get("wamid.cr37").acao !== "sem_creditos" && banco.trabalhos.length === 1 && !chamadas.some((c) => c.url.includes("/rpc/creditos_saldo")), "conta sem limite: nem consulta o saldo");
+  ok(TEXTOS.semCreditos(1, 3, false).includes("1 disponível") && TEXTOS.semCreditos(1, 3, false).includes("até 1 questão"), "singular certo no aviso");
+});
+
 Deno.test("reentregas da Meta: mesma mensagem repete a resposta (não avança); Sim reentregue não duplica; dois Sim simultâneos → um pedido", async () => {
   resetar(); vincula();
   await envia("wamid.g0", "oi");
@@ -1105,7 +1137,8 @@ Deno.test("operario.ts/logica.ts: sanitização de progresso e resumo, motivo am
   ok(O.descricaoRotulo("docx_professor").startsWith("Word · versão do professor") && O.ORDEM_ENTREGA.length === 4, "rótulos");
   ok(O.pareceJwt("eyJa.bbb.ccc") && !O.pareceJwt("segredo") && O.decodificarJwt("a.b") === null, "pareceJwt/decodificarJwt");
   ok(O.bytesParaBase64Url(O.base64UrlParaBytes("SGVsbG8_d29ybGQ")) === "SGVsbG8_d29ybGQ", "base64url ida e volta");
-  ok(motivoAmigavel('entregar pdf_aluno: HTTP 502 a Meta recusou a mídia {"error":1}') === "houve uma falha técnica na entrega dos arquivos" && motivoAmigavel("nenhuma questão ficou pronta: Erro HTTP 546 ao gerar a questão.") === "nenhuma questão ficou pronta (Erro HTTP 546 ao gerar a questão.)" && motivoAmigavel("quantidade inválida: 0") === "os parâmetros do pedido não foram aceitos pelo aplicativo", "motivoAmigavel");
+  ok(motivoAmigavel('entregar pdf_aluno: HTTP 502 a Meta recusou a mídia {"error":1}') === "houve uma falha técnica na entrega dos arquivos" && motivoAmigavel("nenhuma questão ficou pronta: Erro HTTP 546 ao gerar a questão.") === "nenhuma questão ficou pronta (Erro HTTP 546 ao gerar a questão.)" && motivoAmigavel("quantidade inválida: 0") === "os parâmetros do pedido não foram aceitos pelo aplicativo"
+    && motivoAmigavel("sem créditos: a conta tem 2 créditos e o pedido precisa de 3") === "seus créditos acabaram antes de o simulado ficar pronto (cada questão usa 1 crédito)", "motivoAmigavel");
 });
 
 Deno.test("resumo", () => { console.log(`\n>>> ${total} verificações passaram`); });

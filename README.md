@@ -177,6 +177,85 @@ Teste: `verify_fontes_app.js` — 19 verificações; as seções B e C bis prova
 quatro marcas ligadas ao mesmo tempo nenhuma conferência bloqueia, e que nenhuma delas tem sequer um
 `return true` no corpo. `verify_gabarito_coerente.js` H1 passou a exigir o contrário do que exigia.
 
+## Créditos: 1 crédito por questão, saldo no app e no WhatsApp (app v18.46, generate-question v74.40, 13/10/2026)
+
+Etapa 2 dos créditos. Decisões do professor: os créditos valem já (sem créditos ninguém gera e a
+janela de compra aparece); nenhum crédito grátis; a conta do dono é ilimitada; 1 crédito por
+questão, também ao regenerar; imagem, gráfico e tabela não custam; se a questão não sair, o
+crédito volta sozinho; os créditos valem 12 meses; no WhatsApp, a mesma regra (pedido sem saldo é
+recusado, e o robô que refaz o pedido não cobra duas vezes). A compra (Stripe) é a Etapa 3: até
+lá, os créditos são lançados à mão pelo dono (`creditos_adicionar`).
+
+**Banco** (`supabase/migrations/2026-10-13_etapa2_creditos.sql`, só acrescenta; reversão em
+`..._rollback.sql`).
+- `creditos_lotes`: cada compra, cortesia ou ajuste é um lote, com validade (12 meses). O saldo é
+  a soma do que resta nos lotes válidos; o que vence primeiro é gasto primeiro. O mesmo pagamento
+  avisado duas vezes não vira dois lotes (índice único na referência da compra).
+- `creditos_cobrancas`: uma linha por questão cobrada (identificador vindo do app), com estado
+  `cobrado`/`devolvido`, quantas vezes foi cobrada e quantas entregas teve.
+- Funções (só o servidor, `service_role`): `creditos_cobrar`, `creditos_devolver`,
+  `creditos_entregue`, `creditos_reconfirmar`, `creditos_adicionar`, `creditos_saldo`. A trava
+  fica dentro de cada uma (`creditos_exige_servidor`): chamada pelo navegador (papéis `anon` e
+  `authenticated` da API) é recusada; o servidor e a conexão direta do dono passam. O navegador
+  só lê o próprio saldo (`creditos_meu_saldo`) e o próprio histórico (RLS, só leitura).
+- Regras: retentativa do mesmo pedido antes da entrega não cobra; um crédito paga **uma entrega**
+  (o mesmo identificador pedido depois da entrega é questão nova e cobra), exceto nas questões de
+  um pedido do WhatsApp que está sendo gerado (`wa-<pedido>-<nº>`), que o robô pode refazer até 3
+  vezes; a devolução pedida pelo app vale até 2 horas depois do último pedido e no máximo 30 por
+  dia (proteção contra abuso; as devoluções do próprio servidor não têm limite); duas cobranças ao
+  mesmo tempo nunca gastam o mesmo crédito (trava por usuário).
+
+**Servidor** (`generate-question` v74.40).
+- Todo pedido identifica quem pede (token de login); sem login, 401.
+- A questão é cobrada **antes** do trabalho caro; sem saldo, 402 `sem_creditos` e nada é gerado.
+  Banco de créditos fora do ar: 503, e nada é gerado.
+- Resposta que não entrega a questão devolve o crédito na hora. Resposta que entrega registra a
+  entrega (a questão reprovada pelo auditor que o app ainda vai pedir de novo não conta).
+- Modos novos: `{devolverCredito, cobrancaId, motivo}` (o app devolve a questão que chegou mas não
+  pôde ser entregue) e `{confirmarCredito, cobrancaId}` (cobra de novo, antes de "Tentar novamente"
+  na imagem, a questão cujo crédito tinha voltado).
+- Planejar recortes e refazer só o recurso visual continuam sem custo (mas exigem login).
+- Toda resposta de questão leva `creditos: {cobranca, cobrado, saldo | ilimitado}`.
+
+**App** (v18.46, bloco CRÉDITOS no começo de `src/app.js`).
+- Botão "N créditos" no topo (dono: "Créditos: ilimitado"). A janela mostra o saldo, a validade
+  dos créditos mais antigos e os 4 pacotes: 50 por R$ 150 (R$ 3,00 por questão), 100 por R$ 270
+  (R$ 2,70, 10% a menos), 200 por R$ 500 (R$ 2,50, 17% a menos) e 400 por R$ 800 (R$ 2,00, 33% a
+  menos, "Menor preço por questão"). Clicar num pacote só avisa que a compra fica pronta em breve.
+- Antes de gerar, o app confere o saldo: o simulado inteiro só começa se houver crédito para todas
+  as questões; "Regenerar" (e "Mais fácil", "Mais difícil", "Outro contexto", editar) confere 1.
+  Sem saldo, abre a janela em vez de gerar. Se a consulta falhar, não bloqueia (o servidor confere).
+- Cada questão vai com um identificador próprio, o mesmo em todas as retentativas automáticas dela.
+  Se o saldo acabar no meio, as prontas ficam, as outras param marcadas e a janela abre uma vez.
+- O crédito volta quando a questão chega mas não pode ser entregue: gabarito divergente, recurso
+  visual ou imagem que não saiu, geração interrompida (a devolução da interrompida espera 3 s).
+- "Tentar novamente" na imagem de uma questão com erro cobra de novo antes de pedir a imagem; se a
+  imagem falhar outra vez, o crédito volta de novo.
+- Robô do WhatsApp: a entrada de automação (versão 18.46) aceita `cobrancaBase` e usa
+  `wa-<pedido>-<nº>` em cada questão; sem saldo, lança `sem créditos: …`.
+
+**WhatsApp.** `whatsapp-webhook/logica.ts`: ao registrar o pedido, confere o saldo menos as
+questões que já estão na fila; sem saldo, responde quanto falta, com o endereço do site, e não
+registra o pedido. O dono não tem essa conferência. `robo/operario.mjs` (C1.1) manda
+`cobrancaBase: "wa-<id do pedido>"` e trata "sem créditos" como erro definitivo (não repete); o
+aviso ao professor diz "seus créditos acabaram antes de o simulado ficar pronto".
+
+Testes:
+- `PGHOST=/tmp PGPORT=5499 PGUSER=postgres bash tests/verify_creditos_banco_v1846.sh`: 57
+  verificações num Postgres local (nunca no banco do site), com as permissões padrão do Supabase
+  (tudo liberado para os papéis da API) e a corrida de 10 cobranças.
+- `deno run -A --config <import map> tests/verify_creditos_servidor_v7440.ts
+  supabase/functions/generate-question/index.ts`: 31 verificações com o handler real, o banco local e
+  a Anthropic simulada.
+- `node tests/verify_creditos_app_v1846.js <index.html>`: 36 verificações no navegador (topo,
+  janela, pacotes, conferência antes de gerar, saldo que acaba no meio, devolução, Regenerar,
+  imagem, Interromper, robô, dono, celular sem rolagem lateral, sem erros).
+- `deno test -A whatsapp-webhook/teste_logica.ts`: 45 (com o pedido sem saldo).
+- `node robo/teste_local.mjs`: o ensaio do robô confere os identificadores das questões e o
+  pedido sem saldo.
+- `tests/verify_interromper_v1833.js` passou a separar os pedidos de devolução dos pedidos de
+  questão (B4) e ganhou B4b: cada questão interrompida em andamento devolve o crédito.
+
 ## Tela de escolha, página do aluno e página do professor (site v18.45, 13/10/2026)
 
 Pedido do professor: quem chega ao site escolhe primeiro se é aluno ou professor, e cada um vê a

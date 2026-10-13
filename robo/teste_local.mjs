@@ -16,7 +16,7 @@ import os from "node:os";
 import { readFile, writeFile, mkdir, mkdtemp } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { chromium } from "playwright";
-import { gerarNoApp, servirApp, log } from "./operario.mjs";
+import { gerarNoApp, servirApp, log, erroDefinitivo } from "./operario.mjs";
 
 const RAIZ = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const arg = (nome, padrao) => { const i = process.argv.indexOf(nome); return i > 0 ? process.argv[i + 1] : padrao; };
@@ -50,6 +50,8 @@ const jwtFalso = `${b64url({ alg: "HS256", typ: "JWT" })}.${b64url({ sub: "u-tes
 const USUARIO = { id: "u-teste", aud: "authenticated", role: "authenticated", email: "teste@exemplo.local", app_metadata: {}, user_metadata: {}, created_at: "2026-01-01T00:00:00Z" };
 
 let chamadasQuestao = 0, chamadasImagem = 0, chamadasPlanejar = 0, simuladosGravados = 0, logoutsRecebidos = 0;
+let idsCobranca = [];        // v18.46: identificadores de cobrança que o app mandou
+let saldoSimulado = null;    // v18.46: saldo devolvido por creditos_meu_saldo (null = função ausente, como antes)
 async function instalarMocks(context) {
   for (const [url, arquivo] of Object.entries(LIB_URLS)) {
     const corpo = await readFile(path.join(LIBS, arquivo));
@@ -73,6 +75,7 @@ async function instalarMocks(context) {
       }
       return json([]);
     }
+    if (u.pathname === "/rest/v1/rpc/creditos_meu_saldo" && saldoSimulado != null) return json({ ok: true, ilimitado: false, saldo: saldoSimulado, proxima_validade: null });
     if (u.pathname.startsWith("/rest/v1/rpc/")) return json([]);
     if (u.pathname.startsWith("/rest/v1/")) return json([]);
     if (u.pathname === "/functions/v1/generate-question") {
@@ -80,6 +83,7 @@ async function instalarMocks(context) {
       let corpo = {}; try { corpo = JSON.parse(req.postData() || "{}"); } catch { /* vazio */ }
       if (corpo.planejarRecortes) { chamadasPlanejar++; return json({ recortes: [], uso: { chamadas: 1, entradaNova: 100, cacheEscrito: 0, cacheLido: 0, saida: 50, custoUSD: 0.001 } }); }
       chamadasQuestao++;
+      idsCobranca.push(corpo.cobrancaId);
       await new Promise((r) => setTimeout(r, 150));
       const q = structuredClone(questaoPara(corpo.recurso));
       q.tema = `${corpo.tema || q.tema} (${chamadasQuestao})`;   // temas distintos, como numa leva real
@@ -117,7 +121,7 @@ async function listaDocx(bytes) {   // nomes dos arquivos dentro do .docx (zip),
 
 async function cenario(browser, urlApp, nome, parametros, esperado) {
   log(`\n=== cenário: ${nome} ===`);
-  chamadasQuestao = 0; chamadasImagem = 0; chamadasPlanejar = 0; simuladosGravados = 0; logoutsRecebidos = 0;
+  chamadasQuestao = 0; chamadasImagem = 0; chamadasPlanejar = 0; simuladosGravados = 0; logoutsRecebidos = 0; idsCobranca = [];
   const context = await browser.newContext({ viewport: { width: 1280, height: 1000 }, locale: "pt-BR", timezoneId: "America/Sao_Paulo" });
   await instalarMocks(context);
   const page = await context.newPage();
@@ -140,6 +144,12 @@ async function cenario(browser, urlApp, nome, parametros, esperado) {
     const esperada = esperado.contagem || parametros.contagem;
     confere(["Fácil", "Médio", "Difícil"].every((n) => contagem[n] === (esperada[n] || 0)), `níveis distribuídos conforme a contagem ${JSON.stringify(esperada)} (real: ${estadoApp.niveis.join(", ")})`);
     if (esperado.temas) confere(esperado.temas.every((t) => estadoApp.temas.includes(t)), `temas em rodízio: ${esperado.temas.join(" · ")}`);
+    if (parametros.cobrancaBase) {   // v18.46 — créditos: identificador fixo por questão do pedido
+      const esperados = Array.from({ length: parametros.quantidade }, (_, i) => `${parametros.cobrancaBase}-${i + 1}`);
+      confere(esperados.every((id) => idsCobranca.includes(id)) && idsCobranca.length === parametros.quantidade, `cobrança com identificadores fixos do pedido: ${idsCobranca.join(", ")}`);
+    } else {
+      confere(idsCobranca.length === parametros.quantidade && idsCobranca.every((id) => /^q-[0-9a-f-]{36}$/.test(id)) && new Set(idsCobranca).size === idsCobranca.length, "cada questão com o seu identificador de cobrança (q-<uuid>)");
+    }
     if (esperado.temasExatos) confere(new Set(estadoApp.temas).size === esperado.temasExatos, `exatamente ${esperado.temasExatos} temas distintos (vírgula dentro do tema preservada)`);
     if (esperado.textoNaTela) {   // v18.37 — avisos da auditoria local do card (só tela)
       const tela = await page.evaluate(() => document.body.innerText);
@@ -189,7 +199,8 @@ try {
   await cenario(browser, app.url, "matematica_contagem_invalida", { area: "matematica", disciplina: "Matemática", quantidade: 4, temas_texto: "", contagem: { "Fácil": 9 }, recurso: "nenhum", nivel: "Mista" },
     { imagens: 0, minPaginas: { pdf_aluno: 1, pdf_professor: 2 }, professorMaior: true, contagem: { "Fácil": 2, "Médio": 1, "Difícil": 1 } });
   // recurso "misto" (v18.36): rodízio de quatro — sem recurso, imagem, tabela, gráfico, sem recurso… — e os 4 arquivos saem com tudo
-  await cenario(browser, app.url, "biologia_misto", { area: "natureza", disciplina: "Biologia", quantidade: 5, temas_texto: "respiração", contagem: { "Fácil": 2, "Médio": 2, "Difícil": 1 }, recurso: "misto", nivel: "Mista" },
+  // v18.46: com o identificador fixo do pedido (o operário manda "wa-<id do pedido>")
+  await cenario(browser, app.url, "biologia_misto", { area: "natureza", disciplina: "Biologia", quantidade: 5, temas_texto: "respiração", contagem: { "Fácil": 2, "Médio": 2, "Difícil": 1 }, recurso: "misto", nivel: "Mista", cobrancaBase: "wa-aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee" },
     { imagens: 1, minPaginas: { pdf_aluno: 2, pdf_professor: 3 }, professorMaior: true, recursos: ["nenhum", "imagem", "tabela", "grafico", "nenhum"] });
   // parâmetros inválidos → erro definitivo imediato
   log("\n=== cenário: parâmetros inválidos ===");
@@ -198,6 +209,15 @@ try {
   try { await gerarNoApp({ page, url: app.url, parametros: { area: "quimica", disciplina: "Química", quantidade: 2 }, sessao: { access_token: jwtFalso, refresh_token: "r" }, limiteMs: 60_000, intervaloMs: 500 }); } catch (e) { erro = e.message; }
   confere(/^área inválida/.test(erro), `erro definitivo: ${erro}`);
   await context.close();
+  // v18.46 — sem créditos para o pedido inteiro → erro definitivo (o pedido não é repetido) e nada é gerado
+  log("\n=== cenário: sem créditos ===");
+  saldoSimulado = 1; chamadasQuestao = 0;
+  const ctx2 = await browser.newContext(); await instalarMocks(ctx2); const page2 = await ctx2.newPage();
+  let erro2 = "";
+  try { await gerarNoApp({ page: page2, url: app.url, parametros: { area: "natureza", disciplina: "Biologia", quantidade: 2, temas_texto: "fotossíntese", contagem: { "Fácil": 1, "Médio": 1, "Difícil": 0 }, recurso: "nenhum", cobrancaBase: "wa-aaaaaaaa-bbbb-4ccc-8ddd-ffffffffffff" }, sessao: { access_token: jwtFalso, refresh_token: "r" }, limiteMs: 60_000, intervaloMs: 500 }); } catch (e) { erro2 = e.message; }
+  confere(/^sem créditos: a conta tem 1 crédito e o pedido precisa de 2/.test(erro2) && erroDefinitivo(erro2) && chamadasQuestao === 0, `sem créditos: "${erro2}" (definitivo, nada gerado)`);
+  saldoSimulado = null;
+  await ctx2.close();
   log("\n>>> ensaio local do operário: tudo passou");
 } finally {
   await browser.close();

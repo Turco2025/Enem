@@ -389,6 +389,25 @@ export function inicioDoDiaBrasilia(agora = new Date()): string {
   const ymd = brt.toISOString().slice(0, 10);
   return `${ymd}T03:00:00.000Z`;      // 00:00 em Brasília (UTC-3, sem horário de verão)
 }
+// Etapa 2 (créditos): saldo da conta (soma dos lotes válidos; 1 crédito por questão gerada).
+async function saldoDeCreditos(env: Env, userId: string): Promise<number> {
+  const r = await fetch(`${env.SUPABASE_URL}/rest/v1/rpc/creditos_saldo`, {
+    method: "POST", headers: cabecalhosDb(env), body: JSON.stringify({ p_user: userId }),
+  });
+  if (!r.ok) throw new Error(`creditos_saldo ${r.status}`);
+  return Math.max(0, Number(await r.json()) || 0);
+}
+// Questões de pedidos que ainda vão ser geradas (na fila, ou o que falta dos que estão gerando):
+// o crédito delas ainda não saiu do saldo, mas já está comprometido.
+async function questoesEmAberto(env: Env, userId: string): Promise<number> {
+  const lista = await trabalhosDoUsuario(env, userId, null, 50);
+  return lista.reduce((n, t) => {
+    const q = Number(t.parametros?.quantidade) || 0;
+    if (t.status === "pendente") return n + q;
+    if (t.status === "gerando") return n + Math.max(0, q - (Number((t.progresso || {}).prontas) || 0));
+    return n;
+  }, 0);
+}
 async function questoesPedidasHoje(env: Env, userId: string): Promise<number> {
   const lista = await trabalhosDoUsuario(env, userId, inicioDoDiaBrasilia(), 200);
   return lista.filter((t) => t.status !== "cancelado" && t.status !== "falhou").reduce((n, t) => n + (Number(t.parametros?.quantidade) || 0), 0);
@@ -405,6 +424,7 @@ const disparoImediato = (env: Env) => !!env.WA_GITHUB_TOKEN;
 // ---------------------------------------------------------------------------
 // textos das respostas (etapa A1)
 // ---------------------------------------------------------------------------
+const SITE_GERA_ENEM = "https://simuladorenem159753.netlify.app";
 export const TEXTOS = {
   vinculoOk: (nome: string, emailMascarado: string) =>
     `Pronto${nome ? ", " + nome : ""}! Este número ficou vinculado à sua conta do Gerador ENEM${emailMascarado ? ` (${emailMascarado})` : ""}.\n\n` +
@@ -441,6 +461,10 @@ export const TEXTOS = {
   entregaAtrasada: (p: P.Pedido) => `📎 Seu simulado de ${p.disciplina} ficou pronto, mas não consegui entregar na hora. Seguem os arquivos:`,
   entregaFalhouDefinitivo: (p: P.Pedido) => `❌ Não consegui entregar por aqui os arquivos do simulado de ${p.disciplina}, mesmo depois de várias tentativas. Ele está salvo em "Meus Simulados" no app — abra lá e use "Exportar PDF" ou "Exportar DOCX".`,
   falhou: (p: P.Pedido, motivo: string) => `❌ Não consegui gerar o simulado de ${p.disciplina} (${p.quantidade} ${p.quantidade === 1 ? "questão" : "questões"}): ${motivo.slice(0, 200)}. Mande "oi" para pedir de novo.`,
+  // Etapa 2 (créditos): pedido maior que os créditos disponíveis (saldo menos o que já está na fila)
+  semCreditos: (disponivel: number, pedidas: number, comFila: boolean) => disponivel <= 0
+    ? `Seus créditos acabaram${comFila ? " (os que restam já estão reservados para os pedidos na fila)" : ""}. Cada questão usa 1 crédito. Compre um pacote no site do Gera Enem (${SITE_GERA_ENEM}) e depois peça de novo por aqui.`
+    : `Este pedido precisa de ${pedidas} créditos (1 por questão), mas você tem ${disponivel} ${disponivel === 1 ? "disponível" : "disponíveis"}${comFila ? " além dos reservados para os pedidos na fila" : ""}. Peça até ${disponivel} ${disponivel === 1 ? "questão" : "questões"} ou compre mais créditos no site do Gera Enem (${SITE_GERA_ENEM}).`,
   limiteDiario: (pedidasHoje: number, limite: number) => limite <= 0
     ? `Sua conta está sem cota para pedidos pelo WhatsApp (limite diário 0). Fale com o administrador do Gerador ENEM.`
     : `Hoje você já pediu ${pedidasHoje} questões pelo WhatsApp e o limite diário é ${limite}. Peça menos questões ou volte amanhã.`,
@@ -610,10 +634,10 @@ async function tratarPedido(env: Env, msg: MsgMeta, telefone: string, texto: str
   return { acao: "guiado_iniciado", mensagens: [ini.mensagem], resumo: "formulário iniciado (1/6)" };
 }
 
-// Com a reserva em mãos: grava o pedido e encerra o formulário; no limite diário, volta à confirmação com os botões.
+// Com a reserva em mãos: grava o pedido e encerra o formulário; no limite diário ou sem créditos, volta à confirmação com os botões.
 async function gravarEResponder(env: Env, msg: MsgMeta, telefone: string, perfil: Perfil, estado: P.EstadoGuiado, pedido: P.Pedido): Promise<Saida> {
   const saida = await registrarPedido(env, msg, telefone, perfil, pedido);
-  if (saida.acao === "limite_diario") {
+  if (saida.acao === "limite_diario" || saida.acao === "sem_creditos") {
     const msgs = [...saida.mensagens, P.perguntaDoPasso("confirmar", estado.dados)];
     await salvarEstado(env, telefone, perfil.user_id, { ...estado, passo: "confirmar" }, msg.id, msgs);
     return { ...saida, mensagens: msgs };
@@ -629,6 +653,13 @@ async function registrarPedido(env: Env, msg: MsgMeta, telefone: string, perfil:
     if (hoje + pedido.quantidade > limite) {
       const t = TEXTOS.limiteDiario(hoje, limite);
       return { acao: "limite_diario", mensagens: [objetoTexto(t)], resumo: t };
+    }
+    // Etapa 2 (créditos): o pedido inteiro tem de caber nos créditos disponíveis.
+    const reservadas = await questoesEmAberto(env, perfil.user_id);
+    const disponivel = Math.max(0, (await saldoDeCreditos(env, perfil.user_id)) - reservadas);
+    if (pedido.quantidade > disponivel) {
+      const t = TEXTOS.semCreditos(disponivel, pedido.quantidade, reservadas > 0);
+      return { acao: "sem_creditos", mensagens: [objetoTexto(t)], resumo: t };
     }
   }
   const id = await criarTrabalho(env, perfil.user_id, telefone, pedido, msg.id);
@@ -662,6 +693,7 @@ export function motivoAmigavel(motivo: string): string {
   const m = String(motivo || "").split("\n")[0].replace(/\s+at\s+\S.*$/, "").replace(/\s+/g, " ").trim();   // sem pilha ("at Object.x (http://…)")
   if (/sessão do professor indisponível|não consegui acessar sua conta/i.test(m)) return "não consegui acessar sua conta do Gerador ENEM para gerar";
   if (/tempo esgotado/i.test(m)) return "a geração demorou demais e foi interrompida";
+  if (/^sem créditos/i.test(m)) return "seus créditos acabaram antes de o simulado ficar pronto (cada questão usa 1 crédito)";   // Etapa 2 (robô C1.1)
   if (/nenhuma questão ficou pronta/i.test(m)) return "nenhuma questão ficou pronta (" + m.replace(/^nenhuma questão ficou pronta:?\s*/i, "").replace(/[{}\[\]"]/g, "").slice(0, 120).trim() + ")";
   if (/^(área|disciplina|quantidade) inválida|parâmetros ausentes/i.test(m)) return "os parâmetros do pedido não foram aceitos pelo aplicativo";
   if (/arquivo grande demais/i.test(m)) return "os arquivos ficaram grandes demais para o WhatsApp";

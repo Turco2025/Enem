@@ -28,7 +28,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import { chromium } from "playwright";
 import { AUDIENCIA_OIDC, log, dorme, curto, obterCredencial } from "./comum.mjs";
 
-export const VERSAO_ROBO = "C1.0";
+export const VERSAO_ROBO = "C1.1";
 export { AUDIENCIA_OIDC, log, obterCredencial };
 const RAIZ = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const WEBHOOK_URL = (process.env.WEBHOOK_URL || "https://gkceyrkdmnhgqimmrsre.supabase.co/functions/v1/whatsapp-webhook").replace(/\/+$/, "");
@@ -101,7 +101,7 @@ export function limpaMotivo(msg) {
   return String(msg || "").split("\n")[0].replace(/^page\.evaluate:\s*/i, "").replace(/^(Error|TypeError|RangeError):\s*/i, "").replace(/\s+at\s+\S.*$/, "").trim();
 }
 export function erroDefinitivo(msg) {
-  return /^(área inválida|disciplina inválida|quantidade inválida|parâmetros ausentes|sessão incompleta|arquivo grande demais)/i.test(limpaMotivo(msg));
+  return /^(área inválida|disciplina inválida|quantidade inválida|parâmetros ausentes|sessão incompleta|arquivo grande demais|sem créditos)/i.test(limpaMotivo(msg));
 }
 
 // ---------------------------------------------------------------------------
@@ -202,8 +202,10 @@ async function processar(browser, urlApp, trabalho, dono, sessao) {
     page = await contexto.newPage();
     page.on("pageerror", (e) => log("erro na página:", curto(e.message, 200)));
     page.on("console", (m) => { if (m.type() === "error") log("console.error:", curto(m.text(), 200)); });
+    // Etapa 2 (créditos): cada questão do pedido tem um identificador fixo ("wa-<pedido>-<nº>"),
+    // o mesmo em todas as tentativas — refazer o pedido inteiro não cobra o professor de novo.
     const resultado = await gerarNoApp({
-      page, url: urlApp, parametros: p, sessao,
+      page, url: urlApp, parametros: { ...p, cobrancaBase: "wa-" + id }, sessao,
       aoProgresso: async (estado) => {
         const r = await chamar("progresso", { trabalho_id: id, dono, estado }, { tentativas: 1, timeoutMs: 30_000 });
         if (r.status === 409) throw new PedidoPerdido("outro robô retomou este pedido (sinal de vida perdido)");
