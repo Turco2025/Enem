@@ -603,6 +603,11 @@ table.enem-table th{background:rgba(185,229,250,.10);}
 .simulado-del:hover{background:rgba(247,197,102,.22);}
 }
 
+/* v18.47 — a caixa "Auditoria local" do cartão só aparece na conta do dono (classe
+   "conta-dona" no <body>, ligada pelo app quando o saldo diz "ilimitado"). */
+.auditoria-local{display:none;}
+body.conta-dona .auditoria-local{display:block;}
+
 /* ======================================================================================
    v18.46 — CRÉDITOS (Etapa 2): botão no topo e janela com saldo e pacotes. Só a tela.
    ====================================================================================== */

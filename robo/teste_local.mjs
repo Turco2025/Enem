@@ -152,9 +152,15 @@ async function cenario(browser, urlApp, nome, parametros, esperado) {
     }
     if (esperado.temasExatos) confere(new Set(estadoApp.temas).size === esperado.temasExatos, `exatamente ${esperado.temasExatos} temas distintos (vírgula dentro do tema preservada)`);
     if (esperado.textoNaTela) {   // v18.37 — avisos da auditoria local do card (só tela)
-      const tela = await page.evaluate(() => document.body.innerText);
-      for (const t of esperado.textoNaTela) confere(tela.includes(t), `a tela mostra "${t.slice(0, 70)}"`);
-      for (const t of esperado.textoForaDaTela || []) confere(!tela.includes(t), `a tela NÃO mostra "${t.slice(0, 70)}"`);
+      /* v18.47 — a caixa da auditoria continua no cartão, mas só aparece na conta do dono: aqui
+         (conta comum) confere-se o texto da caixa e que ela não aparece na tela. */
+      const aud = await page.evaluate(() => {
+        const els = Array.from(document.querySelectorAll("#questionResults .auditoria-local"));
+        return { texto: els.map((e) => e.textContent).join("\n"), visiveis: els.filter((e) => e.offsetParent !== null).length, n: els.length };
+      });
+      for (const t of esperado.textoNaTela) confere(aud.texto.includes(t), `a auditoria local registra "${t.slice(0, 70)}"`);
+      for (const t of esperado.textoForaDaTela || []) confere(!aud.texto.includes(t), `a auditoria local NÃO registra "${t.slice(0, 70)}"`);
+      confere(aud.n > 0 && aud.visiveis === 0, `a caixa da auditoria fica escondida na conta comum (${aud.n} no cartão, ${aud.visiveis} visível)`);
     }
     confere(estadoApp.fase === "concluido", "fase final: concluido");
     for (const a of r.arquivos) {

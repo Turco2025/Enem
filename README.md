@@ -177,6 +177,21 @@ Teste: `verify_fontes_app.js` — 19 verificações; as seções B e C bis prova
 quatro marcas ligadas ao mesmo tempo nenhuma conferência bloqueia, e que nenhuma delas tem sequer um
 `return true` no corpo. `verify_gabarito_coerente.js` H1 passou a exigir o contrário do que exigia.
 
+## Auditoria local só na conta do dono (app v18.47, 13/10/2026)
+
+Decisão do professor: a auditoria local continua funcionando, mas a caixa "Auditoria local (sem
+custo)" não aparece para professores e alunos ("Só eu vejo"). A auditoria roda em toda questão
+como antes e a caixa continua no cartão (`htmlAuditoriaLocal`, agora dentro de
+`<div class="auditoria-local">`); o CSS a esconde e a classe `conta-dona` no `<body>`, ligada por
+`creditosPinta` quando o saldo diz "ilimitado", a mostra. Assim ela aparece mesmo quando o saldo
+chega depois de o cartão ter sido desenhado, e some ao sair da conta. PDF, Word e impressão não
+mudam (a caixa nunca fez parte deles).
+
+Testes: `node tests/verify_auditoria_dono_v1847.js <index.html>` (8 verificações: conta comum não
+vê, dono vê, saldo que chega depois, saída da conta, resolução comentada continua visível, sem
+erros). `robo/teste_local.mjs` passou a ler os avisos da auditoria na caixa (escondida na conta
+comum) em vez do texto visível da tela.
+
 ## Créditos: 1 crédito por questão, saldo no app e no WhatsApp (app v18.46, generate-question v74.40, 13/10/2026)
 
 Etapa 2 dos créditos. Decisões do professor: os créditos valem já (sem créditos ninguém gera e a
@@ -216,6 +231,13 @@ lá, os créditos são lançados à mão pelo dono (`creditos_adicionar`).
   na imagem, a questão cujo crédito tinha voltado).
 - Planejar recortes e refazer só o recurso visual continuam sem custo (mas exigem login).
 - Toda resposta de questão leva `creditos: {cobranca, cobrado, saldo | ilimitado}`.
+- **Como foi publicado.** O `index.ts` do generate-question tem 713 KB. Desde a versão 115 (v74.40)
+  a função publicada no Supabase é só uma entrada de poucas linhas que importa o arquivo do
+  GitHub numa versão fixa (`https://raw.githubusercontent.com/Turco2025/Enem/<commit>/supabase/functions/generate-question/index.ts`);
+  o Supabase junta tudo na hora da publicação. O whatsapp-webhook (versão 18) faz o mesmo com
+  `logica.ts`. Para publicar uma versão nova: enviar ao GitHub primeiro (GitHub Desktop) e depois
+  publicar a entrada com o commit novo. A impressão digital do selftest (`{"selftest": true}`)
+  confere que prompts, dados e notação são os mesmos.
 
 **App** (v18.46, bloco CRÉDITOS no começo de `src/app.js`).
 - Botão "N créditos" no topo (dono: "Créditos: ilimitado"). A janela mostra o saldo, a validade

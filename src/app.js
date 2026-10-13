@@ -287,6 +287,8 @@ function creditosTexto(){
 }
 
 function creditosPinta(){
+  // v18.47: a auditoria local dos cartões só aparece na conta do dono (ver htmlAuditoriaLocal)
+  document.body.classList.toggle("conta-dona", !!(currentUser && creditos.carregado && creditos.ilimitado));
   const b = document.getElementById("btnCreditos");
   if(!b) return;
   b.style.display = currentUser ? "" : "none";
@@ -4966,6 +4968,11 @@ function auditaQuestaoLocal(q){
   return itens;
 }
 
+/* v18.47 — a caixa "Auditoria local" só aparece na conta do dono (decisão do professor,
+   13/10/2026: "não quero que apareça para o usuário"). A auditoria continua rodando em toda
+   questão e a caixa continua no cartão; o CSS a esconde, e a classe "conta-dona" no <body>
+   (ligada por creditosPinta quando o saldo diz "ilimitado") a mostra. Assim ela aparece
+   mesmo quando o saldo chega depois de o cartão ter sido desenhado. */
 function htmlAuditoriaLocal(q){
   let itens = [];
   try{ itens = auditaQuestaoLocal(q); }catch(e){ itens = []; }
@@ -4977,8 +4984,10 @@ function htmlAuditoriaLocal(q){
     ? "<ul style=\"margin:4px 0 0;padding-left:18px;\">" + itens.map(i => "<li style=\"margin:2px 0;color:" + (i.nivel === "aviso" ? "#f59e0b" : "var(--ink-2)") + ";\">" + (i.nivel === "aviso" ? "⚠️ " : "ℹ️ ") + escapeHtml(i.texto) + "</li>").join("") + "</ul>"
     : "<div class=\"hint\" style=\"margin-top:4px;\">✅ Nenhum alerta nas verificações automáticas.</div>";
   return `
+    <div class="auditoria-local">
     <div class="lab" style="font-size:10.5px;text-transform:uppercase;letter-spacing:.5px;color:var(--ink-2);margin:12px 0 2px;">Auditoria local (sem custo) — ${escapeHtml(titulo)}</div>
-    <div style="font-size:12.5px;">${lista}</div>`;
+    <div style="font-size:12.5px;">${lista}</div>
+    </div>`;
 }
 
 function renderQuestionCard(q, idx){
@@ -8884,6 +8893,9 @@ if(document.fonts && document.fonts.ready) document.fonts.ready.then(calibraBarr
    v18.44 — (12/10/2026) página inicial e app no mesmo endereço: no site publicado o app fica
    em /app/ e quem chega sem login vai para a página inicial (appNoSite). A entrada de
    automação não muda (o robô abre o app em localhost/index.html).
+   v18.47 — (13/10/2026) a caixa "Auditoria local" do cartão só aparece na conta do dono
+   (htmlAuditoriaLocal + classe "conta-dona"); a auditoria continua rodando. A entrada de
+   automação não muda.
    v18.46 — (13/10/2026) créditos (Etapa 2; bloco CRÉDITOS no começo do arquivo). A entrada
    de automação aceita parametros.cobrancaBase ("wa-<id do pedido>"): cada questão vai com o
    identificador fixo "wa-<pedido>-<nº>", e refazer o pedido inteiro não cobra de novo. Sem
