@@ -177,6 +177,26 @@ Teste: `verify_fontes_app.js` — 19 verificações; as seções B e C bis prova
 quatro marcas ligadas ao mesmo tempo nenhuma conferência bloqueia, e que nenhuma delas tem sequer um
 `return true` no corpo. `verify_gabarito_coerente.js` H1 passou a exigir o contrário do que exigia.
 
+## Verificação de segurança: funções que gastam IA só para o servidor (13/10/2026)
+
+A verificação de segurança encontrou quatro portas abertas no Supabase, todas fechadas:
+- `gq-teste-v748-fontes` e `gq-teste-v7413`: cópias antigas do gerador que aceitavam a chave
+  pública do app. Viraram funções vazias que respondem 410 ("desativada").
+- `ingest-math-reference`: gravava trechos na base do revisor de Matemática sem login. Desligada
+  (410). O código que estava no ar ficou em `supabase/functions/ingest-math-reference/original_v9.ts`;
+  a base (`math_reference_chunks`, 1.391 trechos) não foi tocada.
+- `review-math-question` (v5.1) e `classificar-textos-enem` (v1.2): agora só atendem
+  `Authorization: Bearer <chave de serviço do projeto>`, comparada em tempo constante; qualquer
+  outra chamada recebe 401 antes de o corpo ser lido. A `generate-question` já chamava o revisor
+  assim, então nada muda para o professor. Os três módulos de notação do revisor passaram a vir do
+  commit `8328e33c` (o mesmo embutido na versão que estava no ar desde 14/09), e não de `main`:
+  o comportamento do revisor fica idêntico.
+
+Teste: `bash tests/verify_trava_servidor_v1848.sh` sobe as três funções no Deno local, com chaves
+falsas e sem chamar IA (21 verificações: sem chave, chave pública, token de professor e chave
+quase igual → 401; chave de serviço → mesmo comportamento de antes; ingest → 410; o gerador manda
+a chave certa num único ponto).
+
 ## Domínio próprio: geraenem.com.br (13/10/2026)
 
 O site passou a ter domínio próprio, `geraenem.com.br`, já configurado no Netlify como endereço

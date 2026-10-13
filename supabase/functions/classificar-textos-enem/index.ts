@@ -1,4 +1,10 @@
-/* ═══════════ classificar-textos-enem — v1.1b (23/09/2026) ═══════════
+/* ═══════════ classificar-textos-enem — v1.2 (13/10/2026) ═══════════
+   v1.2 (13/10/2026) — SÓ O SERVIDOR CHAMA. Verificação de segurança: a função
+   aceitava a chave pública do app, e "carregar" baixava qualquer endereço da
+   internet e gravava na fila. Agora toda ação exige "Authorization: Bearer
+   <chave de serviço do projeto>"; o resto chega 401 antes de ler o corpo. O
+   encadeamento continua funcionando, porque repassa o mesmo cabeçalho.
+   (v1.1b, 23/09/2026, abaixo.)
    BANCO DE TEXTOS DO ENEM, etapa 3 (decisão do professor, 21/09): os
    textos-base das provas oficiais — autor, obra e referência já conferidos
    pelo INEP — viram a CAMADA ZERO das fontes do gerador de questões.
@@ -43,6 +49,18 @@ const URL_JSONL_PADRAO = "https://raw.githubusercontent.com/Turco2025/Enem/main/
 
 function json(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), { status, headers: { ...CORS, "Content-Type": "application/json" } });
+}
+
+/* v1.2 — a chamada vem do próprio servidor? Compara o "Bearer" com a chave de
+   serviço do projeto em tempo constante. Sem chave configurada, ninguém passa. */
+function chamadaDoServidor(req: Request): boolean {
+  const esperado = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
+  const m = /^Bearer\s+(\S+)$/i.exec(String(req.headers.get("authorization") || "").trim());
+  const recebido = m ? m[1] : "";
+  if (esperado.length < 20 || recebido.length !== esperado.length) return false;
+  let diferenca = 0;
+  for (let i = 0; i < esperado.length; i++) diferenca |= esperado.charCodeAt(i) ^ recebido.charCodeAt(i);
+  return diferenca === 0;
 }
 
 const SISTEMA = `Você é um catalogador de itens do ENEM para um banco de textos-base. Recebe UMA questão de prova oficial do INEP (bloco bruto extraído do PDF, com heurísticas já aplicadas) e devolve, pela ferramenta "catalogar_texto_enem", a separação exata e a classificação.
@@ -337,6 +355,7 @@ async function retemas(lote: number, encadear: boolean, selfUrl: string, auth: {
 
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: CORS });
+  if (!chamadaDoServidor(req)) return json({ error: "Acesso restrito ao servidor." }, 401);   // v1.2
   if (req.method !== "POST") return json({ error: "Método não suportado." }, 405);
   let body: any = {};
   try { body = await req.json(); } catch { return json({ error: "JSON inválido." }, 400); }

@@ -1,5 +1,13 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "jsr:@supabase/supabase-js@2";
+/* v5.1 (13/10/2026) — SÓ O SERVIDOR CHAMA. Verificação de segurança: a função estava
+   aberta (sem login, sem chave) e cada chamada gasta OpenAI + Anthropic. Agora ela só
+   atende quem manda "Authorization: Bearer <chave de serviço do projeto>", que é
+   exatamente o que a generate-question já envia. Qualquer outra chamada recebe 401
+   antes de ler o corpo. Nada muda para o professor.
+   Os três módulos de notação passaram a vir do commit 8328e33c (o mesmo que estava
+   embutido na versão em produção desde 14/09), e não mais de "main": assim o
+   comportamento do revisor continua idêntico ao de antes. */
 /* v5 (14/09/2026) — REVISOR DE NOTAÇÃO. Além da auditoria de contas, esta função
    agora corrige o que a rede de segurança determinística (notacao_matematica.ts)
    não consegue converter sozinha: expoente com fração (2^(t/3)), índice com
@@ -8,9 +16,9 @@ import { createClient } from "jsr:@supabase/supabase-js@2";
    regras oficiais de notação (os mesmos blocos do prompt de geração), renormaliza
    e confere de novo — até 2 tentativas. Nunca derruba a entrega: o que sobrar
    volta apontado em `notacao.residuosDepois` e o app avisa no cartão. */
-import { nmNormalizaQuestao, nmAudita } from "https://raw.githubusercontent.com/Turco2025/Enem/main/supabase/functions/generate-question/notacao_matematica.ts";
-import { normalizarNotacaoQuimica } from "https://raw.githubusercontent.com/Turco2025/Enem/main/supabase/functions/generate-question/notacao_quimica.ts";
-import { NOTACAO_MATEMATICA, NOTACAO_QUIMICA } from "https://raw.githubusercontent.com/Turco2025/Enem/main/supabase/functions/generate-question/recurso_instrucoes.ts";
+import { nmNormalizaQuestao, nmAudita } from "https://raw.githubusercontent.com/Turco2025/Enem/8328e33c0ccf99648e78f0629f83349e836745e4/supabase/functions/generate-question/notacao_matematica.ts";
+import { normalizarNotacaoQuimica } from "https://raw.githubusercontent.com/Turco2025/Enem/8328e33c0ccf99648e78f0629f83349e836745e4/supabase/functions/generate-question/notacao_quimica.ts";
+import { NOTACAO_MATEMATICA, NOTACAO_QUIMICA } from "https://raw.githubusercontent.com/Turco2025/Enem/8328e33c0ccf99648e78f0629f83349e836745e4/supabase/functions/generate-question/recurso_instrucoes.ts";
 
 /* REVISOR DE MATEMÁTICA — agente separado do gerador de questões do ENEM
    (generate-question). Único trabalho: auditar a CORREÇÃO MATEMÁTICA (contas,
@@ -63,6 +71,19 @@ function jsonResponse(body: unknown, status = 200) {
     status,
     headers: { ...CORS_HEADERS, "Content-Type": "application/json" },
   });
+}
+
+/* v5.1 — a chamada vem do próprio servidor? Compara o "Bearer" com a chave de
+   serviço do projeto em tempo constante (não vaza, pelo tempo de resposta,
+   quantos caracteres bateram). Sem chave configurada, ninguém passa. */
+function chamadaDoServidor(req: Request): boolean {
+  const esperado = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
+  const m = /^Bearer\s+(\S+)$/i.exec(String(req.headers.get("authorization") || "").trim());
+  const recebido = m ? m[1] : "";
+  if (esperado.length < 20 || recebido.length !== esperado.length) return false;
+  let diferenca = 0;
+  for (let i = 0; i < esperado.length; i++) diferenca |= esperado.charCodeAt(i) ^ recebido.charCodeAt(i);
+  return diferenca === 0;
 }
 
 function campoRevisavel(q: any) {
@@ -413,6 +434,10 @@ export async function revisarNotacao(question: any, area: string, disciplina: st
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: CORS_HEADERS });
+  }
+  // v5.1: só o servidor (generate-question, com a chave de serviço) pode usar o revisor.
+  if (!chamadaDoServidor(req)) {
+    return jsonResponse({ error: "Acesso restrito ao servidor." }, 401);
   }
   if (req.method !== "POST") {
     return jsonResponse({ error: "Método não suportado. Use POST." }, 405);
