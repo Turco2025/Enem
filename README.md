@@ -177,6 +177,44 @@ Teste: `verify_fontes_app.js` — 19 verificações; as seções B e C bis prova
 quatro marcas ligadas ao mesmo tempo nenhuma conferência bloqueia, e que nenhuma delas tem sequer um
 `return true` no corpo. `verify_gabarito_coerente.js` H1 passou a exigir o contrário do que exigia.
 
+## Tela de escolha, página do aluno e página do professor (site v18.45, 13/10/2026)
+
+Pedido do professor: quem chega ao site escolhe primeiro se é aluno ou professor, e cada um vê a
+sua página. O aplicativo (`/app/`) não muda: é o mesmo para os dois.
+
+**Como fica no site.**
+- `/` é a tela de escolha ("Questão 00 · Antes de começar"), com duas alternativas: **A) Sou aluno**
+  leva para `/aluno/` e **B) Sou professor** leva para `/professor/`. Ela também tem "Entrar" e
+  "Cadastrar" (ou "Abrir o app", para quem já está logado), com a mesma janela de login.
+- `/professor/` é a página que antes ficava na raiz, sem mudança de conteúdo; ganhou o link
+  "Sou aluno" no menu, embaixo dos botões da abertura e no rodapé.
+- `/aluno/` tem a mesma estrutura e o mesmo visual, com textos para o estudante: a seção 03 virou
+  "O treino" (com a conta de quantas questões ele resolve até a prova), a seção "Professor e aluno"
+  virou "Do seu jeito" e as Dúvidas ganharam "Preciso ter um professor para usar?". Os pacotes de
+  créditos são os mesmos do professor. Links "Sou professor" no menu, na abertura e no rodapé.
+- Links antigos para seções da página do professor (`/#planos`, `/#duvidas` etc.) seguem para a
+  mesma seção em `/professor/`.
+
+**Login.** Continua igual e vale nas três páginas. O Google e o link do e-mail de confirmação
+voltam para a raiz (o endereço já liberado no Supabase); a tela de escolha recebe a sessão e segue
+para `/app/`. O app manda quem chega sem login para `/?entrar`, que abre a janela de login na tela
+de escolha, e "Sair" volta para a tela de escolha.
+
+**O que mudou nos arquivos.**
+- `pagina_fonte/montar.py` gera três páginas: `pagina/index.html` (escolha),
+  `pagina/professor/index.html` e `pagina/aluno/index.html`. Nas subpastas, `assets/` vira
+  `../assets/`. O `netlify.toml` não muda: ele já copia a pasta `pagina/` inteira.
+- `pagina_fonte/src/`: novos `escolha.html`, `escolha.css`, `escolha.js`, `escolha_inicio.js` e
+  `body_aluno.html`; `body.html` ganhou os links "Sou aluno"; `style.css` ganhou o estilo desses
+  links; `app.js` lê `<html data-pagina="aluno">` para os nomes do cartão-resposta lateral e a
+  conta da seção 03. A janela de login é a mesma do `body.html`, copiada pelo `montar.py`.
+
+Testes: `node tests/verify_paginas_v1845.js` (36 verificações: escolha, links entre as páginas,
+link antigo `/#planos`, textos e conta de cada página, login na raiz e na página do aluno, volta
+do Google, `/?entrar`, "Sair", 1440 a 390 px sem rolagem lateral, nenhum arquivo faltando, sem
+erros) e `node tests/verify_pagina_login_v1844.js` (21 verificações, agora com o menu de
+`/professor/` e `/aluno/`).
+
 ## Página inicial e app no mesmo endereço: login e cadastro na página inicial (app v18.44, 12/10/2026)
 
 O endereço do site passou a abrir a página inicial do Gera Enem, e o aplicativo foi para `/app/`.

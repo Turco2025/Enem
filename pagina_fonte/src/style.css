@@ -720,3 +720,13 @@ html.auth-aberta{overflow:hidden}
 /* com Entrar e Cadastrar no menu, os links não quebram linha; de 901 a 1000 px sai "Questão real" */
 .nav__links a{white-space:nowrap}
 @media (min-width:901px) and (max-width:1000px){.nav__links .nav__opc{display:none}}
+
+/* ===== aluno e professor: links para trocar de página (menu, abertura e rodapé) ===== */
+.nav .nav__links a.nav__troca{margin-left:.35em;box-shadow:inset 0 0 0 2px rgba(185,229,250,.55);color:var(--sky)}
+.nav .nav__links a.nav__troca:hover{background:var(--sky);box-shadow:inset 0 0 0 2px #14304D;color:#14304D;text-shadow:none}
+@media (min-width:901px) and (max-width:1180px){.nav .nav__links a.nav__troca{display:none}}
+.troca{justify-self:start;display:inline-block;font:700 .95rem/1.3 var(--f-label);letter-spacing:.03em;color:var(--sky);text-decoration:underline;text-decoration-thickness:1.5px;text-underline-offset:.22em;text-shadow:var(--tshadow)}
+.troca:hover{color:var(--text-primary)}
+html.scrub .band .troca{opacity:clamp(0,(var(--k,0) - .78)*5,1)}
+.foot__troca a{color:var(--sky);font-weight:700}
+.foot__troca a:hover{color:var(--text-primary)}

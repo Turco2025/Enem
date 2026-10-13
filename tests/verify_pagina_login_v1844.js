@@ -1,4 +1,5 @@
 // v18.44 — página inicial e app no mesmo endereço: login e cadastro na página inicial.
+// v18.45 — a raiz virou a tela de escolha (Aluno ou Professor), com o mesmo Entrar e Cadastrar.
 // Monta, numa pasta temporária, o mesmo que o netlify.toml publica (pagina/ na raiz e o
 // index.html do app em /app/), serve em localhost e percorre o fluxo com um supabase-js
 // falso (sessão no localStorage, como o real). SEM rede.
@@ -94,11 +95,14 @@ const ok = (c, m, x) => { if (c) { total++; console.log('PASS ' + m); } else { f
   await Promise.all([pg.waitForURL(BASE + '/app/'), pg.goto(BASE + '/#access_token=a&refresh_token=b')]); await pg.waitForTimeout(500);
   ok(await pg.isVisible('#btnSair'), 'D2 de volta do Google, a página segue para o app logado');
   await ctx.close();
+  // v18.45: o menu com logo fica nas páginas do professor (/professor/) e do aluno (/aluno/); a raiz é a tela de escolha
   for (const w of [1366, 1024, 901, 390]) {
     ({ ctx, pg } = await contexto({ width: w, height: 800 }));
-    await pg.goto(BASE + '/'); await pg.waitForTimeout(300);
-    const m = await pg.evaluate(() => ({ estouro: document.documentElement.scrollWidth - innerWidth, alt: Math.round(document.querySelector('.nav__in').getBoundingClientRect().height) }));
-    ok(m.estouro === 0 && m.alt < 140, `E ${w}px: menu numa linha, sem rolagem lateral`, m);
+    for (const pag of ['/professor/', '/aluno/']) {
+      await pg.goto(BASE + pag); await pg.waitForTimeout(300);
+      const m = await pg.evaluate(() => ({ estouro: document.documentElement.scrollWidth - innerWidth, alt: Math.round(document.querySelector('.nav__in').getBoundingClientRect().height) }));
+      ok(m.estouro === 0 && m.alt < 140, `E ${w}px ${pag}: menu numa linha, sem rolagem lateral`, m);
+    }
     await ctx.close();
   }
   ok(erros.length === 0, 'F sem erros de JavaScript', erros.slice(0, 3));

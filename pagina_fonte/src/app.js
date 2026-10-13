@@ -29,6 +29,8 @@
     fireRM();
   }
   const FINE = matchMedia('(pointer: fine)').matches;
+  // a mesma página serve ao professor (/professor/) e ao aluno (/aluno/, <html data-pagina="aluno">)
+  const ALUNO = root.dataset.pagina === 'aluno';
   const shareUrl = () => CONFIG.siteUrl || location.href.split('#')[0];
 
   /* Diagnóstico: abra o site com ?diag=1 no fim do endereço para ver, no próprio aparelho,
@@ -432,7 +434,9 @@
   const nav = $('#nav'), bar = $('.nav__bar'), sheetnav = $('.sheetnav'), navList = $('#sheetnav');
   const secs = $$('[data-sec]');
   const GAB = 'ACEBDEADCBD';
-  const NAMES = ['Abertura', 'O gabarito', 'O tempo', 'Como funciona', 'Pelo WhatsApp', 'Questão real', 'Diferenciais', 'Professor e aluno', 'Vantagens e limites', 'Planos', 'Dúvidas'];
+  const NAMES = ALUNO
+    ? ['Abertura', 'O gabarito', 'O treino', 'Como funciona', 'Pelo WhatsApp', 'Questão real', 'Diferenciais', 'Do seu jeito', 'Vantagens e limites', 'Planos', 'Dúvidas']
+    : ['Abertura', 'O gabarito', 'O tempo', 'Como funciona', 'Pelo WhatsApp', 'Questão real', 'Diferenciais', 'Professor e aluno', 'Vantagens e limites', 'Planos', 'Dúvidas'];
   const links = secs.map((s, i) => {
     const li = document.createElement('li'), a = document.createElement('a');
     a.href = '#' + s.id; a.setAttribute('aria-label', String(i + 1).padStart(2, '0') + ' · ' + NAMES[i]);
@@ -559,7 +563,18 @@
   $$('.meter').forEach(m => { let h = ''; for (let i = 0; i < 20; i++) h += '<i class="' + (i < +m.dataset.sims ? 'f' : '') + '"></i>'; m.innerHTML = h; });
   const qMes = $('#qMes'), minQ = $('#minQ');
   const fill = el => el.style.setProperty('--fill', ((el.value - el.min) / (el.max - el.min) * 100) + '%');
+  // aluno: questões por semana × semanas até a prova; uma prova do ENEM tem 180 questões; ritmo de ~3 min por questão
+  function calcAluno() {
+    const q = +qMes.value, w = +minQ.value, tot = q * w, provas = tot / 180, h = tot * 3 / 60;
+    const n1 = v => v.toLocaleString('pt-BR', { maximumFractionDigits: 1 });
+    $('#qMesOut').textContent = q; $('#minQOut').textContent = w; $('#hMes').textContent = tot.toLocaleString('pt-BR');
+    $('#hAno').textContent = n1(provas) + (Math.round(provas * 10) === 10 ? ' prova' : ' provas');
+    $('#hTempo').textContent = (h < 10 ? n1(h) : Math.round(h).toLocaleString('pt-BR')) + (Math.round(h * 10) === 10 ? ' hora' : ' horas');
+    fill(qMes); fill(minQ);
+    $('#shareCalc').href = 'https://wa.me/?text=' + encodeURIComponent('Meu plano até o ENEM: resolver ' + tot.toLocaleString('pt-BR') + ' questões no padrão da prova com o Gera Enem. Bora treinar junto? ' + shareUrl());
+  }
   function calc() {
+    if (ALUNO) return calcAluno();
     const q = +qMes.value, m = +minQ.value, h = q * Math.max(0, m - 2) / 60;
     const hs = h < 10 ? h.toLocaleString('pt-BR', { maximumFractionDigits: 1 }) : Math.round(h).toLocaleString('pt-BR');
     $('#qMesOut').textContent = q; $('#minQOut').textContent = m; $('#hMes').textContent = hs;
