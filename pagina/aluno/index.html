@@ -2365,6 +2365,10 @@ html.scrub .band .troca{opacity:clamp(0,(var(--k,0) - .78)*5,1)}
   function mostra(texto, tipo) { msg.textContent = texto; msg.dataset.tipo = tipo || 'erro'; msg.hidden = false; }
   function traduz(err) {
     const m = String((err && err.message) || err || '');
+    // v18.51: senha recusada pelo Supabase (proteção contra senhas vazadas, plano Pro)
+    const motivos = (err && Array.isArray(err.reasons)) ? err.reasons : [];
+    if (motivos.includes('pwned') || /known to be weak|easy to guess|pwned/i.test(m)) return 'Essa senha já apareceu em vazamentos de dados na internet e é fácil de adivinhar. Escolha outra senha.';
+    if (err && err.code === 'weak_password' && !motivos.includes('length')) return 'Essa senha é fraca. Escolha uma senha mais longa e difícil de adivinhar.';
     if (/invalid login credentials/i.test(m)) return 'E-mail ou senha incorretos.';
     if (/email not confirmed/i.test(m)) return 'Confirme o seu e-mail antes de entrar. O link chegou na sua caixa de entrada.';
     if (/already registered|already exists/i.test(m)) return 'Já existe uma conta com este e-mail. Use a aba Entrar.';

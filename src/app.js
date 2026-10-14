@@ -484,6 +484,10 @@ function mostraErroAuth(msg){
 
 function traduzErroAuth(err){
   const msg = String(err && err.message || err || "");
+  // v18.51: senha recusada pelo Supabase (proteção contra senhas vazadas, plano Pro)
+  const motivos = (err && Array.isArray(err.reasons)) ? err.reasons : [];
+  if(motivos.includes("pwned") || /known to be weak|easy to guess|pwned/i.test(msg)) return "Essa senha já apareceu em vazamentos de dados na internet e é fácil de adivinhar. Escolha outra senha.";
+  if(err && err.code === "weak_password" && !motivos.includes("length")) return "Essa senha é fraca. Escolha uma senha mais longa e difícil de adivinhar.";
   if(/invalid login credentials/i.test(msg)) return "E-mail ou senha incorretos.";
   if(/already registered|already exists|user already registered/i.test(msg)) return "Já existe uma conta com este e-mail. Tente acessar em vez de cadastrar.";
   if(/password should be at least/i.test(msg)) return "A senha precisa ter pelo menos 6 caracteres.";

@@ -177,7 +177,27 @@ Teste: `verify_fontes_app.js` — 19 verificações; as seções B e C bis prova
 quatro marcas ligadas ao mesmo tempo nenhuma conferência bloqueia, e que nenhuma delas tem sequer um
 `return true` no corpo. `verify_gabarito_coerente.js` H1 passou a exigir o contrário do que exigia.
 
+## Senhas vazadas: mensagem em português no cadastro (app v18.51, 14/10/2026)
+
+O projeto do Supabase passou para o plano Pro, que permite ligar a proteção contra senhas vazadas
+(Authentication → Sign In / Providers → Email → "Prevent use of leaked passwords"). Com ela ligada,
+o Supabase confere a senha no HaveIBeenPwned e **recusa no cadastro** uma senha que já apareceu em
+vazamentos (erro `weak_password`, motivo `pwned`). Até a v18.50 essa recusa aparecia em inglês;
+agora a página inicial e o app mostram: "Essa senha já apareceu em vazamentos de dados na internet
+e é fácil de adivinhar. Escolha outra senha." Quem **já tem conta** com uma senha vazada continua
+entrando normalmente (o Supabase só avisa, não bloqueia o login).
+
+Teste: `node tests/verify_senha_vazada_v1851.js` (supabase-js de verdade, Supabase Auth simulado,
+sem rede: cadastro recusado em português, login de conta antiga continua entrando, tradução do app
+e nenhuma outra mensagem muda; 4 verificações). Na versão anterior, V1 e V3 falham (mensagem em inglês).
+
 ## Análise de site: trava da cobrança, campos da IA, permissões, bibliotecas fixas e CSP (app v18.50, generate-question v74.42, 14/10/2026)
+
+Publicada em 14/10/2026: app no commit `4195af7`; generate-question v117 fixada nesse commit;
+migrações `trava_cobranca` e `permissoes_banco` aplicadas logo depois. Conferido no ar: o
+supabase-js carrega com o integrity nas três páginas, a CSP (só relatório) não acusa nada, a função
+inicia ("booted") e recusa quem não está logado, nenhum saldo nem cobrança mudou, e o consultor
+de segurança do Supabase deixou de acusar as funções de crédito e a busca do revisor.
 
 Correções do plano da análise de site de 13/10/2026 (nota 6,9). Nada muda para o professor no uso
 normal.
