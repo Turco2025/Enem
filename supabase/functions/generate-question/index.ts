@@ -1,29 +1,32 @@
-import "jsr:@supabase/functions-js/edge-runtime.d.ts";
-import { createClient } from "jsr:@supabase/supabase-js@2";
+/* v74.43 — versões fixas: as bibliotecas do Supabase com versão exata (antes "@2", resolvida no deploy) e
+   os módulos ao lado deste arquivo importados por caminho relativo. Como a publicação importa este arquivo
+   de um commit fixo do GitHub, "./x.ts" vem do MESMO commit (antes vinha sempre do "main"). */
+import "jsr:@supabase/functions-js@2.117.3/edge-runtime.d.ts";
+import { createClient } from "jsr:@supabase/supabase-js@2.117.3";
 /* Os dados pedagógicos (Matriz de Referência, contexto por área, modelo universal
    e objetos de conhecimento) vivem no repositório e entram no pacote no momento da
    implantação — não são copiados à mão para dentro da função. O conteúdo é embutido
    pelo empacotador do Deno na hora do deploy, então em produção não há nenhuma
    chamada de rede ao GitHub: o que roda é uma cópia congelada. A conferência de
    integridade (GET ?selftest=1) diz exatamente qual cópia foi carregada. */
-import APP_DATA_JSON from "https://raw.githubusercontent.com/Turco2025/Enem/main/supabase/functions/generate-question/app_data.json" with { type: "json" };
+import APP_DATA_JSON from "./app_data.json" with { type: "json" };
 const APP_DATA: any = APP_DATA_JSON;
 /* v63: os textos fixos dos prompts (notação química, protocolo do recurso
    visual e formato de entrega) vivem em recurso_instrucoes.ts, ao lado deste
    arquivo no repositório, e entram no pacote do mesmo jeito que app_data.json:
    embutidos no deploy, sem rede em produção. Conteúdo idêntico ao da v62. */
-import { NOTACAO_QUIMICA, NOTACAO_MATEMATICA, RECURSO_INSTRUCOES, COMPLEMENTO_BIOLOGIA, instrucoesImagem, ehBiologia, JSON_SCHEMA_TXT } from "https://raw.githubusercontent.com/Turco2025/Enem/main/supabase/functions/generate-question/recurso_instrucoes.ts";
+import { NOTACAO_QUIMICA, NOTACAO_MATEMATICA, RECURSO_INSTRUCOES, COMPLEMENTO_BIOLOGIA, instrucoesImagem, ehBiologia, JSON_SCHEMA_TXT } from "./recurso_instrucoes.ts";
 /* v70: rede de segurança da notação química (índices e cargas em subscrito/
    sobrescrito, lista fechada) vive em notacao_quimica.ts, ao lado deste
    arquivo no repositório, e entra no pacote como recurso_instrucoes.ts:
    embutida no deploy, sem rede em produção. Ver o cabeçalho daquele arquivo. */
-import { qnLigacaoOrganica, normalizarNotacaoTexto, normalizarNotacaoQuimica, normalizarNotacaoVisual, qnTabela, qnConverteIon, QN_FORMULAS_COMUNS, QN_FORMULAS_DISCIPLINA, QN_GASES, QN_GASES_SEMPRE, QN_IONS } from "https://raw.githubusercontent.com/Turco2025/Enem/main/supabase/functions/generate-question/notacao_quimica.ts";
+import { qnLigacaoOrganica, normalizarNotacaoTexto, normalizarNotacaoQuimica, normalizarNotacaoVisual, qnTabela, qnConverteIon, QN_FORMULAS_COMUNS, QN_FORMULAS_DISCIPLINA, QN_GASES, QN_GASES_SEMPRE, QN_IONS } from "./notacao_quimica.ts";
 /* v71: rede de segurança da notação MATEMÁTICA (expoentes, índices, × e ·),
    em notacao_matematica.ts — o mesmo JavaScript que roda no app, com os mesmos
    casos de teste. Roda em TODAS as áreas, depois da química. Caso real que a
    motivou: 13/09/2026, 6 de 20 questões de Matemática com Q0, 2^4, 10^9,
    "4,6 x 10^9" — porque nenhuma regra de notação chegava a Matemática. */
-import { normalizarNotacaoMatematica, nmNormalizaTexto, nmAudita } from "https://raw.githubusercontent.com/Turco2025/Enem/main/supabase/functions/generate-question/notacao_matematica.ts";
+import { normalizarNotacaoMatematica, nmNormalizaTexto, nmAudita } from "./notacao_matematica.ts";
 
 
 const CORS_HEADERS = {
@@ -367,6 +370,19 @@ async function devolverCredito(userId: string, cobrancaId: string, motivo: strin
    "Entregou de vez" exclui a questão reprovada pelo auditor de fontes que o app ainda vai pedir
    de novo com o MESMO identificador (app: reprovadaNaAuditoria, MAX_TENTATIVAS_FONTE = 3). */
 const CREDITOS_TENTATIVAS_FONTE_APP = 3;
+/* v74.43 — MARCA DO SERVIDOR VINDA DA IA (análise de site de 13/10/2026). "fonteNaoVerificada" decide a
+   cobrança (fechaCobranca: questão marcada não conta como entregue e o app pede de novo com o mesmo
+   identificador). Só as conferências do próprio servidor (garantirFontesReais) podem pôr essa marca.
+   Antes, se a IA escrevesse a chave por conta própria (por exemplo, a pedido do texto do tema), ela
+   sobrevivia em Natureza e Matemática, onde a conferência de fontes não se aplica, e a mesma cobrança
+   gerava questões sem fim. Agora a chave é descartada em toda resposta da IA, logo depois de ler o JSON. */
+function descartaMarcaDoServidor(q: any, etapa: string): void {
+  if (q && typeof q === "object" && !Array.isArray(q) && "fonteNaoVerificada" in q) {
+    delete q.fonteNaoVerificada;
+    console.warn(`[cobrança] a IA escreveu "fonteNaoVerificada" (${etapa}): descartada — só o servidor marca a fonte`);
+  }
+}
+
 async function fechaCobranca(resp: Response, userId: string, cobrancaId: string, cob: any, tentativa = 0): Promise<Response> {
   let corpo: any = null;
   try { corpo = await resp.clone().json(); } catch (_) { corpo = null; }
@@ -408,6 +424,12 @@ async function fechaCobranca(resp: Response, userId: string, cobrancaId: string,
    Recusa: 402 "sem_creditos" ou 429 "limite_diario", sem chamar o Claude. Se a conferência
    falhar, 503 e nada é gerado. Os textos que essas rotas repassam ao prompt passam a ter
    tamanho máximo (antes, qualquer tamanho ia direto para o Claude). */
+/* ─────────── v74.43: MARCA "fonteNaoVerificada" SÓ DO SERVIDOR E VERSÕES FIXAS (análise de site de 13/10/2026) ───────────
+   · A IA não consegue mais marcar a própria questão como "fonte não verificada" (o que fazia a cobrança não
+     contar a entrega): descartaMarcaDoServidor apaga a chave em toda resposta da IA (geração, alternativas
+     incompletas, revisor de Matemática e reelaboração), antes das conferências do servidor.
+   · supabase-js e functions-js com versão exata (2.117.3); app_data.json, recurso_instrucoes.ts e os dois
+     módulos de notação por caminho relativo, isto é, do mesmo commit desta função (antes, do "main"). */
 /* ─────────── v74.42: TRAVA DA COBRANÇA E CAMPOS DA IA (análise de segurança de 13/10/2026) ───────────
    · Cada cobrança fica "em andamento" no banco por até 150 s (migração 2026-10-14_trava_cobranca.sql).
      Outro pedido com o mesmo cobrancaId nesse intervalo recebe 409 "em_andamento" e nada é gerado
@@ -7661,7 +7683,8 @@ function selfTestResponse() {
             && JSON.stringify(ferramentaVisualPara("imagem").input_schema.properties.visual) === JSON.stringify(visualSchemaPara("imagem"))
             && normalizarVisual({ tipo: "nenhum" }, "imagem") === null && normalizarVisual({ tipo: "imagem", promptImagem: "x" }, "nenhum") === null && normalizarVisual(null, "nenhum") === null
             && normalizarVisual({ tipo: "Imagem", promptImagem: "x".repeat(10) }, "imagem").tipo === "imagem"
-            && !("imagemDataUrl" in normalizarVisual({ tipo: "imagem", promptImagem: "x".repeat(10), imagemDataUrl: "http://exemplo.invalid/a.png" }, "imagem"))   // v74.42
+            && !("imagemDataUrl" in normalizarVisual({ tipo: "imagem", promptImagem: "x".repeat(10), imagemDataUrl: "http://exemplo.invalid/a.png" }, "imagem"))
+            && (() => { const q: any = { comando: "c", fonteNaoVerificada: { motivo: "ia" } }; descartaMarcaDoServidor(q, "autoteste"); return !("fonteNaoVerificada" in q) && q.comando === "c"; })()   // v74.43   // v74.42
             && !visualConforme({ tipo: "nenhum" }, "imagem").ok && visualConforme(null, "nenhum").ok
             && u.includes('o campo "visual" tem de vir com "tipo": "grafico"') && u0.includes('{"tipo":"nenhum"}')
             && JSON.stringify(ferramentasDaQuestao(ferramentaQuestaoPara("imagem", false, "Química"))) === JSON.stringify(ferramentasDaQuestao(ferramentaQuestaoPara("tabela", false, "Química")));
@@ -8579,6 +8602,7 @@ ATENÇÃO — sua resposta anterior não pôde ser usada: o argumento da ferrame
     // v67: alternativas/análise/competência/habilidade sempre como objeto.
     data = normalizarCamposEstruturados(data);
     repoeTextoDaBiblioteca(data, "geração");
+    descartaMarcaDoServidor(data, "geração");   // v74.43
     /* v74.38 — AS CINCO ALTERNATIVAS, SEMPRE (questões 6 e 9 do simulado de Matemática de 06/10):
        o reparo em código já rodou em normalizarCamposEstruturados; o que ainda faltar é pedido à IA
        só pela(s) letra(s) que falta(m); sem sucesso, a questão é refeita UMA vez com a ordem sobre o
@@ -8591,6 +8615,7 @@ ATENÇÃO — sua resposta anterior não pôde ser usada: o argumento da ferrame
         console.warn(`[alternativas] refazendo a questão inteira — veio sem ${completasDiag.faltantes.join(", ")} e não foi possível completar`);
         let nova = await callClaudeForJSON(system, userMsg + buildCorrecaoAlternativasIncompletas(completasDiag.faltantes), false, usos, ferramentaQ, buscasWeb, "geracao/alternativas-incompletas", undefined, undefined, familiaQ);
         nova = normalizarCamposEstruturados(nova);
+        descartaMarcaDoServidor(nova, "alternativas incompletas");   // v74.43
         if (nova && typeof nova === "object") {
           repoeTextoDaBiblioteca(nova, "refeita por alternativas incompletas");
           const c2 = await garantirAlternativasCompletas(nova, system, usos, LIMITE_FUNCAO_MS - (Date.now() - inicioReq), familiaQ);
@@ -8670,6 +8695,7 @@ ATENÇÃO — sua resposta anterior não pôde ser usada: o argumento da ferrame
 
     // De novo, depois da revisão matemática: idempotente, e garante o tipo na saída.
     data = normalizarCamposEstruturados(data);
+    descartaMarcaDoServidor(data, "revisor de Matemática");   // v74.43: o revisor também é IA
     if (data && typeof data === "object") data.visual = normalizarVisual(data.visual, recurso);
     /* v74.38 — o revisor devolve a questão inteira: se as alternativas se perderam no caminho,
        voltam as cinco que entraram (conferidas acima). */
@@ -8757,6 +8783,7 @@ ATENÇÃO — sua resposta anterior não pôde ser usada: o argumento da ferrame
       console.warn(`[fontes] reelaboração ${reelaboracoes}/${reelabMax} — ${String(fontesDiag.motivo || "").slice(0, 160)}`);
       let nova = await callClaudeForJSON(system, userMsg + buildCorrecaoAuditoria(fontesDiag, reelaboracoes), false, usos, ferramentaQ, buscasWeb, `geracao/reelaboracao-${reelaboracoes}`, undefined, undefined, familiaQ);
       nova = normalizarCamposEstruturados(nova);
+      descartaMarcaDoServidor(nova, "reelaboração");   // v74.43
       if (!nova || typeof nova !== "object") break;
       /* v74.38 — a reescrita também tem de vir com as cinco; sem completar, fica a versão anterior. */
       const cd2 = await garantirAlternativasCompletas(nova, system, usos, LIMITE_FUNCAO_MS - (Date.now() - inicioReq), familiaQ);

@@ -1,5 +1,5 @@
-import "jsr:@supabase/functions-js/edge-runtime.d.ts";
-import { createClient } from "jsr:@supabase/supabase-js@2";
+import "jsr:@supabase/functions-js@2.117.3/edge-runtime.d.ts";   // v18.52: versão exata
+import { createClient } from "jsr:@supabase/supabase-js@2.117.3";   // v18.52: versão exata (antes "@2")
 /* v5.1 (13/10/2026) — SÓ O SERVIDOR CHAMA. Verificação de segurança: a função estava
    aberta (sem login, sem chave) e cada chamada gasta OpenAI + Anthropic. Agora ela só
    atende quem manda "Authorization: Bearer <chave de serviço do projeto>", que é

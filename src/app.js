@@ -5041,12 +5041,13 @@ function renderQuestionCard(q, idx){
   const inner = document.createElement("div"); inner.className = "qcard-inner";
 
   const head = document.createElement("div"); head.className = "qcard-head";
+  // v18.52: a disciplina também passa por escapeHtml (pode vir de um simulado salvo).
   head.innerHTML = `
     <div class="qtitle">
       <div class="qnum-badge">${idx+1}</div>
       <div>
         <h3>${q.data ? escapeHtml(q.data.tema || q.tema || "Questão") : escapeHtml(q.tema || "Questão " + (idx+1))}</h3>
-        <div class="qcard-meta">${state.disciplina} ${q.approved ? " · <span style='color:#4ade80'>✓ aprovada</span>" : ""}</div>
+        <div class="qcard-meta">${escapeHtml(state.disciplina || "")} ${q.approved ? " · <span style='color:#4ade80'>✓ aprovada</span>" : ""}</div>
       </div>
     </div>
     <div class="qcard-actions no-print"></div>

@@ -177,6 +177,37 @@ Teste: `verify_fontes_app.js` — 19 verificações; as seções B e C bis prova
 quatro marcas ligadas ao mesmo tempo nenhuma conferência bloqueia, e que nenhuma delas tem sequer um
 `return true` no corpo. `verify_gabarito_coerente.js` H1 passou a exigir o contrário do que exigia.
 
+## Marca da IA ignorada, disciplina tratada e versões fixas no servidor (app v18.52, generate-question v74.43, 14/10/2026)
+
+Itens da nova análise de site (nota 9,4), escolhidos um a um pelo professor:
+
+- **Prompt injection na cobrança (generate-question v74.43).** A marca `fonteNaoVerificada` faz a
+  cobrança não contar a entrega (o app pede a questão de novo com o mesmo identificador). Ela deve
+  vir só das conferências do servidor, mas em Natureza e Matemática, onde a conferência de fontes não
+  se aplica, uma marca escrita pela própria IA (por exemplo, a pedido do texto do tema) sobrevivia: a
+  mesma cobrança gerava questões sem fim, pagas pelo dono. Agora `descartaMarcaDoServidor` apaga a
+  chave em toda resposta da IA (geração, alternativas incompletas, revisor de Matemática e
+  reelaboração), antes das conferências. As conferências do servidor continuam marcando como antes.
+- **Disciplina no cabeçalho do cartão (app v18.52).** Passa por `escapeHtml` (o valor pode vir de um
+  simulado salvo; só a própria conta grava os seus simulados, então é um reforço).
+- **Versões fixas no servidor.** As quatro funções com código (generate-question, generate-image,
+  review-math-question e classificar-textos-enem) importam `jsr:@supabase/supabase-js@2.117.3` e
+  `jsr:@supabase/functions-js@2.117.3` (antes `@2`, resolvido na publicação). A generate-question
+  importa `app_data.json`, `recurso_instrucoes.ts` e os dois módulos de notação por **caminho
+  relativo**: como a publicação importa o `index.ts` de um commit fixo do GitHub, os módulos vêm do
+  mesmo commit (antes vinham sempre do `main`). Ao trocar a versão do supabase-js, troque nas quatro.
+- **CSP valendo:** lembrete marcado para 21/10/2026; a troca só é feita com a autorização do professor.
+
+Testes (nenhum chama IA nem o banco do site):
+- `deno run -A --config <deno.json> tests/verify_marca_ia_v7443.ts`: a função de verdade, banco local
+  e a IA simulada em streaming devolvendo uma questão real com a marca escrita "por ela". Versão nova:
+  a marca some, a entrega conta e o mesmo identificador cobra de novo. Controle com a versão anterior
+  (8802cdc): a marca passa e a mesma cobrança gera outra questão sem cobrar. Mais as conferências no
+  arquivo (posição das quatro chamadas e versões fixas). 5 verificações.
+- `node tests/verify_disciplina_cartao_v1852.js`: disciplina com marcação não vira código; controle
+  com a versão anterior, que vira (3 verificações).
+- As outras 21 suítes do servidor e as do app continuam passando como antes.
+
 ## Senhas vazadas: mensagem em português no cadastro (app v18.51, 14/10/2026)
 
 O projeto do Supabase passou para o plano Pro, que permite ligar a proteção contra senhas vazadas

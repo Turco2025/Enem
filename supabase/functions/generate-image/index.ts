@@ -1,5 +1,5 @@
-import "jsr:@supabase/functions-js/edge-runtime.d.ts";
-import { createClient } from "jsr:@supabase/supabase-js@2";
+import "jsr:@supabase/functions-js@2.117.3/edge-runtime.d.ts";   // v18.52: versão exata
+import { createClient } from "jsr:@supabase/supabase-js@2.117.3";   // v18.52: versão exata (antes "@2")
 
 const CORS_HEADERS = {
   "Access-Control-Allow-Origin": "*",
