@@ -386,56 +386,6 @@ async function fechaCobranca(resp: Response, userId: string, cobrancaId: string,
   return jsonResponse({ ...corpo, creditos }, resp.status);
 }
 
-/* ─────────── v74.41: COTA DO USO GRÁTIS (verificação de segurança de 13/10/2026) ───────────
-   "Planejar recortes" e "refazer imagem, gráfico ou tabela" continuam sem custar crédito, mas
-   até a v74.40 só conferiam o login: qualquer conta, mesmo sem nenhum crédito, podia chamar
-   essas rotas direto, sem limite, e cada chamada ao Claude era paga pelo dono. Agora, ANTES da
-   chamada paga, o banco confere (creditos_uso_gratis, migração 2026-10-14_cotas_uso_gratis.sql):
-     · refazer o recurso visual de uma questão cobrada da própria conta (o app manda o
-       cobrancaId da questão): até 8 por cobrança;
-     · sem questão cobrada (simulado antigo, cota esgotada) e planejar recortes: só com saldo
-       de pelo menos 1 crédito, até 20 "refazer" e 30 planejamentos por dia;
-     · a conta do dono (perfis.ilimitado) não tem limite.
-   Recusa: 402 "sem_creditos" ou 429 "limite_diario", sem chamar o Claude. Se a conferência
-   falhar, 503 e nada é gerado. Os textos que essas rotas repassam ao prompt passam a ter
-   tamanho máximo (antes, qualquer tamanho ia direto para o Claude). */
-const USO_GRATIS_LIMITES = { tema: 4000, disciplina: 100, textoBase: 12000, comando: 3000, gabarito: 20, resolucao: 12000, alternativa: 2000 };
-function cortaTexto(v: unknown, max: number): string {
-  return (v ?? "").toString().slice(0, max);
-}
-function limpaAlternativas(v: unknown): Record<string, string> {
-  const o: Record<string, string> = {};
-  if (v && typeof v === "object" && !Array.isArray(v)) {
-    for (const [k, x] of Object.entries(v as Record<string, unknown>).slice(0, 6)) o[String(k).slice(0, 3)] = cortaTexto(x, USO_GRATIS_LIMITES.alternativa);
-  }
-  return o;
-}
-// Devolve a resposta de recusa (402/429/503) ou null quando o uso grátis está liberado.
-async function recusaUsoGratis(userId: string, tipo: "visual" | "planejar", cobrancaId: string | null): Promise<Response | null> {
-  let cota: any = null;
-  try {
-    const { data, error } = await supabase.rpc("creditos_uso_gratis", { p_user: userId, p_tipo: tipo, p_cobranca: cobrancaId });
-    if (error) throw new Error(error.message);
-    cota = data;
-  } catch (err) {
-    console.error(`[créditos] uso grátis (${tipo}): ${String((err as any)?.message || err)}`);
-    return jsonResponse({ error: "Não foi possível conferir seus créditos agora. Tente de novo em instantes.", code: "creditos_indisponivel" }, 503);
-  }
-  if (cota?.ok) return null;
-  const oQue = tipo === "planejar" ? "planejamentos de recortes" : "refações de imagem, gráfico ou tabela";
-  if (cota?.motivo === "limite_diario") {
-    return jsonResponse({ error: `Você chegou ao limite de ${Number(cota.limite) || 20} ${oQue} grátis por dia. Tente de novo amanhã.`, code: "limite_diario" }, 429);
-  }
-  return jsonResponse({
-    error: cota?.limite_questao
-      ? "Esta questão já usou todas as refações grátis. Para refazer de novo, é preciso ter créditos."
-      : (tipo === "planejar"
-        ? "Seus créditos acabaram. Compre um pacote de créditos para continuar gerando questões."
-        : "Refazer imagem, gráfico ou tabela é grátis para as questões que você gera. Para continuar, é preciso ter créditos."),
-    code: "sem_creditos",
-  }, 402);
-}
-
 /* ---------------- Prompt building (porta fiel da lógica do app cliente) ---------------- */
 
 // Objetos de conhecimento oficiais (Anexo da Matriz de Referência do ENEM), por área.
@@ -8301,11 +8251,6 @@ Deno.serve(async (req: Request) => {
   /* v64 — planejamento de recortes: várias questões com o mesmo tema. */
   if (body.planejarRecortes === true) {
     if (!tema) return jsonResponse({ error: "Campo 'tema' é obrigatório para planejar recortes." }, 400);
-    // v74.41: cota do uso grátis, antes de qualquer chamada paga
-    const recusaPlanejar = await recusaUsoGratis(usuario.id, "planejar", null);
-    if (recusaPlanejar) return recusaPlanejar;
-    const temaPlanejar = tema.slice(0, USO_GRATIS_LIMITES.tema);
-    const disciplinaPlanejar = disciplina.slice(0, USO_GRATIS_LIMITES.disciplina);
     const qtdRaw = Number(body.quantidade);
     const quantidade = Number.isFinite(qtdRaw) ? Math.max(2, Math.min(30, Math.round(qtdRaw))) : 2;
     const dificuldades: string[] = Array.isArray(body.dificuldades)
@@ -8325,7 +8270,7 @@ Deno.serve(async (req: Request) => {
     try {
       // Sem cache_control de propósito: o prompt é pequeno e a chamada é única.
       const system: SistemaPrompt = [{ type: "text", text: buildSystemPlanejamento(area) }];
-      const userMsg = buildPlanejamentoPrompt({ area, disciplina: disciplinaPlanejar, tema: temaPlanejar, quantidade, dificuldades, dominios, dominiosAlternativos, temasPorQuestao });
+      const userMsg = buildPlanejamentoPrompt({ area, disciplina, tema, quantidade, dificuldades, dominios, dominiosAlternativos, temasPorQuestao });
       let data = await callClaudeForJSON(system, userMsg, false, usos, FERRAMENTA_RECORTES, undefined, "planejamento");
       let recortes = normalizarRecortes(data, quantidade);
       if (!recortes.length) {
@@ -8361,20 +8306,14 @@ ATENÇÃO — sua resposta anterior não pôde ser usada: o argumento da ferrame
     if (!recurso) {
       return jsonResponse({ error: "Campo 'recurso' inválido para refazer o recurso visual. Use 'imagem', 'grafico' ou 'tabela'." }, 400);
     }
-    // v74.41: tamanho máximo de cada texto repassado ao prompt
-    const textoBase = cortaTexto(body.textoBase, USO_GRATIS_LIMITES.textoBase);
-    const comando = cortaTexto(body.comando, USO_GRATIS_LIMITES.comando);
-    const gabarito = cortaTexto(body.gabarito, USO_GRATIS_LIMITES.gabarito);
-    const resolucaoComentada = cortaTexto(body.resolucaoComentada, USO_GRATIS_LIMITES.resolucao);
-    const alternativas = limpaAlternativas(body.alternativas);
-    const temaVisual = tema.slice(0, USO_GRATIS_LIMITES.tema);
-    const disciplinaVisual = disciplina.slice(0, USO_GRATIS_LIMITES.disciplina);
+    const textoBase = (body.textoBase || "").toString();
+    const comando = (body.comando || "").toString();
+    const gabarito = (body.gabarito || "").toString();
+    const resolucaoComentada = (body.resolucaoComentada || "").toString();
+    const alternativas = (body.alternativas && typeof body.alternativas === "object") ? body.alternativas : {};
 
     const capResponse = await checkDailyCap();
     if (capResponse) return capResponse;
-    // v74.41: cota do uso grátis (pela questão cobrada, se o app mandar o cobrancaId), antes do Claude
-    const recusaVisual = await recusaUsoGratis(usuario.id, "visual", idCobrancaValido(body.cobrancaId));
-    if (recusaVisual) return recusaVisual;
 
     const usos: any[] = [];
     try {
@@ -8383,7 +8322,7 @@ ATENÇÃO — sua resposta anterior não pôde ser usada: o argumento da ferrame
       // v74.24 — reescrita segura depois de recusa da moderação (nível 1 ou 2)
       const restricaoSeguranca = Math.max(0, Math.min(2, Number(body.restricaoSeguranca) || 0));
       if (restricaoSeguranca) console.warn(`[visual] refazer "${tema}" (${disciplina}) com restrição de segurança nível ${restricaoSeguranca}`);
-      const userMsg = buildVisualRedoPrompt({ tema: temaVisual, disciplina: disciplinaVisual, recurso, textoBase, comando, alternativas, gabarito, resolucaoComentada, instrucoesVisual, restricaoSeguranca });
+      const userMsg = buildVisualRedoPrompt({ tema, disciplina, recurso, textoBase, comando, alternativas, gabarito, resolucaoComentada, instrucoesVisual, restricaoSeguranca });
       const data = await callClaudeForJSON(system, userMsg, false, usos, ferramentaVisualPara(recurso), undefined, "visual");
       if (!data || !data.visual) {
         return jsonResponse({ error: "O modelo não retornou um novo recurso visual válido." }, 502);
