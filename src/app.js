@@ -222,6 +222,12 @@ function atualizaHeaderAuth(){
    · antes de "Tentar novamente" numa imagem de questão com erro, pede para cobrar de novo
      (a questão vai ficar pronta); se a imagem falhar outra vez, o crédito volta de novo.
    A compra (Etapa 3) ainda não existe: o clique num pacote só avisa.
+   v18.49: COTA DO USO GRÁTIS (verificação de segurança de 13/10/2026): imagem e "Refazer"
+   de imagem/gráfico/tabela continuam grátis, mas o servidor passou a conferir a cota antes de
+   gastar (generate-image v34, generate-question v74.41). O app manda, nesses pedidos, o
+   identificador da questão cobrada (cobrancaId); sem ele, ou com a cota da questão esgotada,
+   vale a cota do dia, só para quem tem saldo. A recusa (402 sem_creditos, 429 limite_diario)
+   não é repetida automaticamente.
    ====================================================================================== */
 const CREDITOS_PACOTES = [
   { creditos: 50,  preco: 150, porQuestao: 3.00, desconto: 0 },
@@ -1264,7 +1270,7 @@ async function gerarImagemComRetentativas(promptText, q, run){   // v18.33: run 
     if(run && run.interrompida) throw erroDeInterrupcao(MSG_IMAGEM_INTERROMPIDA);   // v18.33
     diagImagem(q, "imagem_tentativa", `${tentativa}/${IMG_MAX_TENTATIVAS} · prompt ${imgTextoDeEspecificacao(promptText, 0).length} chars`);
     try{
-      const r = await generateImageViaBackend(promptText, run ? run.controller.signal : undefined);
+      const r = await generateImageViaBackend(promptText, run ? run.controller.signal : undefined, q && q.cobrancaId);   // v18.49: a cota grátis vem da questão cobrada
       diagImagem(q, "imagem_ok", `tentativa ${tentativa} · ${Math.round((r.dataUrl || "").length / 1024)} KB` + (r.uso ? ` · ${r.uso.segundos}s · US$ ${Number(r.uso.custoUSD || 0).toFixed(4)}` : ""));
       return { dataUrl: r.dataUrl, uso: r.uso, tentativas: tentativa };
     }catch(err){
@@ -1274,7 +1280,8 @@ async function gerarImagemComRetentativas(promptText, q, run){   // v18.33: run 
       diagImagem(q, "imagem_erro", `tentativa ${tentativa}: ${msg}`);
       const semEspecificacao = /sem a especificação/i.test(msg);
       // Sem login não há o que repetir: o backend recusa toda tentativa igual.
-      const naoAutorizado = /HTTP 40[13]\b|fazer login/i.test(msg);
+      // v18.49: o mesmo vale para a recusa da cota grátis (sem créditos ou limite do dia).
+      const naoAutorizado = /HTTP 40[13]\b|fazer login/i.test(msg) || (err && (err.code === "sem_creditos" || err.code === "limite_diario"));
       if(semEspecificacao || naoAutorizado) break;
       if(err && err.code === "moderation_blocked" && tentativa < IMG_MAX_TENTATIVAS){
         nivelSeguranca = Math.min(2, nivelSeguranca + 1);
@@ -1294,7 +1301,7 @@ async function gerarImagemComRetentativas(promptText, q, run){   // v18.33: run 
   throw ultimoErro || new Error("Falha desconhecida ao gerar a imagem.");
 }
 
-async function generateImageViaBackend(promptText, signal){   // v18.33: signal cancela o pedido
+async function generateImageViaBackend(promptText, signal, cobrancaId){   // v18.33: signal cancela o pedido; v18.49: cobrancaId da questão
   const texto = imgTextoDeEspecificacao(promptText, 0);
   if(!texto) throw new Error("A questão veio sem a especificação da imagem. Use \"Refazer imagem\" para gerá-la.");
   const prompt = imgEhEspecificacaoCompleta(texto) ? texto : (IMG_PREAMBULO_CURTO + texto);
@@ -1309,6 +1316,8 @@ async function generateImageViaBackend(promptText, signal){   // v18.33: signal 
       quality: IMG_QUALIDADE_PADRAO,
       outputFormat: "webp",
       outputCompression: 80,
+      // v18.49: a imagem é grátis dentro da cota da questão cobrada (generate-image v34)
+      cobrancaId: cobrancaId || null,
     }),
   });
   let data = {};
@@ -3356,6 +3365,8 @@ async function refazerVisualPeloBackend(q, opcoes){
       instrucoesVisual: q.instrucoesVisual || "",
       // v18.28 — reescrita segura depois de recusa da moderação (backend v74.24)
       restricaoSeguranca: Number(opcoes.restricaoSeguranca) || 0,
+      // v18.49: o refazer é grátis dentro da cota da questão cobrada (backend v74.41)
+      cobrancaId: q.cobrancaId || null,
     }),
   });
   const rawBody = await resp.text();
@@ -5521,11 +5532,14 @@ async function redoVisual(q, body, titleEl, redoBtn){
         gabarito: q.data.gabarito || "",
         resolucaoComentada: q.data.resolucaoComentada || "",
         instrucoesVisual: q.instrucoesVisual || "",
+        // v18.49: o refazer é grátis dentro da cota da questão cobrada (backend v74.41)
+        cobrancaId: q.cobrancaId || null,
       }),
     });
     const rawBody = await resp.text();
     let payload = {};
     try{ payload = rawBody ? JSON.parse(rawBody) : {}; }catch(e){ /* corpo não é JSON — trata abaixo */ }
+    if(resp.status === 402 && payload.code === "sem_creditos" && !creditos.ilimitado) abreCreditos({ precisa: 1 });   // v18.49
     if(!resp.ok || payload.error){
       throw new Error(payload.error || rawBody.slice(0, 300) || `Erro HTTP ${resp.status} ao refazer o recurso visual.`);
     }

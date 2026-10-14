@@ -41,10 +41,29 @@ const IMAGE_MODEL_ALIAS = "gpt-image-2.5-flare";
    saída). Fica junto do nome do modelo: trocar um sem o outro faria o log de
    custo mentir. */
 const PRECO_IMAGEM_USD_POR_M = { textoEntrada: 5.0, imagemSaida: 30.0 };
-// SEM TETO DIÁRIO (decisão do professor): ausente, 0 ou negativo = ilimitado.
-// Para reativar um limite depois, basta definir MAX_DAILY_IMAGES com um número
-// positivo nos secrets do projeto Supabase — não é preciso reimplantar a função.
-const MAX_DAILY_IMAGES = Number(Deno.env.get("MAX_DAILY_IMAGES") || "0");
+
+/* v34 (14/10/2026): COTA DO USO GRÁTIS (verificação de segurança de 13/10/2026).
+   A imagem continua sem custar crédito, mas até a v33 qualquer conta logada, mesmo sem
+   nenhum crédito, podia chamar esta função direto, sem limite, e cada imagem era paga pelo
+   dono. Agora, ANTES de chamar a OpenAI, o banco confere (creditos_uso_gratis, migração
+   2026-10-14_cotas_uso_gratis.sql):
+     · com o identificador da questão cobrada (cobrancaId, mandado pelo app): até 12
+       imagens por cobrança da própria conta;
+     · sem ele (simulado antigo, cota da questão esgotada): só com saldo de pelo menos
+       1 crédito, até 20 imagens por dia;
+     · a conta do dono (perfis.ilimitado) não tem limite.
+   Recusa: 402 "sem_creditos" ou 429 "limite_diario", sem chamar a OpenAI. Se a conferência
+   falhar, 503 e nada é gerado (falha fechada).
+   O antigo teto diário global (MAX_DAILY_IMAGES, desligado por decisão do professor)
+   saiu: ele contava as imagens de TODOS os usuários juntos e, ligado, deixava uma conta
+   esgotar o limite das outras. O prompt passa a ter tamanho máximo e o tamanho da imagem
+   só pode ser um dos aceitos pelo modelo; o log passa a guardar quem gerou (user_id). */
+const PROMPT_MAX_CARACTERES = 20000;   // a especificação mais longa do app fica bem abaixo disso
+const TAMANHOS_PERMITIDOS = ["1536x1024", "1024x1024", "1024x1536"];
+function idCobrancaValido(v: unknown): string | null {
+  const s = String(v ?? "").trim();
+  return /^[A-Za-z0-9_.:-]{8,80}$/.test(s) ? s : null;
+}
 
 const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
 const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -94,6 +113,7 @@ Deno.serve(async (req: Request) => {
   let body: {
     prompt?: string; size?: string; quality?: string;
     outputFormat?: string; outputCompression?: number;
+    cobrancaId?: string;
   };
   try {
     body = await req.json();
@@ -105,7 +125,11 @@ Deno.serve(async (req: Request) => {
   if (!prompt) {
     return jsonResponse({ error: "Campo 'prompt' é obrigatório." }, 400);
   }
-  const size = body.size || "1536x1024";
+  if (prompt.length > PROMPT_MAX_CARACTERES) {
+    return jsonResponse({ error: `A especificação da imagem passou de ${PROMPT_MAX_CARACTERES} caracteres.`, code: "prompt_longo" }, 400);
+  }
+  // Só os tamanhos aceitos pelo modelo; qualquer outro valor vira o padrão do app.
+  const size = TAMANHOS_PERMITIDOS.includes(String(body.size)) ? String(body.size) : "1536x1024";
 
   /* QUALIDADE FIXA EM "low" — decisão do professor, travada aqui no servidor.
      Antes a qualidade vinha por requisição (o app tinha um seletor por figura
@@ -127,21 +151,34 @@ Deno.serve(async (req: Request) => {
     Number.isFinite(compressao) && compressao >= 1 && compressao <= 100)
     ? Math.round(compressao) : null;
 
-  // Limite diário opcional (desligado por padrão). Quando MAX_DAILY_IMAGES não
-  // está definido, nada é consultado nem bloqueado — a geração é ilimitada.
-  if (Number.isFinite(MAX_DAILY_IMAGES) && MAX_DAILY_IMAGES > 0) try {
-    const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
-    const { count, error: countErr } = await supabase
-      .from("image_generation_log")
-      .select("id", { count: "exact", head: true })
-      .gte("created_at", since);
-    if (!countErr && typeof count === "number" && count >= MAX_DAILY_IMAGES) {
+  // v34: cota do uso grátis, conferida e registrada no banco ANTES da chamada paga.
+  // O usuário vem do token verificado (nunca do corpo); cobrancaId é só a chave de busca.
+  let cota: any = null;
+  try {
+    const { data, error } = await supabase.rpc("creditos_uso_gratis", {
+      p_user: usuario.id,
+      p_tipo: "imagem",
+      p_cobranca: idCobrancaValido(body.cobrancaId),
+    });
+    if (error) throw new Error(error.message);
+    cota = data;
+  } catch (err) {
+    console.error(`[imagem] cota: ${String((err as any)?.message || err)}`);
+    return jsonResponse({ error: "Não foi possível conferir seus créditos agora. Tente de novo em instantes.", code: "creditos_indisponivel" }, 503);
+  }
+  if (!cota?.ok) {
+    if (cota?.motivo === "limite_diario") {
       return jsonResponse({
-        error: `Limite diário de ${MAX_DAILY_IMAGES} imagens atingido. Tente novamente amanhã, ou aumente MAX_DAILY_IMAGES nas configurações do backend.`,
+        error: `Você chegou ao limite de ${Number(cota.limite) || 20} imagens grátis por dia fora das questões geradas agora. Tente de novo amanhã.`,
+        code: "limite_diario",
       }, 429);
     }
-  } catch (_e) {
-    // Se o log falhar por algum motivo, não bloqueia a geração de imagem.
+    return jsonResponse({
+      error: cota?.limite_questao
+        ? "Esta questão já usou todas as imagens grátis. Para gerar mais, é preciso ter créditos."
+        : "A imagem é grátis para as questões que você gera. Para continuar, é preciso ter créditos.",
+      code: "sem_creditos",
+    }, 402);
   }
 
   try {
@@ -279,7 +316,8 @@ Deno.serve(async (req: Request) => {
        a entrega da imagem já gerada. */
     console.log(`[imagem] ${modeloUsado} · ${quality} · ${size} · ${segundos}s · entrada ${tokensEntrada} · saída ${tokensSaida} · US$ ${custoUSD.toFixed(5)}`);
     try {
-      await supabase.from("image_generation_log").insert({
+      const { error: erroLog } = await supabase.from("image_generation_log").insert({
+        user_id: usuario.id,   // v34: quem gerou
         prompt: prompt.slice(0, 500),
         modelo: modeloUsado,
         segundos,
@@ -287,6 +325,7 @@ Deno.serve(async (req: Request) => {
         tokens_saida: tokensSaida,
         custo_usd: custoUSD,
       });
+      if (erroLog) console.error(`[imagem] falha ao registrar no log: ${erroLog.message}`);
     } catch (_e) {
       // best-effort logging
     }

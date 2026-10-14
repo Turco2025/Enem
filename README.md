@@ -177,6 +177,48 @@ Teste: `verify_fontes_app.js` — 19 verificações; as seções B e C bis prova
 quatro marcas ligadas ao mesmo tempo nenhuma conferência bloqueia, e que nenhuma delas tem sequer um
 `return true` no corpo. `verify_gabarito_coerente.js` H1 passou a exigir o contrário do que exigia.
 
+## Cota do uso grátis: imagem, refazer e planejar só com direito (app v18.49, generate-image v34, generate-question v74.41, 14/10/2026)
+
+A verificação de segurança completa de 13/10/2026 confirmou que qualquer conta logada, mesmo sem
+nenhum crédito, podia chamar direto a geração de imagem (OpenAI) e as rotas grátis do gerador
+("planejar recortes" e "refazer imagem, gráfico ou tabela", que chamam o Claude), sem limite. Cada
+chamada era paga pelo dono. As três continuam **grátis para o professor**; o que mudou é que o
+servidor confere a cota **antes** de gastar:
+
+- **Pela questão cobrada.** O app manda, junto com o pedido, o identificador da cobrança da
+  questão (`cobrancaId`). Cada cobrança da própria conta dá direito a até **12 imagens** e **8
+  "refazer"**. Se a mesma questão for cobrada de novo (ex.: "Tentar novamente" depois de o
+  crédito voltar), a cota recomeça. Cobrança de outra conta, devolvida ou com mais de 30 dias não
+  serve.
+- **Pela conta, por dia.** Sem questão cobrada (simulado antigo, cota da questão esgotada) e para
+  planejar recortes: só com saldo de pelo menos 1 crédito, até **20 imagens**, **20 "refazer"** e
+  **30 planejamentos por dia** (horário de Brasília). Não gasta crédito.
+- **Conta do dono** (`perfis.ilimitado`): sem limite.
+- **Recusa:** 402 `sem_creditos` (abre a janela de créditos no "Refazer") ou 429 `limite_diario`,
+  sem chamar a OpenAI nem o Claude, e o app não repete o pedido. Se a conferência falhar, 503 e
+  nada é gerado.
+- **Entradas com tamanho máximo:** a especificação da imagem vai até 20.000 caracteres e o tamanho
+  só pode ser 1536x1024, 1024x1024 ou 1024x1536. No "refazer", texto-base e resolução até 12.000
+  caracteres, comando até 3.000 e cada alternativa até 2.000. Nada disso corta uma questão real.
+- **Log:** `image_generation_log` passa a guardar quem gerou (`user_id`).
+- O teto diário global `MAX_DAILY_IMAGES` (desligado) saiu: ele somava as imagens de todos os
+  usuários e, ligado, deixava uma conta esgotar o limite das outras.
+
+**Banco:** `supabase/migrations/2026-10-14_cotas_uso_gratis.sql` (só acrescenta: três colunas
+com valor padrão em `creditos_cobrancas`, a coluna `user_id` no log de imagens, a tabela
+`creditos_uso_diario` com RLS e sem política, e a função `creditos_uso_gratis`, só do servidor).
+Reversão: `..._rollback.sql` (depois de voltar as duas funções).
+
+**Testes** (nenhum chama IA nem o banco do site):
+- `bash tests/verify_cotas_banco_v1849.sh`: Postgres local: 33 verificações da cota (inclusive
+  corridas: 30 imagens ao mesmo tempo na mesma questão → só 12 passam) e de novo os 56 testes de
+  banco da Etapa 2, com a migração nova aplicada (89 no total).
+- `deno run -A --config <deno.json> tests/verify_cotas_servidor_v1849.ts`: as duas funções de
+  verdade, com o banco local e OpenAI/Anthropic simuladas: o ataque da verificação é recusado
+  antes de qualquer chamada paga, e o uso normal continua passando (19 verificações).
+- `node tests/verify_cotas_app_v1849.js <index.html>`: o app manda o `cobrancaId` na imagem e no
+  "Refazer" e não repete pedidos recusados pela cota (6 verificações).
+
 ## Verificação de segurança: funções que gastam IA só para o servidor (13/10/2026)
 
 A verificação de segurança encontrou quatro portas abertas no Supabase, todas fechadas:
@@ -2882,7 +2924,7 @@ python3 combine.py
    - `ANTHROPIC_API_KEY` — sua chave da [Anthropic](https://platform.claude.com).
    - `OPENAI_API_KEY` — sua chave da [OpenAI](https://platform.openai.com).
    - (opcionais) `ANTHROPIC_MODEL`, `OPENAI_IMAGE_MODEL`, `OPENAI_IMAGE_QUALITY`,
-     `MAX_DAILY_QUESTIONS`, `MAX_DAILY_IMAGES`.
+     `MAX_DAILY_QUESTIONS`.
 4. Atualize as constantes `QUESTION_BACKEND_URL` e `IMAGE_BACKEND_URL` no topo de
    `src/app.js` com a URL do seu próprio projeto Supabase, e rode `combine.py` de novo.
 
