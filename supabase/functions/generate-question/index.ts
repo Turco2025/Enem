@@ -374,13 +374,22 @@ async function fechaCobranca(resp: Response, userId: string, cobrancaId: string,
   let creditos: any = { cobranca: cobrancaId, ilimitado: !!cob?.ilimitado, cobrado: !!cob?.cobrado, saldo: cob?.saldo ?? null };
   const appVaiPedirDeNovo = entregou && !!corpo.question.fonteNaoVerificada && !corpo.fontesDiag?.ultimoRecurso
     && Number(tentativa) >= 1 && Number(tentativa) < CREDITOS_TENTATIVAS_FONTE_APP;
+  let liberar = false;   // v74.42: a trava de "em andamento" sai quando o pedido termina
   if (entregou && !appVaiPedirDeNovo && !cob?.ilimitado) {
-    const { error } = await supabase.rpc("creditos_entregue", { p_user: userId, p_cobranca: cobrancaId });
-    if (error) console.error(`[créditos] entregue ${cobrancaId}: ${error.message}`);
+    const { error } = await supabase.rpc("creditos_entregue", { p_user: userId, p_cobranca: cobrancaId });   // também libera
+    if (error) { console.error(`[créditos] entregue ${cobrancaId}: ${error.message}`); liberar = true; }
   }
   if (!entregou && cob?.cobrado) {
-    const dev = await devolverCredito(userId, cobrancaId, `servidor: HTTP ${resp.status}`);
+    const dev = await devolverCredito(userId, cobrancaId, `servidor: HTTP ${resp.status}`);   // também libera
     creditos = { ...creditos, cobrado: false, devolvido: !!dev?.devolvido, saldo: dev?.saldo ?? creditos.saldo };
+    if (!dev) liberar = true;
+  }
+  /* v74.42 — sem entrega e sem devolução (retentativa grátis que falhou; questão reprovada que o
+     app vai pedir de novo com o MESMO identificador): libera a trava para o próximo pedido. */
+  if (!cob?.ilimitado && ((!entregou && !cob?.cobrado) || (entregou && appVaiPedirDeNovo))) liberar = true;
+  if (liberar && !cob?.ilimitado) {
+    const { error } = await supabase.rpc("creditos_liberar", { p_user: userId, p_cobranca: cobrancaId });
+    if (error) console.error(`[créditos] liberar ${cobrancaId}: ${error.message}`);
   }
   if (!corpo || typeof corpo !== "object" || Array.isArray(corpo)) return resp;
   return jsonResponse({ ...corpo, creditos }, resp.status);
@@ -399,6 +408,13 @@ async function fechaCobranca(resp: Response, userId: string, cobrancaId: string,
    Recusa: 402 "sem_creditos" ou 429 "limite_diario", sem chamar o Claude. Se a conferência
    falhar, 503 e nada é gerado. Os textos que essas rotas repassam ao prompt passam a ter
    tamanho máximo (antes, qualquer tamanho ia direto para o Claude). */
+/* ─────────── v74.42: TRAVA DA COBRANÇA E CAMPOS DA IA (análise de segurança de 13/10/2026) ───────────
+   · Cada cobrança fica "em andamento" no banco por até 150 s (migração 2026-10-14_trava_cobranca.sql).
+     Outro pedido com o mesmo cobrancaId nesse intervalo recebe 409 "em_andamento" e nada é gerado
+     (antes, pedidos simultâneos com o mesmo identificador geravam várias questões com 1 crédito).
+     fechaCobranca libera a trava ao fim de todo pedido (entrega, devolução ou creditos_liberar).
+   · A "dificuldade" devolvida ao app é sempre Fácil, Médio ou Difícil; "imagemDataUrl" vinda da IA
+     é descartada (a imagem pronta só existe no app, depois da generate-image). */
 const USO_GRATIS_LIMITES = { tema: 4000, disciplina: 100, textoBase: 12000, comando: 3000, gabarito: 20, resolucao: 12000, alternativa: 2000 };
 function cortaTexto(v: unknown, max: number): string {
   return (v ?? "").toString().slice(0, max);
@@ -4017,6 +4033,9 @@ function normalizarVisual(visual: unknown, recurso: string): any {
   }
   if (typeof v !== "object" || Array.isArray(v)) return v;
   const saida: any = { ...v };
+  /* v74.42 (segurança): a imagem pronta só existe no app, depois que a generate-image a
+     devolve. Uma "imagemDataUrl" na resposta da IA nunca é legítima: sai aqui. */
+  delete saida.imagemDataUrl;
   if (typeof saida.tipo === "string") saida.tipo = saida.tipo.trim().toLowerCase();
   if (!saida.tipo && ["imagem", "grafico", "tabela"].includes(recurso)) saida.tipo = recurso;
   for (const campo of ["promptImagem", "descricao", "titulo"]) {
@@ -7642,6 +7661,7 @@ function selfTestResponse() {
             && JSON.stringify(ferramentaVisualPara("imagem").input_schema.properties.visual) === JSON.stringify(visualSchemaPara("imagem"))
             && normalizarVisual({ tipo: "nenhum" }, "imagem") === null && normalizarVisual({ tipo: "imagem", promptImagem: "x" }, "nenhum") === null && normalizarVisual(null, "nenhum") === null
             && normalizarVisual({ tipo: "Imagem", promptImagem: "x".repeat(10) }, "imagem").tipo === "imagem"
+            && !("imagemDataUrl" in normalizarVisual({ tipo: "imagem", promptImagem: "x".repeat(10), imagemDataUrl: "http://exemplo.invalid/a.png" }, "imagem"))   // v74.42
             && !visualConforme({ tipo: "nenhum" }, "imagem").ok && visualConforme(null, "nenhum").ok
             && u.includes('o campo "visual" tem de vir com "tipo": "grafico"') && u0.includes('{"tipo":"nenhum"}')
             && JSON.stringify(ferramentasDaQuestao(ferramentaQuestaoPara("imagem", false, "Química"))) === JSON.stringify(ferramentasDaQuestao(ferramentaQuestaoPara("tabela", false, "Química")));
@@ -8423,6 +8443,16 @@ ATENÇÃO — sua resposta anterior não pôde ser usada: o argumento da ferrame
     console.error(`[créditos] cobrar ${cobrancaId}: ${String((err as any)?.message || err)}`);
     return jsonResponse({ error: "Não foi possível conferir seus créditos agora. Tente de novo em instantes.", code: "creditos_indisponivel" }, 503);
   }
+  /* v74.42 — trava da cobrança: o mesmo identificador ainda está sendo gerado (outro pedido em
+     curso, ou um que caiu no meio e cuja trava vence em até 150 s). Nada é gerado nem cobrado;
+     o app espera e tenta de novo. */
+  if (cobranca?.ok === false && cobranca?.motivo === "em_andamento") {
+    return jsonResponse({
+      error: "Esta questão ainda está sendo gerada. Aguarde alguns segundos.",
+      code: "em_andamento",
+      creditos: { cobranca: cobrancaId, ilimitado: false, cobrado: false, saldo: Number(cobranca?.saldo) || 0 },
+    }, 409);
+  }
   if (!cobranca?.ok) {
     return jsonResponse({
       error: "Seus créditos acabaram. Compre um pacote de créditos para continuar gerando questões.",
@@ -8799,6 +8829,9 @@ ATENÇÃO — sua resposta anterior não pôde ser usada: o argumento da ferrame
     data = normalizarNotacaoMatematica(data, disciplina);
     repoeTextoDaBiblioteca(data, "entrega");   // v74.30: por último — nenhuma normalização altera o texto da biblioteca
     if (fontesDiag && typeof fontesDiag === "object") (fontesDiag as any).textoDaBibliotecaReposto = textoDaBibliotecaReposto;
+    // v74.42 (segurança): a dificuldade aparece na tela do professor; só sai um dos três
+    // valores. Se a IA escrever outra coisa, vale a dificuldade pedida.
+    if (data && typeof data === "object" && !["Fácil", "Médio", "Difícil"].includes(data.dificuldade)) data.dificuldade = dificuldade;
     notacaoDiag.residuoFinal = temResiduoNotacao(data, area);
     if (notacaoDiag.residuoFinal) console.warn(`[notação] resíduo ASCII na questão entregue (${disciplina}: "${String(data?.tema || "").slice(0, 60)}") — ` + JSON.stringify(notacaoDiag.notacao?.residuosDepois ?? notacaoDiag));
     else if (notacaoDiag.residuoAntesDoRevisor) console.log(`[notação] resíduo corrigido pelo revisor (${notacaoDiag.notacao?.tentativas ?? "?"} tentativa(s))`);

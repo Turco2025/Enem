@@ -28,7 +28,7 @@ const context = await browser.newContext({ viewport: { width: 1200, height: 900 
 await context.route(/^https:\/\/(cdnjs\.cloudflare\.com|cdn\.jsdelivr\.net|unpkg\.com)\//, (route) => {
   const u = route.request().url(); const nome = Object.keys(mapa).find((k) => u.includes(k));
   if (!nome) return route.fulfill({ status: 404, body: "" });
-  route.fulfill({ status: 200, contentType: "application/javascript", body: fs.readFileSync(path.join(LIBS, mapa[nome]), "utf8") });
+  route.fulfill({ status: 200, contentType: "application/javascript", headers: { "access-control-allow-origin": "*" }, body: fs.readFileSync(path.join(LIBS, mapa[nome])) });   // v18.50: bytes exatos + CORS (o app confere o integrity)
 });
 await context.route(/^https:\/\/fonts\.(googleapis|gstatic)\.com\//, (r) => r.fulfill({ status: 404, body: "" }));
 await context.route(/^https:\/\/gkceyrkdmnhgqimmrsre\.supabase\.co\//, (r) => r.fulfill({ status: 200, contentType: "application/json", body: "[]" }));

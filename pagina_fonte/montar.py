@@ -43,7 +43,11 @@ FONTES = '''<link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:wght@400;700&display=swap">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Carlito:wght@400;700&display=swap">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Caveat:wght@600&display=swap">'''
-SUPABASE = '<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js" defer></script>\n'
+# v18.50: versão exata e impressão digital (sha384 do pacote oficial, conferido em 14/10/2026),
+# a mesma do app (src/app_template.html). Trocar a versão exige trocar também o integrity.
+SUPABASE = ('<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.3/dist/umd/supabase.js" '
+            'integrity="sha384-BWcjm9OdFth9TbhCxZPdm+gAOUMAzQy9nmTs12ioXdCcbVnJaPMn+fMUoQCLt60R" '
+            'crossorigin="anonymous" defer></script>\n')
 
 
 def pagina(*, html_attr, titulo, descricao, og_desc, caminho, estilo, corpo, scripts, cabeca_js=''):

@@ -8,11 +8,15 @@
      parsing da página (defer). jsPDF e docx.js só são baixados sob demanda,
      quando o usuário clica em "Exportar PDF"/"Exportar DOCX" (ver loadScriptOnce
      em app.js) — evita ~1MB de download/execução bloqueando o carregamento inicial. -->
-<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.5.0/chart.umd.min.js" defer></script>
+<!-- v18.50: versão exata e impressão digital (integrity) em cada biblioteca externa. O
+     navegador só executa o arquivo se os bytes forem exatamente os do pacote oficial (sha384
+     conferido em 14/10/2026); trocar a versão exige trocar também o integrity. -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.5.0/chart.umd.min.js" integrity="sha384-XcdcwHqIPULERb2yDEM4R0XaQKU3YnDsrTmjACBZyfdVVqjh6xQ4/DCMd7XLcA6Y" crossorigin="anonymous" defer></script>
 <!-- Supabase (login/cadastro e arquivo "Meus Simulados"). Carregado como defer;
      o cliente só é criado dentro de init() (DOMContentLoaded), quando o script
-     abaixo já terminou de rodar, então window.supabase sempre existe a tempo. -->
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js" defer></script>
+     abaixo já terminou de rodar, então window.supabase sempre existe a tempo.
+     Antes era "@2" (a versão mais nova da série 2 a cada visita); agora é fixa. -->
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.3/dist/umd/supabase.js" integrity="sha384-BWcjm9OdFth9TbhCxZPdm+gAOUMAzQy9nmTs12ioXdCcbVnJaPMn+fMUoQCLt60R" crossorigin="anonymous" defer></script>
 <style>
 :root{
   --bg-0:#0b0f1e; --bg-1:#131a2e; --bg-2:#1b2440;
@@ -1049,11 +1053,21 @@ const CDN_URLS = {
   jspdf: "https://cdnjs.cloudflare.com/ajax/libs/jspdf/4.2.1/jspdf.umd.min.js",
   docx: "https://cdn.jsdelivr.net/npm/docx@8.5.0/build/index.umd.js",
 };
+// v18.50 — impressão digital (SRI) de cada biblioteca: o navegador só executa o arquivo se os
+// bytes baixados forem exatamente estes. Se o CDN trocar o arquivo, a biblioteca não roda (a
+// exportação mostra o erro de sempre) em vez de rodar código desconhecido. Os valores são o
+// sha384 dos arquivos dos pacotes oficiais no npm, conferidos contra os bytes servidos pelos
+// CDNs em 14/10/2026. Ao trocar a versão de uma biblioteca, troque também a impressão digital.
+const CDN_SRI = {
+  [CDN_URLS.jspdf]: "sha384-qovJwSBbRDPP5cEjCp8S0UP66wrvnjaa60XMOGzTNanrThcrGfXfnZkvgY8N1KT3",
+  [CDN_URLS.docx]: "sha384-4xaIisuLEy2lo2HkB2C4rEf7v8jbTb2kuogX6TkuEt9feTWKBSFSOzsqNNbV+sKh",
+};
 const _scriptLoadPromises = {};
 function loadScriptOnce(url){
   if(_scriptLoadPromises[url]) return _scriptLoadPromises[url];
   _scriptLoadPromises[url] = new Promise((resolve, reject) => {
     const s = document.createElement("script");
+    if(CDN_SRI[url]){ s.integrity = CDN_SRI[url]; s.crossOrigin = "anonymous"; }
     s.src = url;
     s.onload = () => resolve();
     s.onerror = () => { delete _scriptLoadPromises[url]; reject(new Error("Falha ao carregar " + url)); };
@@ -2121,6 +2135,10 @@ function normalizaVisualQuestao(data){
   }
   if(typeof v !== "object" || Array.isArray(v)) return data;
   if(typeof v.tipo === "string") v.tipo = v.tipo.trim().toLowerCase();
+  // v18.50 (segurança): imagem pronta só pode ser a que o gerador de imagens devolveu
+  // (data:image/... em base64). Qualquer outro valor vindo da resposta da IA é descartado
+  // e a imagem é pedida de novo ao gerador.
+  if(v.imagemDataUrl != null && !/^data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+\/=]+$/i.test(String(v.imagemDataUrl))) delete v.imagemDataUrl;
   // v18.38 — ferramenta de entrega única (backend v74.34): questão sem recurso vem com
   // {"tipo":"nenhum"}; o backend já converte em null, e aqui é a rede de segurança.
   if(v.tipo === "nenhum"){ data.visual = null; return data; }
@@ -4058,6 +4076,9 @@ function corrigirQuebrasLiterais(valor){
   return valor;
 }
 
+// v18.50 — espera pela trava da cobrança (409 em_andamento): 18 × 10 s cobre os 150 s da trava.
+const ESPERAS_EM_ANDAMENTO = 18;
+let ESPERA_EM_ANDAMENTO_MS = 10000;   // let: os testes encurtam a espera
 async function generateQuestion(q){
   const run = geracaoAtiva();   // v18.33 — a leva em curso (cancelável), ou nada
   /* v18.46 — créditos: cada questão vai com um identificador de cobrança (ver o bloco
@@ -4092,6 +4113,7 @@ async function generateQuestion(q){
        só desliga quando recebe "revisarMatematica": false — o app nunca mais manda. */
     const revisarMatematica = true;
     let resp, rawBody, payload;
+    let esperasEmAndamento = 0;   // v18.50
     while(true){
       if(run && run.interrompida) throw erroDeInterrupcao();   // v18.33
       tentativa++;
@@ -4160,6 +4182,16 @@ async function generateQuestion(q){
       /* v18.46 — créditos: o saldo vem em toda resposta; 402 = acabou (nada foi gerado nem cobrado). */
       creditosDaResposta(payload);
       if(resp.status === 402 && payload.code === "sem_creditos") throw erroSemCredito();
+      /* v18.50 — trava da cobrança (backend v74.42): o servidor ainda está gerando esta mesma
+         questão (um pedido anterior que caiu no meio, ex.: 546). Nada foi gerado nem cobrado:
+         espera e tenta de novo, sem gastar tentativas; a trava vence em até 150 s. */
+      if(resp.status === 409 && payload.code === "em_andamento" && esperasEmAndamento < ESPERAS_EM_ANDAMENTO){
+        esperasEmAndamento++;
+        tentativa--; tentativaFonte--;
+        diagImagem(q, "aguardando_pedido_anterior", `espera ${esperasEmAndamento}/${ESPERAS_EM_ANDAMENTO}`);
+        await new Promise(function(r){ setTimeout(r, ESPERA_EM_ANDAMENTO_MS); });
+        continue;
+      }
       const isResourceLimit = resp.status === 546 || payload.code === "WORKER_RESOURCE_LIMIT";
       if(isResourceLimit && tentativa < MAX_TENTATIVAS){
         // Falha transitória de recursos do servidor (plano free do Supabase sob carga).
@@ -6221,8 +6253,12 @@ function buildQuestionBody(data, q){
 
   const metaRow = document.createElement("div");
   metaRow.style.cssText = "display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px;";
+  // v18.50 (segurança): a dificuldade vem da resposta da IA; vai para a tela tratada e
+  // só vira classe de cor se for um dos três valores conhecidos.
+  const difTexto = String(data.dificuldade || "");
+  const difClasse = ["Fácil", "Médio", "Difícil"].includes(difTexto) ? " dif-" + difTexto : "";
   metaRow.innerHTML = `
-    <span class="badge dif-${data.dificuldade}">${data.dificuldade}</span>
+    <span class="badge${difClasse}">${escapeHtml(difTexto)}</span>
     <span class="badge">${escapeHtml(data.habilidade?.codigo||"")}</span>
     <span class="badge professor-only gabarito-badge">Gabarito: ${escapeHtml(confAlt.letra || "inconsistente")}</span>
   `;

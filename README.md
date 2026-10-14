@@ -177,6 +177,68 @@ Teste: `verify_fontes_app.js` — 19 verificações; as seções B e C bis prova
 quatro marcas ligadas ao mesmo tempo nenhuma conferência bloqueia, e que nenhuma delas tem sequer um
 `return true` no corpo. `verify_gabarito_coerente.js` H1 passou a exigir o contrário do que exigia.
 
+## Análise de site: trava da cobrança, campos da IA, permissões, bibliotecas fixas e CSP (app v18.50, generate-question v74.42, 14/10/2026)
+
+Correções do plano da análise de site de 13/10/2026 (nota 6,9). Nada muda para o professor no uso
+normal.
+
+- **Trava da cobrança em andamento.** Antes, o mesmo identificador de cobrança podia ser usado
+  em vários pedidos ao mesmo tempo: o primeiro cobrava e os outros passavam como "nova tentativa
+  grátis", então 1 crédito gerava várias questões. Agora cada cobrança fica "em andamento" por
+  até 150 segundos; outro pedido com o mesmo identificador recebe **409 `em_andamento`** e nada é
+  gerado. A trava sai quando o pedido termina (entrega, devolução, recobrança ou
+  `creditos_liberar`, nova). O app, ao receber o 409, espera 10 s e tenta de novo com o mesmo
+  identificador (até 18 vezes), sem gastar tentativa nem devolver crédito.
+- **Pedidos do WhatsApp (`wa-<pedido>-<nº>`).** Valiam 3 entregas por crédito enquanto o pedido
+  estava "gerando", e o professor podia usar esse formato pelo app. Agora as entregas grátis são
+  o número de vezes que o robô já começou o pedido (`progresso.tentativas`, que só o servidor
+  grava), no máximo 3. Na 1ª tentativa, 1 crédito = 1 questão.
+- **Campos vindos da IA.** A "dificuldade" só pode ser Fácil, Médio ou Difícil (no servidor e no
+  app; o selo nunca vira código na página) e uma `imagemDataUrl` que não seja imagem PNG, JPEG ou
+  WebP em base64 é descartada (no servidor sempre; a imagem pronta só existe no app, depois da
+  generate-image).
+- **Permissões do banco.** Visitante e usuário logado perderam a permissão de chamar as funções
+  de crédito (só o servidor chama; o logado continua vendo o próprio saldo com
+  `creditos_meu_saldo`). A busca do revisor de Matemática (`match_math_reference_chunks`) ganhou
+  `search_path` fixo e só o servidor a chama.
+- **Bibliotecas com versão exata e impressão digital (SRI).** O supabase-js vinha como `@2` (a
+  versão mais nova da série 2 a cada visita); agora é `2.117.3`. As quatro bibliotecas externas
+  (supabase-js, Chart.js 4.5.0, jsPDF 4.2.1 e docx 8.5.0) levam `integrity` (sha384 do pacote
+  oficial, conferido contra os bytes servidos pelos CDNs em 14/10/2026) e `crossorigin`: se o CDN
+  trocar o arquivo, o navegador não executa. **Ao trocar a versão de uma biblioteca, troque também
+  o integrity** em `src/app_template.html`, `CDN_SRI` em `src/app.js`, `SUPABASE` em
+  `pagina_fonte/montar.py` e a cópia em `robo/libs_locais/`. As cópias do robô agora são byte a
+  byte os arquivos dos CDNs (o `chart.umd.js` local contém o `chart.umd.min.js` que o app pede).
+- **Content-Security-Policy em modo só relatório** (`pagina/_headers`, todas as páginas e o app):
+  o navegador não bloqueia nada, só avisa no console (F12) o que estaria fora da lista (scripts do
+  site e dos dois CDNs, fontes do Google, conexões só com o Supabase do Gera Enem, sem `eval`, sem
+  plugins, ninguém abre o site dentro de um quadro). Depois de alguns dias sem avisos, a mesma linha
+  passa a valer trocando o nome para `Content-Security-Policy`.
+
+**Banco:** `supabase/migrations/2026-10-14_trava_cobranca.sql` (1 coluna nova com valor nulo,
+5 funções substituídas com a mesma assinatura e `creditos_liberar`, só do servidor) e
+`supabase/migrations/2026-10-14_permissoes_banco.sql` (só permissões; nenhum dado muda). Ordem:
+trava, depois permissões. Reversões: `..._permissoes_banco_rollback.sql`, depois
+`..._trava_cobranca_rollback.sql` (esta só depois de voltar a generate-question para a v74.41).
+
+**Testes** (nenhum chama IA nem o banco do site):
+- `bash tests/verify_trava_cobranca_v1850.sh`: Postgres local, 109 verificações (trava, pedidos do
+  WhatsApp, permissões, corridas de 10 pedidos ao mesmo tempo, migrações rodando duas vezes,
+  reversões, e de novo os testes da Etapa 2 e das cotas com tudo aplicado).
+- `deno run -A --config <deno.json> tests/verify_trava_servidor_v7442.ts`: a generate-question de
+  verdade com o banco local e a Anthropic simulada (14 verificações).
+- `node tests/verify_seguranca_app_v1850.js <index.html>`: dificuldade e imagem "envenenadas" não
+  viram código; o 409 é esperado sem gastar tentativa (6 verificações).
+- `node tests/verify_sri_bibliotecas_v1850.js`: cada integrity bate com o arquivo; com os bytes
+  certos tudo carrega; com 1 byte a mais o navegador bloqueia; os mapas do robô usam as mesmas URLs
+  (15 verificações).
+- `node tests/verify_csp_v1850.js`: com a política **valendo**, as três páginas e o app (PDF, Word,
+  gráfico) não têm nenhuma violação; script e envio de dados para outro site são acusados (6).
+- `node robo/teste_local.mjs --csp`: o ensaio completo do robô (login, questões com imagem,
+  tabela e gráfico, PDF e Word) com a política valendo, sem nenhuma violação.
+- Testes que trocam o supabase-js por um falso (para simular login) usam uma cópia sem integrity:
+  `node tests/verify_raiz.js "$(node tests/sem_sri.js index.html)"` (ver `tests/sem_sri.js`).
+
 ## Cota do uso grátis: imagem, refazer e planejar só com direito (app v18.49, generate-image v34, generate-question v74.41, 14/10/2026)
 
 A verificação de segurança completa de 13/10/2026 confirmou que qualquer conta logada, mesmo sem

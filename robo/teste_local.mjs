@@ -23,6 +23,12 @@ const arg = (nome, padrao) => { const i = process.argv.indexOf(nome); return i >
 const FIXTURE = arg("--fixture", path.join(RAIZ, "tests", "fixtures", "wa_operario", "questoes_exemplo.json"));
 const LIBS = arg("--libs", path.join(RAIZ, "robo", "libs_locais"));
 const SAIDA = arg("--saida", null);
+// v18.50 — --csp: o app é servido com a política de pagina/_headers VALENDO (Content-Security-Policy,
+// e não só relatório) e cada cenário confere que nada foi barrado (login, geração, imagem, tabela,
+// gráfico, PDF e Word). É a prova de que a política pode passar a valer sem quebrar o app.
+const CSP = process.argv.includes("--csp")
+  ? (await readFile(path.join(RAIZ, "pagina", "_headers"), "utf8")).match(/^\s*Content-Security-Policy-Report-Only:\s*(.+)$/m)[1].trim()
+  : null;
 
 const fixture = JSON.parse(await readFile(FIXTURE, "utf8"));
 const semImagem = structuredClone(fixture.sem_imagem.data);
@@ -42,7 +48,7 @@ const questaoPara = (recurso) => recurso === "imagem" ? comImagem : recurso === 
 const LIB_URLS = {
   "https://cdnjs.cloudflare.com/ajax/libs/jspdf/4.2.1/jspdf.umd.min.js": "jspdf.umd.min.js",
   "https://cdn.jsdelivr.net/npm/docx@8.5.0/build/index.umd.js": "docx.umd.js",
-  "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js": "supabase.js",
+  "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.3/dist/umd/supabase.js": "supabase.js",
   "https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.5.0/chart.umd.min.js": "chart.umd.js",
 };
 const b64url = (o) => Buffer.from(JSON.stringify(o)).toString("base64url");
@@ -53,9 +59,19 @@ let chamadasQuestao = 0, chamadasImagem = 0, chamadasPlanejar = 0, simuladosGrav
 let idsCobranca = [];        // v18.46: identificadores de cobrança que o app mandou
 let saldoSimulado = null;    // v18.46: saldo devolvido por creditos_meu_saldo (null = função ausente, como antes)
 async function instalarMocks(context) {
+  if (CSP) {
+    await context.addInitScript(() => {
+      window.__violacoesCsp = [];
+      document.addEventListener("securitypolicyviolation", (e) => window.__violacoesCsp.push(`${e.effectiveDirective} ← ${e.blockedURI || "(inline)"}`));
+    });
+    await context.route(/^http:\/\/127\.0\.0\.1:\d+\/(index\.html)?$/, async (route) => {
+      const resp = await route.fetch();
+      await route.fulfill({ response: resp, headers: { ...resp.headers(), "content-security-policy": CSP } });
+    });
+  }
   for (const [url, arquivo] of Object.entries(LIB_URLS)) {
     const corpo = await readFile(path.join(LIBS, arquivo));
-    await context.route(url, (route) => route.fulfill({ status: 200, contentType: "application/javascript", body: corpo }));
+    await context.route(url, (route) => route.fulfill({ status: 200, contentType: "application/javascript", headers: { "access-control-allow-origin": "*" }, body: corpo }));
   }
   await context.route(/^https:\/\/fonts\.(googleapis|gstatic)\.com\//, (route) => route.fulfill({ status: 404, body: "" }));
   await context.route(/^https:\/\/gkceyrkdmnhgqimmrsre\.supabase\.co\//, async (route) => {
@@ -180,6 +196,11 @@ async function cenario(browser, urlApp, nome, parametros, esperado) {
       confere(contaPaginasPdf(pp.bytes) > contaPaginasPdf(pa.bytes), "versão do professor tem mais páginas (gabarito e resoluções)");
     }
     confere(errosPagina.length === 0, "nenhum erro de JavaScript na página" + (errosPagina.length ? ": " + errosPagina.slice(0, 2).join(" | ") : ""));
+    if (CSP) {
+      const violacoes = await page.evaluate(() => window.__violacoesCsp || null);
+      const cabecalho = await page.evaluate(async () => (await fetch(location.href, { cache: "no-store" })).headers.get("content-security-policy"));
+      confere(Array.isArray(violacoes) && cabecalho && violacoes.length === 0, `CSP valendo: nada barrado (${violacoes ? violacoes.length : "sem registro"} violação(ões)${violacoes && violacoes.length ? ": " + [...new Set(violacoes)].slice(0, 4).join(" | ") : ""})`);
+    }
     const saiu = await page.evaluate(() => enemAutomacao.encerrarSessao());
     confere(saiu === true && logoutsRecebidos >= 1, "encerrarSessao: saiu só desta sessão (POST /auth/v1/logout?scope=local)");
     if (SAIDA) {

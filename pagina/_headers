@@ -1,6 +1,13 @@
+# v18.50 — Content-Security-Policy em modo SÓ RELATÓRIO (Report-Only): o navegador não bloqueia
+# nada; só escreve no console (F12) o que estaria fora da lista. Lista: scripts do próprio site e
+# dos dois CDNs das bibliotecas, fontes do Google, conexões só com o Supabase do Gera Enem, nenhum
+# site pode abrir o Gera Enem dentro de um quadro (frame-ancestors). Depois de alguns dias sem
+# avisos no console, a mesma linha passa a valer de verdade trocando o nome para
+# Content-Security-Policy.
 /*
   X-Content-Type-Options: nosniff
   Referrer-Policy: strict-origin-when-cross-origin
+  Content-Security-Policy-Report-Only: default-src 'self'; script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' data: https://fonts.gstatic.com; img-src 'self' data: blob: https://gkceyrkdmnhgqimmrsre.supabase.co; media-src 'self'; connect-src 'self' https://gkceyrkdmnhgqimmrsre.supabase.co wss://gkceyrkdmnhgqimmrsre.supabase.co; frame-src 'self' blob:; worker-src 'self' blob:; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'
 
 /assets/*
   Cache-Control: public, max-age=604800

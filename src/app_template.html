@@ -8,11 +8,15 @@
      parsing da página (defer). jsPDF e docx.js só são baixados sob demanda,
      quando o usuário clica em "Exportar PDF"/"Exportar DOCX" (ver loadScriptOnce
      em app.js) — evita ~1MB de download/execução bloqueando o carregamento inicial. -->
-<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.5.0/chart.umd.min.js" defer></script>
+<!-- v18.50: versão exata e impressão digital (integrity) em cada biblioteca externa. O
+     navegador só executa o arquivo se os bytes forem exatamente os do pacote oficial (sha384
+     conferido em 14/10/2026); trocar a versão exige trocar também o integrity. -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.5.0/chart.umd.min.js" integrity="sha384-XcdcwHqIPULERb2yDEM4R0XaQKU3YnDsrTmjACBZyfdVVqjh6xQ4/DCMd7XLcA6Y" crossorigin="anonymous" defer></script>
 <!-- Supabase (login/cadastro e arquivo "Meus Simulados"). Carregado como defer;
      o cliente só é criado dentro de init() (DOMContentLoaded), quando o script
-     abaixo já terminou de rodar, então window.supabase sempre existe a tempo. -->
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js" defer></script>
+     abaixo já terminou de rodar, então window.supabase sempre existe a tempo.
+     Antes era "@2" (a versão mais nova da série 2 a cada visita); agora é fixa. -->
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.3/dist/umd/supabase.js" integrity="sha384-BWcjm9OdFth9TbhCxZPdm+gAOUMAzQy9nmTs12ioXdCcbVnJaPMn+fMUoQCLt60R" crossorigin="anonymous" defer></script>
 <style>
 :root{
   --bg-0:#0b0f1e; --bg-1:#131a2e; --bg-2:#1b2440;

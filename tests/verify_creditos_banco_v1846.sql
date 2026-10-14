@@ -11,6 +11,13 @@
 create temp table r(n serial, ok boolean, msg text);
 grant all on r to public; grant all on sequence r_n_seq to public;
 create or replace function pg_temp.chk(c boolean, m text) returns void language sql as $$ insert into r(ok, msg) values (coalesce(c, false), m) $$;
+-- v18.50: desde a trava da cobrança (2026-10-14_trava_cobranca.sql) o servidor libera o pedido
+-- quando ele termina sem entrega; aqui isso é simulado antes de cada "retentativa". Sem a
+-- migração da trava (função ausente), não faz nada.
+create or replace function pg_temp.fim_do_pedido(u uuid, c text) returns void language plpgsql as $$
+begin
+  if to_regprocedure('public.creditos_liberar(uuid,text)') is not null then execute 'select public.creditos_liberar($1, $2)' using u, c; end if;
+end $$;
 
 -- usuários da simulação: 1 = dono (ilimitado), 2 = aluno, 3 = outro, 5 a 7 (4 fica para a corrida, no .sh)
 \set dono '''00000000-0000-0000-0000-000000000001'''
@@ -30,6 +37,7 @@ select pg_temp.chk((creditos_cobrar(:aluno, 'q-00000001')->>'ok')::boolean = fal
 -- B. cobrança, retentativa, devolução
 select pg_temp.chk((creditos_adicionar(:aluno, 2, 'cortesia')->>'saldo')::int = 2, 'B1 adicionar 2 créditos: saldo 2');
 select pg_temp.chk(creditos_cobrar(:aluno, 'q-00000001') @> '{"ok":true,"cobrado":true,"saldo":1}', 'B2 primeira questão: cobra 1, saldo 1');
+select pg_temp.fim_do_pedido(:aluno, 'q-00000001');
 select pg_temp.chk(creditos_cobrar(:aluno, 'q-00000001') @> '{"ok":true,"cobrado":false,"saldo":1}', 'B3 retentativa do mesmo pedido: não cobra de novo');
 select pg_temp.chk(creditos_devolver(:aluno, 'q-00000001', 'erro_servidor') @> '{"devolvido":true,"saldo":2}', 'B4 erro: devolve, saldo 2');
 select pg_temp.chk(creditos_devolver(:aluno, 'q-00000001', 'erro_servidor') @> '{"devolvido":false,"saldo":2}', 'B5 devolver de novo não dá crédito a mais');
@@ -86,6 +94,7 @@ select pg_temp.chk(creditos_reconfirmar(:quinto, 'h-00000001') @> '{"ok":false,"
 -- I. um crédito paga UMA entrega: o mesmo identificador reaproveitado depois da entrega cobra de novo
 select creditos_adicionar(:sexto, 20);
 select creditos_cobrar(:sexto, 'i-00000001');
+select pg_temp.fim_do_pedido(:sexto, 'i-00000001');
 select pg_temp.chk(creditos_cobrar(:sexto, 'i-00000001') @> '{"cobrado":false,"saldo":19}', 'I1 retentativa antes da entrega: não cobra');
 select pg_temp.chk(creditos_entregue(:sexto, 'i-00000001') @> '{"entregas":1}', 'I2 servidor marca a entrega');
 select creditos_cobrar(:sexto, 'i-00000001') as res \gset i3_
@@ -93,11 +102,13 @@ select pg_temp.chk(:'i3_res'::jsonb @> '{"cobrado":true,"saldo":18}'
   and (select vezes || '/' || entregas from creditos_cobrancas where user_id = :sexto and id = 'i-00000001') = '2/0', 'I3 o mesmo identificador depois da entrega é questão nova: cobra (vezes 2, entregas 0)');
 select pg_temp.chk(creditos_entregue(:sexto, 'nao-existe-01') @> '{"ok":true}' and creditos_entregue(:sexto, 'nao-existe-01')->'entregas' = 'null'::jsonb, 'I4 marcar entrega de pedido desconhecido não faz nada');
 -- pedidos do WhatsApp: o robô pode refazer o pedido inteiro (até 3 vezes) sem cobrar de novo
-insert into wa_trabalhos (id, user_id, telefone, parametros, status) values
-  ('11111111-1111-4111-8111-111111111111', :sexto, '5500000000000', '{"quantidade": 5}', 'gerando'),
-  ('22222222-2222-4222-8222-222222222222', :sexto, '5500000000000', '{"quantidade": 5}', 'enviado'),
-  ('33333333-3333-4333-8333-333333333333', :setimo, '5500000000001', '{"quantidade": 5}', 'gerando'),
-  ('44444444-4444-4444-8444-444444444444', :sexto, '5500000000000', '{"quantidade": "cinco"}', 'gerando');
+-- v18.50: o pedido 1111 já está na 3ª tentativa do robô (progresso.tentativas = 3); desde a trava da
+-- cobrança (2026-10-14_trava_cobranca.sql) a entrega grátis do wa- vale o nº de tentativas do robô.
+insert into wa_trabalhos (id, user_id, telefone, parametros, status, progresso) values
+  ('11111111-1111-4111-8111-111111111111', :sexto, '5500000000000', '{"quantidade": 5}', 'gerando', '{"tentativas": 3}'),
+  ('22222222-2222-4222-8222-222222222222', :sexto, '5500000000000', '{"quantidade": 5}', 'enviado', '{}'),
+  ('33333333-3333-4333-8333-333333333333', :setimo, '5500000000001', '{"quantidade": 5}', 'gerando', '{}'),
+  ('44444444-4444-4444-8444-444444444444', :sexto, '5500000000000', '{"quantidade": "cinco"}', 'gerando', '{}');
 select pg_temp.chk(creditos_entregas_por_cobranca(:sexto, 'wa-11111111-1111-4111-8111-111111111111-2') = 3, 'I5 questão de pedido do WhatsApp em geração: até 3 entregas por crédito');
 select pg_temp.chk(creditos_entregas_por_cobranca(:sexto, 'wa-11111111-1111-4111-8111-111111111111-6') = 1
   and creditos_entregas_por_cobranca(:sexto, 'wa-11111111-1111-4111-8111-111111111111-0') = 1, 'I6 número da questão fora do pedido: 1 entrega');
@@ -145,7 +156,10 @@ do $$ begin perform creditos_entregas_por_cobranca('00000000-0000-0000-0000-0000
 reset role;
 select set_config('request.jwt.claim.sub', '', false);   -- visitante: sem usuário
 set role anon;
-select pg_temp.chk(creditos_meu_saldo() @> '{"ok":false,"motivo":"sem_login"}', 'F8 sem login, o saldo não aparece (sem_login)');
+-- v18.50: desde 2026-10-14_permissoes_banco.sql o visitante nem chama a função (permissão negada); antes, sem_login
+do $$ begin
+  if (creditos_meu_saldo() @> '{"ok":false,"motivo":"sem_login"}') then insert into r(ok, msg) values (true, 'F8 sem login, o saldo não aparece (sem_login)'); else insert into r(ok, msg) values (false, 'F8 sem login, o saldo não aparece'); end if;
+exception when insufficient_privilege then insert into r(ok, msg) values (true, 'F8 sem login, o saldo não aparece (permissão negada)'); end $$;
 do $$ begin perform creditos_adicionar('00000000-0000-0000-0000-000000000002', 1000); raise exception 'devia falhar'; exception when insufficient_privilege then insert into r(ok, msg) values (true, 'F8b visitante não consegue se dar créditos'); end $$;
 do $$ begin perform creditos_cobrar('00000000-0000-0000-0000-000000000002', 'x-00000002'); raise exception 'devia falhar'; exception when insufficient_privilege then insert into r(ok, msg) values (true, 'F8c visitante não consegue cobrar'); end $$;
 select pg_temp.chk((select count(*) from creditos_lotes) = 0 and (select count(*) from creditos_cobrancas) = 0, 'F8d visitante não vê nenhum lote nem cobrança');

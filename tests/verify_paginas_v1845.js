@@ -13,6 +13,7 @@ const DIST = fs.mkdtempSync(path.join(os.tmpdir(), 'dist-'));
 fs.cpSync(path.join(RAIZ, 'pagina'), DIST, { recursive: true, dereference: true });
 fs.mkdirSync(path.join(DIST, 'app'));
 fs.copyFileSync(path.join(RAIZ, 'index.html'), path.join(DIST, 'app', 'index.html'));
+require('./sem_sri').semSriNaPasta(DIST);   // v18.50: o supabase-js falso não passaria no integrity (ver tests/sem_sri.js)
 
 const TIPOS = { '.html': 'text/html; charset=utf-8', '.js': 'application/javascript', '.css': 'text/css', '.webp': 'image/webp', '.jpg': 'image/jpeg', '.png': 'image/png', '.mp4': 'video/mp4', '.webm': 'video/webm' };
 const servidor = http.createServer((req, res) => {

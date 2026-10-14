@@ -153,16 +153,18 @@ export async function gerarNoApp({ page, url, parametros, sessao, aoProgresso = 
 // ---------------------------------------------------------------------------
 // Bibliotecas que o app carrega de CDNs. Em ambientes sem acesso a CDN (LIBS_LOCAIS=pasta), são
 // servidas a partir das cópias locais — as mesmas versões que o app pede (ver robo/libs_locais/).
+// v18.50: o app confere a impressão digital (integrity) de cada biblioteca, então as cópias locais
+// são byte a byte os arquivos dos CDNs, e a resposta leva o cabeçalho CORS que os CDNs mandam.
 export const LIBS_CDN = {
   "https://cdnjs.cloudflare.com/ajax/libs/jspdf/4.2.1/jspdf.umd.min.js": "jspdf.umd.min.js",
   "https://cdn.jsdelivr.net/npm/docx@8.5.0/build/index.umd.js": "docx.umd.js",
-  "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js": "supabase.js",
+  "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.3/dist/umd/supabase.js": "supabase.js",
   "https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.5.0/chart.umd.min.js": "chart.umd.js",
 };
 export async function servirLibsLocais(contexto, pasta) {
   for (const [url, arquivo] of Object.entries(LIBS_CDN)) {
     const corpo = await readFile(path.join(pasta, arquivo));
-    await contexto.route(url, (route) => route.fulfill({ status: 200, contentType: "application/javascript", body: corpo }));
+    await contexto.route(url, (route) => route.fulfill({ status: 200, contentType: "application/javascript", headers: { "access-control-allow-origin": "*" }, body: corpo }));
   }
 }
 
